@@ -34,8 +34,8 @@ export default function PostCard({ post }: PostCardProps) {
       ? 'grid-cols-2'
       : 'grid-cols-3';
 
-  const typeLabel = post.entryType === 'diary' ? '日记' : '随想';
-  const typeColor = post.entryType === 'diary' ? 'bg-x-green/20 text-x-green' : 'bg-x-blue/20 text-x-blue';
+  const typeLabel = post.entryType === 'diary' ? '日记' : post.entryType === 'article' ? '英文' : '随想';
+  const typeColor = post.entryType === 'diary' ? 'bg-x-green/20 text-x-green' : post.entryType === 'article' ? 'bg-amber-500/20 text-amber-500' : 'bg-x-blue/20 text-x-blue';
 
   const navigateToPost = () => {
     router.push(`/post/${post.id}`);

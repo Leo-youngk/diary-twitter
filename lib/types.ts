@@ -8,7 +8,7 @@ export interface User {
   joinedDate: string;
 }
 
-export type EntryType = 'thought' | 'diary';
+export type EntryType = 'thought' | 'diary' | 'article';
 
 export interface Reply {
   id: string;

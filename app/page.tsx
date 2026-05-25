@@ -2,13 +2,16 @@
 
 import { useState, useMemo } from 'react';
 import { useApp } from '@/lib/context';
+import { useScrollDirection } from '@/hooks/useScrollDirection';
 import FeedList from '@/components/feed/FeedList';
+import DailyArticleCard from '@/components/article/DailyArticleCard';
 import Avatar from '@/components/ui/Avatar';
 import { cn } from '@/lib/utils';
 
 export default function HomePage() {
   const { posts, feedTab, setFeedTab, currentUser, openCompose } = useApp();
   const [initialLoading, setInitialLoading] = useState(false);
+  const headerHidden = useScrollDirection();
 
   const filteredPosts = useMemo(() => {
     if (feedTab === 'thought') {
@@ -34,12 +37,14 @@ export default function HomePage() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-x-dark/80 backdrop-blur-md border-b border-x-border">
+      {/* Header — hides on scroll down, shows on scroll up (like Twitter) */}
+      <div className={cn(
+        'sticky z-10 bg-x-dark/80 backdrop-blur-md border-b border-x-border transition-all duration-300',
+        headerHidden ? '-top-[110px]' : 'top-0'
+      )}>
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" className="md:hidden" />
-            <h1 className="text-xl font-bold">日记本</h1>
           </div>
           <span className="text-x-blue">
             <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
@@ -88,6 +93,9 @@ export default function HomePage() {
           </button>
         </div>
       </div>
+
+      {/* Daily English Article */}
+      <DailyArticleCard />
 
       {/* Feed */}
       <FeedList posts={filteredPosts} loading={initialLoading} />
