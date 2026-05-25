@@ -1,0 +1,48 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+
+# production
+build/
+
+# misc
+.DS_Store
+*.pem
+.env
+.env*.local
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# vercel
+.vercel
+
+# ide
+.vscode/
+.idea/
+
+# scripts (not part of the app)
+*.ps1
+*.bat
+$null
+c_check.ps1
+c_drive_analysis.ps1
+cleanup.ps1
+deep_check.ps1
+e_check.ps1
+e_quick.ps1
+migrate_check.ps1
+quick_check.ps1
+c盘分析.ps1
+migrate_ollama.bat
+remove_old_claude.bat
+remove_old_claude.ps1
+start_ollama_e.bat.ps1
+.qwen/

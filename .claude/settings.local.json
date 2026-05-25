@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"E:\\\\复刻推特\" log --oneline -5)"
+    ]
+  }
+}
