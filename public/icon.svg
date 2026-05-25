@@ -1,36 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1d9bf0"/>
-      <stop offset="100%" style="stop-color:#0a7ccc"/>
-    </linearGradient>
-    <linearGradient id="pen" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#ffffff"/>
-      <stop offset="100%" style="stop-color:#e8f4fd"/>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#33b5e5"/>
+      <stop offset="100%" style="stop-color:#1d9bf0"/>
     </linearGradient>
   </defs>
-  <!-- Rounded square background -->
-  <rect width="512" height="512" rx="108" ry="108" fill="url(#bg)"/>
-  <!-- Notebook page -->
-  <rect x="120" y="80" width="272" height="352" rx="20" ry="20" fill="white" opacity="0.95"/>
-  <!-- Notebook lines -->
-  <line x1="160" y1="170" x2="352" y2="170" stroke="#1d9bf0" stroke-width="3" opacity="0.3"/>
-  <line x1="160" y1="210" x2="320" y2="210" stroke="#1d9bf0" stroke-width="3" opacity="0.3"/>
-  <line x1="160" y1="250" x2="340" y2="250" stroke="#1d9bf0" stroke-width="3" opacity="0.3"/>
-  <line x1="160" y1="290" x2="280" y2="290" stroke="#1d9bf0" stroke-width="3" opacity="0.3"/>
-  <!-- Notebook binding dots -->
-  <circle cx="145" cy="140" r="6" fill="#1d9bf0" opacity="0.4"/>
-  <circle cx="145" cy="200" r="6" fill="#1d9bf0" opacity="0.4"/>
-  <circle cx="145" cy="260" r="6" fill="#1d9bf0" opacity="0.4"/>
-  <circle cx="145" cy="320" r="6" fill="#1d9bf0" opacity="0.4"/>
-  <circle cx="145" cy="380" r="6" fill="#1d9bf0" opacity="0.4"/>
-  <!-- Pen / writing icon -->
-  <g transform="translate(280, 280) rotate(-45)">
-    <rect x="0" y="-14" width="140" height="28" rx="4" fill="url(#pen)" stroke="#1d9bf0" stroke-width="3"/>
-    <polygon points="-20,0 0,-14 0,14" fill="url(#pen)" stroke="#1d9bf0" stroke-width="3"/>
-    <circle cx="-16" cy="0" r="3" fill="#1d9bf0"/>
-    <rect x="120" y="-14" width="24" height="28" rx="4" fill="#1d9bf0" opacity="0.3"/>
-  </g>
-  <!-- Small heart accent -->
-  <path d="M340,130 C340,120 355,110 365,122 C375,110 390,120 390,130 C390,145 365,158 365,158 C365,158 340,145 340,130Z" fill="#f4212e" opacity="0.7"/>
+  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
+  <!-- Bold feather quill — one clean silhouette like Telegram's paper plane -->
+  <path d="M380 108 C340 140, 280 200, 230 270 C210 300, 195 330, 185 365 C183 372, 176 374, 172 368 C160 345, 155 320, 158 295 C130 310, 115 340, 112 375 C111 383, 100 384, 100 376 C98 330, 115 280, 155 248 C135 252, 118 262, 100 280 C94 286, 85 280, 90 273 C115 240, 155 215, 200 205 C240 197, 280 175, 310 148 C330 132, 355 115, 380 108 Z" fill="white"/>
+  <!-- Ink trail -->
+  <path d="M172 370 C168 385, 162 398, 152 408 C148 412, 140 408, 144 403 C150 393, 158 380, 172 370 Z" fill="white" opacity="0.8"/>
 </svg>

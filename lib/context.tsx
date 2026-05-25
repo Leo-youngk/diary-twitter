@@ -24,6 +24,7 @@ interface AppContextType extends AppState {
   setFeedTab: (tab: FeedTab) => void;
   toggleLike: (postId: string) => void;
   addPost: (content: string, images: string[], entryType: EntryType, title?: string) => void;
+  deletePost: (postId: string) => void;
   addReply: (postId: string, content: string) => void;
   openCompose: () => void;
   closeCompose: () => void;
@@ -124,6 +125,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const deletePost = useCallback((postId: string) => {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  }, []);
+
   const addReply = useCallback(
     (postId: string, content: string) => {
       const newReply = {
@@ -196,6 +201,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setFeedTab,
         toggleLike,
         addPost,
+        deletePost,
         addReply,
         openCompose,
         closeCompose,

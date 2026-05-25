@@ -11,7 +11,7 @@ import Avatar from '@/components/ui/Avatar';
 export default function PostDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { posts, currentUser, toggleLike, addReply, exportPost, addToast } = useApp();
+  const { posts, currentUser, toggleLike, deletePost, addReply, exportPost, addToast } = useApp();
   const [replyContent, setReplyContent] = useState('');
   const [likeAnimating, setLikeAnimating] = useState(false);
 
@@ -141,10 +141,18 @@ export default function PostDetailPage() {
               </div>
             </button>
 
-            <button onClick={() => exportPost(post)} className="group text-x-gray hover:text-x-blue transition-colors p-2 rounded-full">
+            <button onClick={() => exportPost(post)} className="group text-x-gray hover:text-x-blue transition-colors p-2 rounded-full" title="导出">
               <div className="p-2 rounded-full group-hover:bg-x-blue/10 transition-colors">
                 <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
                   <path d="M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z" />
+                </svg>
+              </div>
+            </button>
+
+            <button onClick={() => { deletePost(post.id); addToast('已删除'); router.back(); }} className="group text-x-gray hover:text-x-danger transition-colors p-2 rounded-full" title="删除">
+              <div className="p-2 rounded-full group-hover:bg-x-danger/10 transition-colors">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
+                  <path d="M16 6V4.5C16 3.12 14.88 2 13.5 2h-3C9.11 2 8 3.12 8 4.5V6H3v2h1.06l.81 11.21C4.98 20.78 6.28 22 7.86 22h8.27c1.58 0 2.88-1.22 3-2.79L19.93 8H21V6h-5zm-6-1.5c0-.28.22-.5.5-.5h3c.27 0 .5.22.5.5V6h-4V4.5zM17.13 19.1c-.04.52-.47.9-1 .9H7.86c-.53 0-.96-.38-1-.9L6.07 8h11.85l-.79 11.1zM9 17h2V10H9v7zm4 0h2V10h-2v7z" />
                 </svg>
               </div>
             </button>
