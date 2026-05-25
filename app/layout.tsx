@@ -10,7 +10,21 @@ import MobileComposeButton from '@/components/common/MobileComposeButton';
 
 export const metadata: Metadata = {
   title: '我的日记本',
-  description: '推特风格的个人日记 PWA',
+  description: '推特风格的个人日记，随时记录想法',
+  manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '32x32' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
+  themeColor: '#1d9bf0',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: '日记本',
+  },
 };
 
 export default function RootLayout({
