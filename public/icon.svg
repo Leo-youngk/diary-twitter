@@ -1,13 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#33b5e5"/>
-      <stop offset="100%" style="stop-color:#1d9bf0"/>
+    <linearGradient id="bg" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" style="stop-color:#37aee2"/>
+      <stop offset="100%" style="stop-color:#1e96c8"/>
     </linearGradient>
   </defs>
   <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
-  <!-- Bold feather quill — one clean silhouette like Telegram's paper plane -->
-  <path d="M380 108 C340 140, 280 200, 230 270 C210 300, 195 330, 185 365 C183 372, 176 374, 172 368 C160 345, 155 320, 158 295 C130 310, 115 340, 112 375 C111 383, 100 384, 100 376 C98 330, 115 280, 155 248 C135 252, 118 262, 100 280 C94 286, 85 280, 90 273 C115 240, 155 215, 200 205 C240 197, 280 175, 310 148 C330 132, 355 115, 380 108 Z" fill="white"/>
-  <!-- Ink trail -->
-  <path d="M172 370 C168 385, 162 398, 152 408 C148 412, 140 408, 144 403 C150 393, 158 380, 172 370 Z" fill="white" opacity="0.8"/>
+  <!-- Paper plane pointing upper-right, distinct angle from Telegram's -->
+  <path d="M130 380 L395 195 L230 395 Z" fill="#c8daea"/>
+  <path d="M230 395 L260 330 L195 345 Z" fill="#a9c9dd"/>
+  <path d="M130 380 L180 255 L395 195 L230 310 Z" fill="white"/>
+  <path d="M230 310 L230 395 L260 330 Z" fill="#d2e4ef"/>
 </svg>
