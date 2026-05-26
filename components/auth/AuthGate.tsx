@@ -69,7 +69,7 @@ function LoginForm({
                 placeholder="your@email.com"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
+                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
                 autoComplete="email"
                 disabled={loading}
               />
@@ -83,7 +83,7 @@ function LoginForm({
                   placeholder="至少 6 位"
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-11 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
+                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 pr-11 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
                   autoComplete="current-password"
                   disabled={loading}
                 />
@@ -189,7 +189,7 @@ function ResetForm({
                 placeholder="your@email.com"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
+                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
                 autoComplete="email"
                 disabled={loading}
               />
@@ -203,7 +203,7 @@ function ResetForm({
                   placeholder="至少 6 位"
                   value={newPw}
                   onChange={(e) => { setNewPw(e.target.value); setError(''); }}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-11 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
+                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 pr-11 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
                   autoComplete="new-password"
                   disabled={loading}
                 />
@@ -221,7 +221,7 @@ function ResetForm({
                 placeholder="再输一遍"
                 value={confirmPw}
                 onChange={(e) => { setConfirmPw(e.target.value); setError(''); }}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
+                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-all text-[15px]"
                 autoComplete="new-password"
                 disabled={loading}
               />
