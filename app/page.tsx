@@ -4,8 +4,9 @@ import { useState, useMemo } from 'react';
 import { useApp } from '@/lib/context';
 import { useScrollDirection } from '@/hooks/useScrollDirection';
 import FeedList from '@/components/feed/FeedList';
-import DailyArticleCard from '@/components/article/DailyArticleCard';
+import SpeechList from '@/components/article/DailyArticleCard';
 import Avatar from '@/components/ui/Avatar';
+import type { FeedTab } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 export default function HomePage() {
@@ -23,16 +24,17 @@ export default function HomePage() {
     return posts;
   }, [posts, feedTab]);
 
-  const handleTabChange = (tab: 'all' | 'thought' | 'diary') => {
+  const handleTabChange = (tab: FeedTab) => {
     setInitialLoading(true);
     setFeedTab(tab);
     setTimeout(() => setInitialLoading(false), 300);
   };
 
-  const tabs: { key: 'all' | 'thought' | 'diary'; label: string }[] = [
+  const tabs: { key: FeedTab; label: string }[] = [
     { key: 'all', label: '全部' },
     { key: 'thought', label: '随想' },
     { key: 'diary', label: '日记' },
+    { key: 'article', label: '英文' },
   ];
 
   return (
@@ -73,32 +75,36 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Compose Input (inline) */}
-      <div className="border-b border-x-border p-4">
-        <div className="flex gap-3">
-          <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="md" />
-          <button
-            onClick={openCompose}
-            className="flex-1 text-x-gray text-xl text-left outline-none"
-          >
-            记录点什么...
-          </button>
-        </div>
-        <div className="flex justify-end mt-2">
-          <button
-            onClick={openCompose}
-            className="bg-x-blue hover:bg-x-blue-hover text-white font-bold rounded-full px-5 py-2 text-sm transition-colors"
-          >
-            记录
-          </button>
-        </div>
-      </div>
+      {feedTab === 'article' ? (
+        /* Speech / English reading list */
+        <SpeechList />
+      ) : (
+        <>
+          {/* Compose Input (inline) */}
+          <div className="border-b border-x-border p-4">
+            <div className="flex gap-3">
+              <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="md" />
+              <button
+                onClick={openCompose}
+                className="flex-1 text-x-gray text-xl text-left outline-none"
+              >
+                记录点什么...
+              </button>
+            </div>
+            <div className="flex justify-end mt-2">
+              <button
+                onClick={openCompose}
+                className="bg-x-blue hover:bg-x-blue-hover text-white font-bold rounded-full px-5 py-2 text-sm transition-colors"
+              >
+                记录
+              </button>
+            </div>
+          </div>
 
-      {/* Daily English Article */}
-      <DailyArticleCard />
-
-      {/* Feed */}
-      <FeedList posts={filteredPosts} loading={initialLoading} />
+          {/* Feed */}
+          <FeedList posts={filteredPosts} loading={initialLoading} />
+        </>
+      )}
     </div>
   );
 }

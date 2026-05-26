@@ -6,6 +6,35 @@ import { useApp } from '@/lib/context';
 import { Theme } from '@/lib/context';
 import Avatar from '@/components/ui/Avatar';
 
+function compressImage(file: File, maxWidth: number, maxKB: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round(height * (maxWidth / width));
+        width = maxWidth;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, width, height);
+      let quality = 0.85;
+      let result = canvas.toDataURL('image/jpeg', quality);
+      while (result.length > maxKB * 1024 * 1.37 && quality > 0.1) {
+        quality -= 0.1;
+        result = canvas.toDataURL('image/jpeg', quality);
+      }
+      resolve(result);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed')); };
+    img.src = url;
+  });
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const { currentUser, updateUser, theme, setTheme, addToast } = useApp();
@@ -15,27 +44,29 @@ export default function SettingsPage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateUser({ avatar: reader.result as string });
+    try {
+      const compressed = await compressImage(file, 400, 200);
+      updateUser({ avatar: compressed });
       addToast('头像已更新');
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      addToast('图片处理失败', 'error');
+    }
     if (avatarInputRef.current) avatarInputRef.current.value = '';
   };
 
-  const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateUser({ banner: reader.result as string });
+    try {
+      const compressed = await compressImage(file, 1200, 500);
+      updateUser({ banner: compressed });
       addToast('背景已更新');
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      addToast('图片处理失败', 'error');
+    }
     if (bannerInputRef.current) bannerInputRef.current.value = '';
   };
 

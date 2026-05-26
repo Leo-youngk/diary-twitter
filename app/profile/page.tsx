@@ -10,6 +10,42 @@ import FeedList from '@/components/feed/FeedList';
 import Button from '@/components/ui/Button';
 import { ProfileTab } from '@/lib/types';
 
+// Compress image via canvas — returns a base64 JPEG under maxKB
+function compressImage(file: File, maxWidth: number, maxKB: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      // Scale down if wider than maxWidth
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round(height * (maxWidth / width));
+        width = maxWidth;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Try decreasing quality until under maxKB
+      let quality = 0.85;
+      let result = canvas.toDataURL('image/jpeg', quality);
+      while (result.length > maxKB * 1024 * 1.37 && quality > 0.1) {
+        quality -= 0.1;
+        result = canvas.toDataURL('image/jpeg', quality);
+      }
+      resolve(result);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image'));
+    };
+    img.src = url;
+  });
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { posts, currentUser, updateUser, exportAll, addToast } = useApp();
@@ -18,27 +54,31 @@ export default function ProfilePage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      updateUser({ avatar: ev.target?.result as string });
+    try {
+      // Compress to max 400px wide, under 200KB
+      const compressed = await compressImage(file, 400, 200);
+      updateUser({ avatar: compressed });
       addToast('头像已更新');
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      addToast('图片处理失败', 'error');
+    }
     e.target.value = '';
   };
 
-  const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      updateUser({ banner: ev.target?.result as string });
+    try {
+      // Compress to max 1200px wide, under 500KB
+      const compressed = await compressImage(file, 1200, 500);
+      updateUser({ banner: compressed });
       addToast('背景已更新');
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      addToast('图片处理失败', 'error');
+    }
     e.target.value = '';
   };
 

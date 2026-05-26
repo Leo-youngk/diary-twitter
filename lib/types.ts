@@ -37,7 +37,7 @@ export interface ToastMessage {
   type: 'success' | 'error' | 'info';
 }
 
-export type FeedTab = 'all' | 'thought' | 'diary';
+export type FeedTab = 'all' | 'thought' | 'diary' | 'article';
 
 export type ProfileTab = 'all' | 'thought' | 'diary';
 

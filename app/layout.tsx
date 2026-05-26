@@ -1,6 +1,7 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AppProvider } from '@/lib/context';
+import AppShell from '@/components/layout/AppShell';
 import Sidebar from '@/components/layout/Sidebar';
 import RightPanel from '@/components/layout/RightPanel';
 import ComposeModal from '@/components/post/ComposeModal';
@@ -19,12 +20,24 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-touch-icon.png',
   },
-  themeColor: '#1d9bf0',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: '日记本',
   },
+};
+
+// Viewport must be exported separately in Next.js 14+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',   // ← critical for iOS full-screen PWA
+  themeColor: [
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+  ],
 };
 
 export default function RootLayout({
@@ -36,16 +49,18 @@ export default function RootLayout({
     <html lang="zh-CN" className="dark" suppressHydrationWarning>
       <body>
         <AppProvider>
-          <div className="flex justify-center min-h-screen">
-            <Sidebar />
-            <main className="flex-1 max-w-[600px] border-x border-x-border min-h-screen pb-14 md:pb-0">
-              {children}
-            </main>
-            <RightPanel />
-          </div>
-          <ComposeModal />
-          <ReplyModal />
-          <MobileComposeButton />
+          <AppShell>
+            <div className="flex justify-center min-h-screen">
+              <Sidebar />
+              <main className="flex-1 max-w-[600px] border-x border-x-border min-h-screen pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+                {children}
+              </main>
+              <RightPanel />
+            </div>
+            <ComposeModal />
+            <ReplyModal />
+            <MobileComposeButton />
+          </AppShell>
           <ToastContainer />
         </AppProvider>
       </body>

@@ -29,6 +29,32 @@ html.light {
   padding: 0;
 }
 
+/* ── iOS PWA full-screen fix ─────────────────────────────────────────────── */
+html {
+  height: -webkit-fill-available;
+}
+
+body {
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  /* Push page content below status bar */
+  padding-top: env(safe-area-inset-top);
+}
+
+/*
+ * Sticky headers use top-0 in Tailwind, but must stick just BELOW the
+ * status bar (not behind it). This one rule fixes ALL pages at once.
+ * Specificity: two classes (.sticky + .top-0) beats single-class .top-0.
+ */
+.sticky.top-0 {
+  top: env(safe-area-inset-top);
+}
+
+/* Bottom nav & floating buttons: above the home indicator */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 html.dark {
   color-scheme: dark;
 }
@@ -88,6 +114,35 @@ html.light ::-webkit-scrollbar-thumb {
 
 html.light ::-webkit-scrollbar-thumb:hover {
   background: #aaa;
+}
+
+/* Article reader typography */
+.article-body {
+  font-feature-settings: 'kern' 1, 'liga' 1;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+  word-break: break-word;
+}
+
+.article-para {
+  letter-spacing: 0.01em;
+  text-indent: 2em;
+  text-align: left;
+  word-spacing: 0.03em;
+}
+
+/* First paragraph: drop cap, no indent */
+.article-body .article-para:first-of-type {
+  text-indent: 0;
+}
+
+.article-body .article-para:first-of-type::first-letter {
+  font-size: 1.6em;
+  font-weight: 700;
+  line-height: 1;
+  float: left;
+  margin-right: 0.08em;
+  margin-top: 0.08em;
 }
 
 @layer utilities {

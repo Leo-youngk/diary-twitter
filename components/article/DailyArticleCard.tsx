@@ -1,95 +1,139 @@
 'use client';
 
-import { useDailyArticle } from '@/hooks/useDailyArticle';
+import { useState, useEffect } from 'react';
+import { useSpeechList } from '@/hooks/useDailyArticle';
+import type { SpeechMeta } from '@/data/speeches';
 import ArticleReader from './ArticleReader';
 
-export default function DailyArticleCard() {
-  const {
-    article, allLevels, currentLevel, setLevel,
-    loading, dismissed, dismiss,
-    readerOpen, openReader, closeReader,
-  } = useDailyArticle();
+// Check if a speech has been started (has saved scroll position > 0)
+function getReadingStatus(id: number): 'unread' | 'reading' {
+  try {
+    const scroll = Number(localStorage.getItem(`speech-scroll-${id}`)) || 0;
+    return scroll > 50 ? 'reading' : 'unread';
+  } catch {
+    return 'unread';
+  }
+}
 
-  if (dismissed || (!loading && !article)) return null;
+export default function SpeechList() {
+  const { speeches, todaySpeech } = useSpeechList();
+  const [selectedSpeech, setSelectedSpeech] = useState<SpeechMeta | null>(null);
+  const [filter, setFilter] = useState<'all' | 'TED' | 'Commencement' | 'Famous Talk'>('all');
+  const [readStatus, setReadStatus] = useState<Record<number, string>>({});
+
+  // Load reading status from localStorage
+  useEffect(() => {
+    const status: Record<number, string> = {};
+    speeches.forEach((s) => {
+      status[s.id] = getReadingStatus(s.id);
+    });
+    setReadStatus(status);
+  }, [speeches, selectedSpeech]); // Re-check when returning from reader
+
+  const filtered = filter === 'all' ? speeches : speeches.filter((s) => s.category === filter);
+
+  const filterLabels: Record<string, string> = {
+    all: '全部',
+    TED: 'TED',
+    Commencement: '毕业演讲',
+    'Famous Talk': '经典演讲',
+  };
 
   return (
-    <>
-      {/* Preview Card */}
-      <div className="border-b border-x-border">
-        {loading ? (
-          // Skeleton
-          <div className="p-4 flex gap-3 items-center">
-            <div className="w-10 h-10 rounded-xl bg-x-border skeleton-pulse shrink-0" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-32 bg-x-border rounded skeleton-pulse" />
-              <div className="h-3 w-48 bg-x-border rounded skeleton-pulse" />
-            </div>
-          </div>
-        ) : article ? (
-          <div
-            onClick={openReader}
-            className="flex items-stretch cursor-pointer hover:bg-white/[0.03] transition-colors"
+    <div>
+      {/* Filter chips */}
+      <div className="flex gap-2 px-4 py-3 border-b border-x-border overflow-x-auto scrollbar-hide">
+        {(['all', 'TED', 'Commencement', 'Famous Talk'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+              filter === f
+                ? 'bg-amber-500 text-white'
+                : 'bg-x-darker text-x-gray hover:text-white'
+            }`}
           >
-            {/* Accent bar */}
-            <div className="w-1 bg-amber-500 shrink-0" />
-
-            <div className="flex-1 px-4 py-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-amber-500 text-sm font-bold">
-                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-                    <path d="M21 4H3a1 1 0 00-1 1v14a1 1 0 001 1h18a1 1 0 001-1V5a1 1 0 00-1-1zM4 18V6h16v12H4zm2-2h6v-2H6v2zm0-4h12V8H6v4z" />
-                  </svg>
-                  Today&apos;s English
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); dismiss(); }}
-                  className="p-1 rounded-full hover:bg-x-hover text-x-gray transition-colors"
-                >
-                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-                    <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
-                  </svg>
-                </button>
-              </div>
-
-              <h3 className="font-bold text-[15px] mt-1 line-clamp-1">{article.title}</h3>
-
-              <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-xs text-x-gray bg-x-darker px-2 py-0.5 rounded-full">
-                  {article.category}
-                </span>
-                {/* Level dots */}
-                <div className="flex gap-1">
-                  {[1, 2, 3].map((lv) => {
-                    const hasLevel = allLevels.some((a) => a.level === lv);
-                    return (
-                      <div
-                        key={lv}
-                        className={`w-2 h-2 rounded-full ${
-                          hasLevel
-                            ? lv <= currentLevel ? 'bg-amber-500' : 'bg-amber-500/30'
-                            : 'bg-x-border'
-                        }`}
-                      />
-                    );
-                  })}
-                </div>
-                <span className="text-xs text-x-gray">Lv.{currentLevel}</span>
-              </div>
-            </div>
-          </div>
-        ) : null}
+            {filterLabels[f]}
+          </button>
+        ))}
       </div>
 
+      {/* Today's highlight */}
+      <div
+        onClick={() => setSelectedSpeech(todaySpeech)}
+        className="mx-4 mt-3 mb-2 p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 cursor-pointer hover:bg-amber-500/10 transition-colors"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-amber-500 text-xs font-bold">
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+            </svg>
+            今日推荐
+          </div>
+          {readStatus[todaySpeech.id] === 'reading' && (
+            <span className="text-[11px] text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full">继续阅读</span>
+          )}
+        </div>
+        <p className="font-bold text-[15px] mt-2">{todaySpeech.title}</p>
+        <p className="text-sm text-x-gray mt-1">{todaySpeech.speaker} · {todaySpeech.year}</p>
+      </div>
+
+      {/* Speech list */}
+      {filtered.map((speech) => {
+        const status = readStatus[speech.id];
+        return (
+          <div
+            key={speech.id}
+            onClick={() => setSelectedSpeech(speech)}
+            className="flex gap-3 px-4 py-3 border-b border-x-border cursor-pointer hover:bg-white/[0.03] transition-colors"
+          >
+            {/* Number badge with reading indicator */}
+            <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+              status === 'reading'
+                ? 'bg-amber-500/15 text-amber-500 ring-2 ring-amber-500/30'
+                : 'bg-x-darker text-x-gray'
+            }`}>
+              {speech.id}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                  speech.category === 'TED'
+                    ? 'bg-red-500/20 text-red-400'
+                    : speech.category === 'Commencement'
+                    ? 'bg-purple-500/20 text-purple-400'
+                    : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {speech.category}
+                </span>
+                <span className="text-xs text-x-gray">{speech.year}</span>
+                {status === 'reading' && (
+                  <span className="text-[11px] text-amber-500">· 阅读中</span>
+                )}
+              </div>
+              <h3 className="font-bold text-[15px] mt-1 line-clamp-1">{speech.title}</h3>
+              <p className="text-sm text-x-gray mt-0.5">{speech.speaker}</p>
+              <p className="text-xs text-x-gray mt-1 line-clamp-1">{speech.description}</p>
+            </div>
+
+            {/* Arrow */}
+            <div className="shrink-0 flex items-center text-x-gray">
+              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
+                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
+              </svg>
+            </div>
+          </div>
+        );
+      })}
+
       {/* Reader Modal */}
-      {readerOpen && article && (
+      {selectedSpeech && (
         <ArticleReader
-          article={article}
-          allLevels={allLevels}
-          currentLevel={currentLevel}
-          onChangeLevel={setLevel}
-          onClose={closeReader}
+          speech={selectedSpeech}
+          onClose={() => setSelectedSpeech(null)}
         />
       )}
-    </>
+    </div>
   );
 }

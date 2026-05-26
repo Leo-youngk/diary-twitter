@@ -46,3 +46,5 @@ remove_old_claude.bat
 remove_old_claude.ps1
 start_ollama_e.bat.ps1
 .qwen/
+
+.vercel
