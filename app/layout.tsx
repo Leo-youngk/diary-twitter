@@ -1,5 +1,14 @@
 import type { Metadata, Viewport } from 'next';
+import { Noto_Sans_SC } from 'next/font/google';
 import './globals.css';
+
+const notoSansSC = Noto_Sans_SC({
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  display: 'swap',
+  preload: false, // Chinese font — load on demand, not blocking
+  variable: '--font-noto',
+});
 import { AppProvider } from '@/lib/context';
 import AppShell from '@/components/layout/AppShell';
 import Sidebar from '@/components/layout/Sidebar';
@@ -46,8 +55,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" className="dark" suppressHydrationWarning>
-      <body>
+    <html lang="zh-CN" className={`dark ${notoSansSC.variable}`} suppressHydrationWarning>
+      <body className={notoSansSC.className}>
         <AppProvider>
           <AppShell>
             <div className="flex justify-center min-h-screen">
