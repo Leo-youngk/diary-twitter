@@ -98,7 +98,7 @@ function LoginForm({
 
             <button type="submit"
               disabled={loading || !email || password.length < 6}
-              className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-[15px] transition-colors mt-1 flex items-center justify-center gap-2">
+              className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-[15px] transition-all mt-1 flex items-center justify-center gap-2">
               {loading ? <Spinner /> : '进入日记本'}
             </button>
           </form>
@@ -231,7 +231,7 @@ function ResetForm({
 
             <button type="submit"
               disabled={loading || !email || newPw.length < 6 || newPw !== confirmPw}
-              className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-[15px] transition-colors mt-1 flex items-center justify-center gap-2">
+              className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-[15px] transition-all mt-1 flex items-center justify-center gap-2">
               {loading ? <Spinner /> : '重置并登录'}
             </button>
           </form>
