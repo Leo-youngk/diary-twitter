@@ -89,6 +89,7 @@ export default function CalendarPage() {
             const isToday = dateKey === new Date().toISOString().slice(0, 10);
             const hasThought = dayPosts.some((p) => p.entryType === 'thought');
             const hasDiary = dayPosts.some((p) => p.entryType === 'diary');
+            const hasArticle = dayPosts.some((p) => p.entryType === 'article');
 
             return (
               <button
@@ -106,6 +107,7 @@ export default function CalendarPage() {
                   <div className="flex gap-0.5 mt-0.5">
                     {hasThought && <div className="w-1.5 h-1.5 rounded-full bg-x-blue" />}
                     {hasDiary && <div className="w-1.5 h-1.5 rounded-full bg-x-green" />}
+                    {hasArticle && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
                   </div>
                 )}
               </button>

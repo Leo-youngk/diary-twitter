@@ -198,8 +198,8 @@ export default function SettingsPage() {
       {/* Data */}
       <div className="px-4 py-4">
         <h2 className="font-bold text-lg mb-3">数据</h2>
-        <p className="text-sm text-x-gray mb-2">所有数据保存在本地浏览器中（localStorage）。清除浏览器数据会丢失记录。</p>
-        <p className="text-sm text-x-gray">建议定期在「我的」页面导出备份。</p>
+        <p className="text-sm text-x-gray mb-2">所有数据通过 Supabase 加密存储在云端，登录后可在任意设备访问。</p>
+        <p className="text-sm text-x-gray">建议定期在「我的」页面导出 Markdown 备份。</p>
       </div>
     </div>
   );

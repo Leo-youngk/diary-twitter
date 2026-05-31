@@ -14,6 +14,7 @@ export default function RightPanel() {
   const totalPosts = posts.length;
   const thoughtCount = posts.filter((p) => p.entryType === 'thought').length;
   const diaryCount = posts.filter((p) => p.entryType === 'diary').length;
+  const articleCount = posts.filter((p) => p.entryType === 'article').length;
   const likedCount = posts.filter((p) => p.isLiked).length;
 
   const allTags = posts.flatMap((p) => p.tags || []);
@@ -92,8 +93,14 @@ export default function RightPanel() {
             <span className="text-x-gray text-sm">日记</span>
             <span className="font-bold text-x-green">{diaryCount}</span>
           </div>
+          {articleCount > 0 && (
+            <div className="px-4 py-3 flex justify-between items-center border-b border-x-border/50">
+              <span className="text-x-gray text-sm">英文收藏</span>
+              <span className="font-bold text-amber-500">{articleCount}</span>
+            </div>
+          )}
           <div className="px-4 py-3 flex justify-between items-center">
-            <span className="text-x-gray text-sm">已收藏</span>
+            <span className="text-x-gray text-sm">已标星</span>
             <span className="font-bold text-x-danger">{likedCount}</span>
           </div>
         </div>
@@ -116,7 +123,7 @@ export default function RightPanel() {
 
         {/* Footer */}
         <div className="px-4 py-4 text-xs text-x-gray">
-          <span>我的日记本 · 本地存储 · 隐私安全</span>
+          <span>我的日记本 · 云端同步 · 仅你可见</span>
         </div>
       </div>
     </aside>

@@ -205,7 +205,9 @@ export default function ComposeModal() {
               <button
                 onClick={handlePost}
                 disabled={!canPost}
-                className={`font-bold rounded-full px-5 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white ${
+                className={`font-bold rounded-full px-5 py-2 transition-colors disabled:bg-x-border disabled:text-x-gray disabled:cursor-not-allowed text-sm ${
+                  canPost ? 'text-white' : ''
+                } ${
                   entryType === 'diary' ? 'bg-x-green hover:bg-x-green/80' : 'bg-x-blue hover:bg-x-blue-hover'
                 }`}
               >

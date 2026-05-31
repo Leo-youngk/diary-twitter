@@ -39,6 +39,13 @@ export default function SpeechList() {
     'Famous Talk': '经典演讲',
   };
 
+  // Chinese labels for in-list category badges
+  const categoryLabels: Record<string, string> = {
+    TED: 'TED',
+    Commencement: '毕业演讲',
+    'Famous Talk': '经典演讲',
+  };
+
   return (
     <div>
       {/* Filter chips */}
@@ -58,7 +65,8 @@ export default function SpeechList() {
         ))}
       </div>
 
-      {/* Today's highlight */}
+      {/* Today's highlight — only show when filter matches or is 'all' */}
+      {(filter === 'all' || filter === todaySpeech.category) && (
       <div
         onClick={() => setSelectedSpeech(todaySpeech)}
         className="mx-4 mt-3 mb-2 p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 cursor-pointer hover:bg-amber-500/10 transition-colors"
@@ -77,6 +85,7 @@ export default function SpeechList() {
         <p className="font-bold text-[15px] mt-2">{todaySpeech.title}</p>
         <p className="text-sm text-x-gray mt-1">{todaySpeech.speaker} · {todaySpeech.year}</p>
       </div>
+      )}
 
       {/* Speech list */}
       {filtered.map((speech) => {
@@ -105,7 +114,7 @@ export default function SpeechList() {
                     ? 'bg-purple-500/20 text-purple-400'
                     : 'bg-amber-500/20 text-amber-400'
                 }`}>
-                  {speech.category}
+                  {categoryLabels[speech.category] ?? speech.category}
                 </span>
                 <span className="text-xs text-x-gray">{speech.year}</span>
                 {status === 'reading' && (
