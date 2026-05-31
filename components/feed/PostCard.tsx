@@ -177,11 +177,11 @@ export default function PostCard({ post }: PostCardProps) {
         </div>
       </div>
 
-      {/* Inline Replies (Twitter-style thread) */}
+      {/* Inline Replies — avatars aligned with main post avatar */}
       {post.replies.length > 0 && (
-        <div className="pl-4">
+        <div>
           {post.replies.map((reply, index) => (
-            <div key={reply.id} onClick={navigateToPost} className="flex gap-3 pl-8 pr-4 py-2 hover:bg-white/[0.03] transition-colors cursor-pointer">
+            <div key={reply.id} onClick={navigateToPost} className="flex gap-3 py-2 hover:bg-white/[0.03] transition-colors cursor-pointer">
               <div className="flex flex-col items-center shrink-0">
                 {index === 0 && <div className="w-0.5 h-2 bg-x-border -mt-2" />}
                 <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" />

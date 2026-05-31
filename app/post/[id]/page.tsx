@@ -67,9 +67,9 @@ export default function PostDetailPage() {
       </div>
 
       {/* Post Content (expanded view) */}
-      <div className="px-4 pt-3">
+      <div className="px-4 pt-4">
         {/* User header */}
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-3 mb-4">
           <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="md" />
           <div>
             <p className="font-bold text-[15px]">{currentUser.displayName}</p>
@@ -83,7 +83,7 @@ export default function PostDetailPage() {
         )}
 
         {/* Content */}
-        <p className="text-[17px] leading-7 whitespace-pre-wrap break-words">
+        <p className="text-[17px] leading-[1.9] whitespace-pre-wrap break-words">
           {post.content}
         </p>
 
@@ -110,7 +110,7 @@ export default function PostDetailPage() {
         )}
 
         {/* Metadata */}
-        <div className="flex items-center gap-2 mt-4 pb-3 border-b border-x-border">
+        <div className="flex items-center gap-2 mt-5 pb-4 border-b border-x-border">
           <span className="text-x-gray text-sm">{formatDateCN(post.createdAt)}</span>
           <span className="text-x-gray">·</span>
           <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${typeColor}`}>{typeLabel}</span>
@@ -123,7 +123,7 @@ export default function PostDetailPage() {
         </div>
 
         {/* Stats + Action Bar (single row) */}
-        <div className="flex items-center justify-between py-3 border-b border-x-border">
+        <div className="flex items-center justify-between py-4 border-b border-x-border">
           <div className="flex items-center gap-4 text-sm">
             {post.replies.length > 0 && (
               <span><strong>{post.replies.length}</strong> <span className="text-x-gray">回复</span></span>
@@ -165,7 +165,7 @@ export default function PostDetailPage() {
       </div>
 
       {/* Reply input */}
-      <div className="px-4 py-3 border-b border-x-border">
+      <div className="px-4 py-4 border-b border-x-border">
         <div className="flex gap-3">
           <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" />
           <div className="flex-1 flex items-center gap-2">
@@ -175,7 +175,7 @@ export default function PostDetailPage() {
               onChange={(e) => setReplyContent(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && replyContent.trim()) handleReply(); }}
               placeholder="追加想法..."
-              className="flex-1 bg-transparent text-[15px] text-white placeholder-x-gray outline-none"
+              className="flex-1 bg-transparent text-base text-white placeholder-x-gray outline-none"
             />
             <button
               onClick={handleReply}
@@ -192,7 +192,7 @@ export default function PostDetailPage() {
       {post.replies.length > 0 && (
         <div>
           {post.replies.map((reply) => (
-            <div key={reply.id} className="flex gap-3 px-4 py-3 border-b border-x-border hover:bg-white/[0.03] transition-colors">
+            <div key={reply.id} className="flex gap-3 px-4 py-4 border-b border-x-border hover:bg-white/[0.03] transition-colors">
               <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1 text-sm">

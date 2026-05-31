@@ -120,7 +120,7 @@ export default function HomePage() {
                 onChange={(e) => setQuickText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && quickText.trim()) handleQuickOpen(); }}
                 placeholder="记录点什么..."
-                className="flex-1 bg-transparent text-[15px] text-white outline-none placeholder:italic placeholder:text-x-gray"
+                className="flex-1 bg-transparent text-base text-white outline-none placeholder:italic placeholder:text-x-gray"
               />
             </div>
             <div className="flex justify-end mt-3">

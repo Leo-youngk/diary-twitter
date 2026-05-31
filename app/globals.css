@@ -145,6 +145,17 @@ html.light ::-webkit-scrollbar-thumb:hover {
   margin-top: 0.08em;
 }
 
+/*
+ * iOS Safari auto-zooms when focused input font-size < 16px.
+ * This rule ensures no input ever falls below 16px.
+ * "max(1rem, 16px)" respects user font preferences while setting a floor.
+ */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+select {
+  font-size: max(1rem, 16px);
+}
+
 /* Bottom sheet slide-up animation (used by QuickEntry) */
 .sheet-slide-up {
   animation: sheetSlideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1);
