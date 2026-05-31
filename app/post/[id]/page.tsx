@@ -164,44 +164,50 @@ export default function PostDetailPage() {
         </div>
       </div>
 
-      {/* Reply input */}
+      {/* Reply input — button on second line (same pattern as compose area) */}
       <div className="px-4 py-4 border-b border-x-border">
         <div className="flex gap-3">
           <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" />
-          <div className="flex-1 flex items-center gap-2">
+          <div className="flex-1 min-w-0">
             <input
               type="text"
               value={replyContent}
               onChange={(e) => setReplyContent(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && replyContent.trim()) handleReply(); }}
               placeholder="追加想法..."
-              className="flex-1 bg-transparent text-base text-white placeholder-x-gray outline-none"
+              className="w-full bg-transparent text-base text-white placeholder-x-gray outline-none"
             />
-            <button
-              onClick={handleReply}
-              disabled={!replyContent.trim()}
-              className="bg-x-blue hover:bg-x-blue-hover text-white font-bold rounded-full px-4 py-1.5 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              回复
-            </button>
+            <div className="flex justify-end mt-2">
+              <button
+                onClick={handleReply}
+                disabled={!replyContent.trim()}
+                className={cn(
+                  'font-bold rounded-full px-5 py-2 text-sm transition-all duration-200',
+                  replyContent.trim()
+                    ? 'bg-x-blue hover:bg-x-blue-hover text-white'
+                    : 'border border-x-border/60 text-x-gray/60 bg-transparent cursor-default'
+                )}
+              >
+                追加
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Replies / Thread */}
+      {/* Replies / Thread — consistent with PostCard inline reply style */}
       {post.replies.length > 0 && (
         <div>
           {post.replies.map((reply) => (
-            <div key={reply.id} className="flex gap-3 px-4 py-4 border-b border-x-border hover:bg-white/[0.03] transition-colors">
+            <div key={reply.id} className="flex gap-3 px-4 py-4 border-b border-x-border/40 hover:bg-white/[0.02] transition-colors">
               <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1 text-sm">
-                  <span className="font-bold">{currentUser.displayName}</span>
-                  <span className="text-x-gray">@{currentUser.username}</span>
-                  <span className="text-x-gray">·</span>
-                  <span className="text-x-gray">{formatRelativeTime(reply.createdAt)}</span>
+                <div className="flex items-center gap-1">
+                  <span className="font-medium text-[13px]">{currentUser.displayName}</span>
+                  <span className="text-x-gray/60 text-[12px]">·</span>
+                  <span className="text-x-gray/70 text-[12px]">{formatRelativeTime(reply.createdAt)}</span>
                 </div>
-                <p className="text-[15px] mt-0.5 whitespace-pre-wrap break-words">{reply.content}</p>
+                <p className="text-[14px] leading-[1.7] mt-1 whitespace-pre-wrap break-words">{reply.content}</p>
               </div>
             </div>
           ))}

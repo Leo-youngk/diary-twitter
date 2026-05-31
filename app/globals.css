@@ -32,6 +32,8 @@ html.light {
 /* ── iOS PWA full-screen fix ─────────────────────────────────────────────── */
 html {
   height: -webkit-fill-available;
+  /* clip (not hidden) so position:fixed elements like bottom-nav still work */
+  overflow-x: clip;
 }
 
 body {
