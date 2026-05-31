@@ -61,7 +61,7 @@ export default function RootLayout({
           <AppShell>
             <div className="flex justify-center min-h-screen">
               <Sidebar />
-              <main className="flex-1 min-w-0 max-w-[600px] border-x border-x-border overflow-x-hidden min-h-screen pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+              <main className="flex-1 min-w-0 max-w-[600px] border-x border-x-border min-h-screen pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
                 {children}
               </main>
               <RightPanel />
