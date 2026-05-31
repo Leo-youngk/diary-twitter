@@ -9,10 +9,25 @@ import Avatar from '@/components/ui/Avatar';
 import type { FeedTab } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
+const DRAFT_KEY = 'diary-compose-draft';
+
 export default function HomePage() {
   const { posts, feedTab, setFeedTab, currentUser, openCompose } = useApp();
   const [initialLoading, setInitialLoading] = useState(false);
+  const [quickText, setQuickText] = useState('');
   const headerHidden = useScrollDirection();
+
+  const handleQuickOpen = () => {
+    if (quickText.trim()) {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          content: quickText, title: '', entryType: 'thought', mood: '', tags: [],
+        }));
+      } catch {}
+    }
+    setQuickText('');
+    openCompose();
+  };
 
   const filteredPosts = useMemo(() => {
     if (feedTab === 'thought') {
@@ -55,21 +70,26 @@ export default function HomePage() {
           </span>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs — underline follows each label's text width */}
         <div className="flex">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => handleTabChange(tab.key)}
               className={cn(
-                'flex-1 py-3 text-center hover:bg-white/[0.03] transition-colors relative font-medium',
-                feedTab === tab.key ? 'text-white' : 'text-x-gray'
+                'flex-1 py-3 flex items-center justify-center hover:bg-white/[0.03] transition-colors',
+                feedTab === tab.key ? 'text-white font-semibold' : 'text-x-gray font-normal'
               )}
             >
-              {tab.label}
-              {feedTab === tab.key && (
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-14 h-1 bg-x-blue rounded-full" />
-              )}
+              <span className="inline-block relative">
+                {tab.label}
+                {feedTab === tab.key && (
+                  <span
+                    className="absolute left-0 w-full h-[3px] bg-x-blue rounded-full"
+                    style={{ bottom: '-12px' }}
+                  />
+                )}
+              </span>
             </button>
           ))}
         </div>
@@ -80,21 +100,27 @@ export default function HomePage() {
         <SpeechList />
       ) : (
         <>
-          {/* Compose Input (inline) */}
-          <div className="border-b border-x-border p-4">
-            <div className="flex gap-3">
+          {/* Compose Input — bg-x-darker separates it from the feed visually */}
+          <div className="border-b border-x-border p-4 bg-x-darker">
+            <div className="flex gap-3 items-center">
               <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="md" />
-              <button
-                onClick={openCompose}
-                className="flex-1 text-x-gray text-xl text-left outline-none"
-              >
-                记录点什么...
-              </button>
+              <input
+                value={quickText}
+                onChange={(e) => setQuickText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && quickText.trim()) handleQuickOpen(); }}
+                placeholder="记录点什么..."
+                className="flex-1 bg-transparent text-[15px] text-white outline-none placeholder:italic placeholder:text-x-gray"
+              />
             </div>
-            <div className="flex justify-end mt-2">
+            <div className="flex justify-end mt-3">
               <button
-                onClick={openCompose}
-                className="bg-x-blue hover:bg-x-blue-hover text-white font-bold rounded-full px-5 py-2 text-sm transition-colors"
+                onClick={handleQuickOpen}
+                className={cn(
+                  'font-bold rounded-full px-5 py-2 text-sm transition-all duration-200',
+                  quickText.trim()
+                    ? 'bg-x-blue hover:bg-x-blue-hover text-white'
+                    : 'border border-x-border/60 text-x-gray/60 bg-transparent cursor-default'
+                )}
               >
                 记录
               </button>

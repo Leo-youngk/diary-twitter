@@ -46,40 +46,44 @@ export default function PostCard({ post }: PostCardProps) {
   };
 
   return (
-    <article onClick={navigateToPost} className="border-b border-x-border px-4 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer">
+    <article onClick={navigateToPost} className="border-b border-x-border/40 px-4 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer">
       <div className="flex gap-3">
+        {/* Avatar column */}
         <div className="shrink-0 flex flex-col items-center">
-          <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="md" />
+          <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="md-sm" />
           {post.replies.length > 0 && <div className="w-0.5 flex-1 bg-x-border mt-1" />}
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Header */}
-          <div className="flex items-center gap-1 text-[15px]">
+          {/* Header — reduced visual weight: lighter name, smaller time/handle */}
+          <div className="flex items-center gap-1">
             <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
-              <span className="font-bold truncate">
+              <span className="font-medium text-[14px] truncate">
                 {currentUser.displayName}
               </span>
-              <span className="text-x-gray">·</span>
+              <span className="text-x-gray/60 text-[13px]">·</span>
               <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${typeColor}`}>
                 {typeLabel}
               </span>
-              <span className="text-x-gray">·</span>
-              <span className="text-x-gray hover:underline whitespace-nowrap" title={formatDateCN(post.createdAt)}>
+              <span className="text-x-gray/60 text-[13px]">·</span>
+              <span
+                className="text-x-gray/70 text-[13px] hover:text-x-gray transition-colors whitespace-nowrap"
+                title={formatDateCN(post.createdAt)}
+              >
                 {formatRelativeTime(post.createdAt)}
               </span>
               {post.mood && (
                 <>
-                  <span className="text-x-gray">·</span>
-                  <span className="text-sm">{post.mood}</span>
+                  <span className="text-x-gray/60 text-[13px]">·</span>
+                  <span className="text-[13px]">{post.mood}</span>
                 </>
               )}
             </div>
-            {/* More menu */}
+            {/* More menu — further receded */}
             <div className="relative shrink-0">
               <button
                 onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-                className="p-1.5 rounded-full hover:bg-x-blue/10 text-x-gray hover:text-x-blue transition-colors"
+                className="p-1.5 rounded-full hover:bg-x-blue/10 text-x-gray/60 hover:text-x-blue transition-colors"
               >
                 <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] fill-current">
                   <path d="M3 12c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm9 2c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm7 0c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z" />
@@ -110,13 +114,13 @@ export default function PostCard({ post }: PostCardProps) {
             </div>
           </div>
 
-          {/* Title for diary */}
+          {/* Title for diary — 4px gap to content (mt-1) */}
           {post.title && (
-            <h3 className="font-bold text-lg mt-1 mb-0.5">{post.title}</h3>
+            <h3 className="font-bold text-lg mt-1 mb-0">{post.title}</h3>
           )}
 
-          {/* Post Content */}
-          <p className="text-[15px] leading-5 mt-0.5 whitespace-pre-wrap break-words">
+          {/* Post Content — 1.75 line-height makes long entries breathe */}
+          <p className="text-[15px] leading-[1.75] mt-1 whitespace-pre-wrap break-words">
             {post.content}
           </p>
 
@@ -142,8 +146,11 @@ export default function PostCard({ post }: PostCardProps) {
             </div>
           )}
 
-          {/* Action Bar */}
-          <div className="flex items-center gap-1 mt-2 -ml-2">
+          {/* Date — 12px below content, muted auxiliary info */}
+          <p className="text-[12px] text-x-gray/60 mt-3">{formatDateCN(post.createdAt)}</p>
+
+          {/* Action Bar — separated by hairline from date area */}
+          <div className="flex items-center gap-1 mt-3 pt-3 border-t border-x-border/30 -ml-2">
             {/* Reply */}
             <button onClick={(e) => { e.stopPropagation(); openReply(post); }} className="group flex items-center gap-1 text-x-gray hover:text-x-blue transition-colors">
               <div className="p-2 rounded-full group-hover:bg-x-blue/10 transition-colors">
@@ -182,12 +189,11 @@ export default function PostCard({ post }: PostCardProps) {
               </div>
               <div className="flex-1 min-w-0 pb-1">
                 <div className="flex items-center gap-1 text-sm">
-                  <span className="font-bold">{currentUser.displayName}</span>
-                  <span className="text-x-gray">@{currentUser.username}</span>
-                  <span className="text-x-gray">·</span>
-                  <span className="text-x-gray">{formatRelativeTime(reply.createdAt)}</span>
+                  <span className="font-medium text-[13px]">{currentUser.displayName}</span>
+                  <span className="text-x-gray/60 text-[12px]">·</span>
+                  <span className="text-x-gray/70 text-[12px]">{formatRelativeTime(reply.createdAt)}</span>
                 </div>
-                <p className="text-[15px] mt-0.5 whitespace-pre-wrap break-words">{reply.content}</p>
+                <p className="text-[14px] leading-[1.7] mt-0.5 whitespace-pre-wrap break-words">{reply.content}</p>
               </div>
             </div>
           ))}
