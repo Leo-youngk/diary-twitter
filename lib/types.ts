@@ -41,4 +41,4 @@ export type FeedTab = 'all' | 'thought' | 'diary' | 'article';
 
 export type ProfileTab = 'all' | 'thought' | 'diary';
 
-export type NavItem = 'home' | 'explore' | 'calendar' | 'profile';
+export type NavItem = 'home' | 'explore' | 'calendar' | 'profile' | 'ledger';

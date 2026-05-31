@@ -145,6 +145,16 @@ html.light ::-webkit-scrollbar-thumb:hover {
   margin-top: 0.08em;
 }
 
+/* Bottom sheet slide-up animation (used by QuickEntry) */
+.sheet-slide-up {
+  animation: sheetSlideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
 @layer utilities {
   .like-animation {
     animation: likeScale 0.3s ease-in-out;

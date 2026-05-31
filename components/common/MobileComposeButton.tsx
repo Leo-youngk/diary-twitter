@@ -1,5 +1,6 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useApp } from '@/lib/context';
 import { useScrollDirection } from '@/hooks/useScrollDirection';
 import { cn } from '@/lib/utils';
@@ -7,6 +8,10 @@ import { cn } from '@/lib/utils';
 export default function MobileComposeButton() {
   const { openCompose } = useApp();
   const hidden = useScrollDirection();
+  const pathname = usePathname();
+
+  // Ledger page has its own FAB; hide the diary one there
+  if (pathname === '/ledger') return null;
 
   return (
     <button

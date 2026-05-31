@@ -8,6 +8,7 @@ import SpeechList from '@/components/article/DailyArticleCard';
 import Avatar from '@/components/ui/Avatar';
 import type { FeedTab } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import ProfileDrawer from '@/components/layout/ProfileDrawer';
 
 const DRAFT_KEY = 'diary-compose-draft';
 
@@ -15,6 +16,7 @@ export default function HomePage() {
   const { posts, feedTab, setFeedTab, currentUser, openCompose } = useApp();
   const [initialLoading, setInitialLoading] = useState(false);
   const [quickText, setQuickText] = useState('');
+  const [showDrawer, setShowDrawer] = useState(false);
   const headerHidden = useScrollDirection();
 
   const handleQuickOpen = () => {
@@ -53,6 +55,8 @@ export default function HomePage() {
   ];
 
   return (
+    <>
+    <ProfileDrawer open={showDrawer} onClose={() => setShowDrawer(false)} />
     <div>
       {/* Header — hides on scroll down, shows on scroll up (like Twitter) */}
       <div className={cn(
@@ -61,7 +65,14 @@ export default function HomePage() {
       )}>
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" className="md:hidden" />
+            {/* Avatar opens profile drawer on mobile */}
+            <button
+              onClick={() => setShowDrawer(true)}
+              className="md:hidden rounded-full focus:outline-none"
+              aria-label="个人菜单"
+            >
+              <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" />
+            </button>
           </div>
           <span className="text-x-blue">
             <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
@@ -132,5 +143,6 @@ export default function HomePage() {
         </>
       )}
     </div>
+    </>
   );
 }

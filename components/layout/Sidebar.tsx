@@ -9,11 +9,12 @@ import { cn } from '@/lib/utils';
 import Avatar from '@/components/ui/Avatar';
 import BindEmailModal from '@/components/auth/BindEmailModal';
 
-const navItems: { key: NavItem; label: string; href: string; icon: React.ReactNode }[] = [
+const navItems: { key: NavItem; label: string; href: string; mobileVisible: boolean; icon: React.ReactNode }[] = [
   {
     key: 'home',
     label: '首页',
     href: '/',
+    mobileVisible: true,
     icon: (
       <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
         <path d="M21.591 7.146L12.52 1.157c-.316-.21-.724-.21-1.04 0l-9.071 5.99c-.26.173-.409.456-.409.757v13.183c0 .502.418.913.929.913h5.025c.511 0 .929-.41.929-.913v-7.075h3.856v7.075c0 .502.418.913.929.913h5.025c.511 0 .929-.41.929-.913V7.903c0-.3-.15-.584-.41-.757z" />
@@ -24,6 +25,7 @@ const navItems: { key: NavItem; label: string; href: string; icon: React.ReactNo
     key: 'explore',
     label: '搜索',
     href: '/explore',
+    mobileVisible: true,
     icon: (
       <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
         <path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z" />
@@ -34,6 +36,7 @@ const navItems: { key: NavItem; label: string; href: string; icon: React.ReactNo
     key: 'calendar',
     label: '日历',
     href: '/calendar',
+    mobileVisible: true,
     icon: (
       <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
         <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z" />
@@ -44,9 +47,21 @@ const navItems: { key: NavItem; label: string; href: string; icon: React.ReactNo
     key: 'profile',
     label: '我的',
     href: '/profile',
+    mobileVisible: false,  // profile moved to drawer on mobile
     icon: (
       <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
         <path d="M5.651 19h12.698c-.337-1.8-1.023-3.21-1.945-4.19C15.318 13.65 13.838 13 12 13s-3.317.65-4.404 1.81c-.922.98-1.608 2.39-1.945 4.19zm.486-5.56C7.627 11.85 9.648 11 12 11s4.373.85 5.863 2.44c1.477 1.58 2.366 3.8 2.632 6.46l.11 1.1H3.395l.11-1.1c.266-2.66 1.155-4.88 2.632-6.46zM12 4c-1.105 0-2 .9-2 2s.895 2 2 2 2-.9 2-2-.895-2-2-2zM8 6c0-2.21 1.791-4 4-4s4 1.79 4 4-1.791 4-4 4-4-1.79-4-4z" />
+      </svg>
+    ),
+  },
+  {
+    key: 'ledger',
+    label: '账本',
+    href: '/ledger',
+    mobileVisible: true,
+    icon: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
+        <path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
       </svg>
     ),
   },
@@ -57,11 +72,12 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [showBind, setShowBind] = useState(false);
 
-  const getIsActive = (key: NavItem, href: string) => {
+  const getIsActive = (key: NavItem) => {
     if (key === 'home') return pathname === '/';
     if (key === 'profile') return pathname === '/profile';
     if (key === 'explore') return pathname === '/explore';
     if (key === 'calendar') return pathname === '/calendar';
+    if (key === 'ledger') return pathname === '/ledger';
     return activeNav === key;
   };
 
@@ -81,9 +97,9 @@ export default function Sidebar() {
               </svg>
             </Link>
 
-            {/* Nav Items */}
+            {/* Nav Items — desktop shows all */}
             {navItems.map((item) => {
-              const isActive = getIsActive(item.key, item.href);
+              const isActive = getIsActive(item.key);
               return (
                 <Link
                   key={item.key}
@@ -169,11 +185,11 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Navigation — only mobileVisible items */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-x-dark border-t border-x-border z-50 safe-bottom">
         <div className="flex justify-around items-center h-14">
-          {navItems.map((item) => {
-            const isActive = getIsActive(item.key, item.href);
+          {navItems.filter((item) => item.mobileVisible).map((item) => {
+            const isActive = getIsActive(item.key);
             return (
               <Link
                 key={item.key}
@@ -190,6 +206,7 @@ export default function Sidebar() {
           })}
         </div>
       </nav>
+
       {showBind && <BindEmailModal onClose={() => setShowBind(false)} />}
     </>
   );
