@@ -30,10 +30,15 @@ html.light {
 }
 
 /* ── iOS PWA full-screen fix ─────────────────────────────────────────────── */
+/*
+ * html: overflow hidden → body becomes the scroll container.
+ * This is the canonical iOS PWA pattern: html clips everything, body scrolls.
+ * position:fixed elements are relative to the viewport (not scroll container)
+ * so they are unaffected.
+ */
 html {
   height: -webkit-fill-available;
-  /* clip (not hidden) so position:fixed elements like bottom-nav still work */
-  overflow-x: clip;
+  overflow: hidden;
 }
 
 body {
@@ -41,6 +46,14 @@ body {
   min-height: -webkit-fill-available;
   /* Push page content below status bar */
   padding-top: env(safe-area-inset-top);
+  /*
+   * overflow-x: hidden  → no horizontal scroll
+   * overflow-y: auto    → body IS the vertical scroll container (html is hidden)
+   * overscroll-behavior → kill iOS rubber-band bounce in all directions
+   */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: none;
 }
 
 /*

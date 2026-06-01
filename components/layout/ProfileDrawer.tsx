@@ -26,12 +26,23 @@ export default function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
   };
 
   return (
-    <>
+    /*
+     * Wrapping everything in a fixed inset-0 overflow-hidden container is critical:
+     * the drawer panel translates off-screen to the left when closed, and on iOS
+     * a position:fixed element translated outside the viewport can still make the
+     * page scrollable to the left. The overflow:hidden on this wrapper clips that.
+     */
+    <div
+      className={cn(
+        'fixed inset-0 overflow-hidden z-[90] md:hidden',
+        open ? '' : 'pointer-events-none',
+      )}
+    >
       {/* Backdrop */}
       <div
         className={cn(
-          'fixed inset-0 bg-black/50 z-[90] md:hidden transition-opacity duration-300',
-          open ? 'opacity-100' : 'opacity-0 pointer-events-none',
+          'absolute inset-0 bg-black/50 transition-opacity duration-300',
+          open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
         )}
         onClick={onClose}
       />
@@ -39,8 +50,8 @@ export default function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
       {/* Drawer panel */}
       <div
         className={cn(
-          'fixed top-0 left-0 bottom-0 w-[280px] bg-x-dark border-r border-x-border z-[100]',
-          'transition-transform duration-300 md:hidden flex flex-col',
+          'absolute top-0 left-0 bottom-0 w-[280px] bg-x-dark border-r border-x-border',
+          'transition-transform duration-300 flex flex-col pointer-events-auto',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
@@ -102,6 +113,6 @@ export default function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
           <span className="text-[15px]">退出登录</span>
         </button>
       </div>
-    </>
+    </div>  /* end fixed inset-0 wrapper */
   );
 }
