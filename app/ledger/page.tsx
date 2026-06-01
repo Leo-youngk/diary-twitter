@@ -15,6 +15,7 @@ export default function LedgerPage() {
   const [filter, setFilter] = useState<'all' | 'expense' | 'income'>('all');
   const [showEntry, setShowEntry] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const fabHidden = useScrollDirection();
 
   // Load from localStorage after mount
@@ -211,16 +212,33 @@ export default function LedgerPage() {
                     {tx.type === 'income' ? '+' : '−'}{fmtAmt(tx.amount)}
                   </p>
 
-                  {/* Delete button (visible on hover) */}
-                  <button
-                    onClick={() => deleteTransaction(tx.id)}
-                    className="p-1.5 text-x-gray/0 group-hover:text-x-gray/40 hover:!text-x-danger transition-colors shrink-0"
-                    title="删除"
-                  >
-                    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-                      <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                    </svg>
-                  </button>
+                  {/* Delete — first click shows confirm, second click deletes */}
+                  {confirmDeleteId === tx.id ? (
+                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => { deleteTransaction(tx.id); setConfirmDeleteId(null); }}
+                        className="text-xs font-bold text-white bg-x-danger px-2.5 py-1 rounded-full hover:bg-x-danger/80 transition-colors"
+                      >
+                        删除
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-xs text-x-gray hover:text-white transition-colors"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(tx.id)}
+                      className="p-1.5 text-x-gray/0 group-hover:text-x-gray/40 hover:!text-x-danger transition-colors shrink-0"
+                      title="删除"
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
