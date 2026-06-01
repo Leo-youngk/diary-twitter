@@ -3,8 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --x-blue: #1d9bf0;
-  --x-gray: #71767b;
+  /* RGB channels — used by Tailwind for opacity variants (bg-x-blue/10 etc.) */
+  --color-x-blue: 29 155 240;        /* #1d9bf0 twitter blue */
+  --color-x-blue-hover: 26 140 216;  /* #1a8cd8 */
+  --color-x-gray: 113 118 123;       /* #71767b */
 }
 
 html.dark {
@@ -22,6 +24,50 @@ html.light {
   --color-x-hover: #f7f9f9;
   --color-x-search: #eff3f4;
 }
+
+/* ── 禅意主题 ────────────────────────────────────────────────────────────────
+ * 米白背景 + 苔绿强调色。所有 x-blue / x-gray 变量在此覆写，
+ * 使 Tailwind 的 text-x-blue / bg-x-blue/10 等全部自动跟随。
+ * 深色/浅色主题完全不受影响。
+ */
+html.zen {
+  --color-x-dark: #f5f0e8;         /* 米白主背景 */
+  --color-x-darker: #ede8de;       /* 略深一度，卡片/次级背景 */
+  --color-x-border: #d4cdbf;       /* 土色边框 */
+  --color-x-hover: #e6e0d4;        /* hover 状态 */
+  --color-x-search: #e4ddd2;       /* 搜索框背景 */
+  --color-x-blue: 90 138 114;      /* 苔绿 #5a8a72 */
+  --color-x-blue-hover: 74 122 98; /* 深苔绿 #4a7a62 */
+  --color-x-gray: 138 128 112;     /* 暖灰 #8a8070 */
+  color-scheme: light;
+}
+
+html.zen body {
+  background-color: #f5f0e8;
+  color: #2d2a24;  /* 暖深棕，非纯黑 */
+}
+
+/* 深色主题中用 fill-white/text-white 作为前景色，在禅意主题里改为暖棕 */
+html.zen .fill-white   { fill: #2d2a24; }
+html.zen .text-white   { color: #2d2a24; }
+
+/* 遮罩层保持深色（弹窗/抽屉背景） */
+html.zen .bg-black\/40 { background-color: rgba(0, 0, 0, 0.4); }
+
+/* 卡片/列表 hover：将 bg-white/[0.03] 和 bg-white/[0.02] 换成有感知的暖色 */
+html.zen .hover\:bg-white\/\[0\.03\]:hover,
+html.zen .hover\:bg-white\/\[0\.02\]:hover {
+  background-color: #e6e0d4;
+}
+
+/* 日期输入框在禅意主题里用亮色模式渲染 */
+html.zen input[type="date"] {
+  color-scheme: light !important;
+}
+
+/* 滚动条 */
+html.zen ::-webkit-scrollbar-thumb       { background: #c4bdb0; }
+html.zen ::-webkit-scrollbar-thumb:hover { background: #a09890; }
 
 * {
   box-sizing: border-box;

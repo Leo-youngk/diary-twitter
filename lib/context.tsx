@@ -10,7 +10,7 @@ import { generateId } from '@/lib/utils';
 import { exportPostAsMarkdown, exportPostsAsMarkdown } from '@/lib/export';
 import { supabase, rowToPost, postToRow, rowToUser, profileToRow } from '@/lib/supabase';
 
-export type Theme = 'dark' | 'light';
+export type Theme = 'dark' | 'light' | 'zen';
 
 interface AppContextType {
   posts: Post[];
@@ -70,8 +70,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const html = document.documentElement;
-    if (theme === 'dark') { html.classList.add('dark'); html.classList.remove('light'); }
-    else { html.classList.add('light'); html.classList.remove('dark'); }
+    if (theme === 'dark') {
+      html.classList.add('dark');
+      html.classList.remove('light', 'zen');
+    } else if (theme === 'light') {
+      html.classList.add('light');
+      html.classList.remove('dark', 'zen');
+    } else {
+      html.classList.add('zen');
+      html.classList.remove('dark', 'light');
+    }
     try { localStorage.setItem('diary-theme', JSON.stringify(theme)); } catch {}
   }, [theme]);
 

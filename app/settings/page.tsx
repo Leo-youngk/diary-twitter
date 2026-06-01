@@ -119,6 +119,21 @@ export default function SettingsPage() {
             <div className="w-8 h-8 rounded-full bg-white border border-gray-300 mx-auto mb-2" />
             <p className="text-sm font-bold text-center">浅色</p>
           </button>
+          <button
+            onClick={() => setTheme('zen')}
+            className={`flex-1 py-3 px-4 rounded-xl border-2 transition-colors ${
+              theme === 'zen'
+                ? 'border-x-blue bg-x-blue/10'
+                : 'border-x-border hover:border-x-gray'
+            }`}
+          >
+            {/* 圆形预览：左半米白 + 右半苔绿，直观展示两种主色 */}
+            <div
+              className="w-8 h-8 rounded-full mx-auto mb-2"
+              style={{ background: 'linear-gradient(135deg, #f5f0e8 50%, #5a8a72 50%)' }}
+            />
+            <p className="text-sm font-bold text-center">禅</p>
+          </button>
         </div>
       </div>
 
