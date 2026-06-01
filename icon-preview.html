@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>我的日记本 — Icon Preview</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: 48px;
+    font-family: -apple-system, sans-serif;
+    color: #fff;
+    padding: 48px 24px;
+  }
+  h1 { font-size: 13px; letter-spacing: 0.12em; opacity: 0.45; text-transform: uppercase; }
+  .row { display: flex; align-items: flex-end; gap: 32px; }
+  .size-label {
+    font-size: 11px;
+    opacity: 0.35;
+    letter-spacing: 0.08em;
+    text-align: center;
+    margin-top: 10px;
+  }
+  .icon-wrap { display: flex; flex-direction: column; align-items: center; }
+
+  /* The actual icon SVG — same source, just scaled */
+  .icon svg { display: block; border-radius: 22.37%; }
+  .icon-512 svg { border-radius: 115px; }
+  .icon-180 svg { border-radius: 40px; }
+  .icon-60  svg { border-radius: 13px; }
+</style>
+</head>
+<body>
+
+<h1>我的日记本 · App Icon</h1>
+
+<div class="row">
+
+  <!-- 512 × 512 -->
+  <div class="icon-wrap">
+    <div class="icon icon-512">
+      <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+        <defs>
+          <!-- Rich warm background gradient -->
+          <linearGradient id="bg512" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stop-color="#d4500a"/>
+            <stop offset="55%"  stop-color="#c0334e"/>
+            <stop offset="100%" stop-color="#9d1a6b"/>
+          </linearGradient>
+
+          <!-- Subtle radial highlight at top-center (like a light source) -->
+          <radialGradient id="shine512" cx="50%" cy="18%" r="52%">
+            <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.13"/>
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+          </radialGradient>
+
+          <!-- Notebook page gradient: pure white → very faint warm cream -->
+          <linearGradient id="page512" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="#fdf6ee"/>
+          </linearGradient>
+
+          <!-- Spine strip gradient: dark burnt amber -->
+          <linearGradient id="spine512" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"   stop-color="#7b1d0e"/>
+            <stop offset="100%" stop-color="#5a1209"/>
+          </linearGradient>
+
+          <!-- Spine highlight (sheen on left edge of spine) -->
+          <linearGradient id="spineSheen512" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+          </linearGradient>
+
+          <!-- Drop shadow filter for the whole notebook -->
+          <filter id="bookShadow512" x="-18%" y="-12%" width="136%" height="136%">
+            <feDropShadow dx="0" dy="20" stdDeviation="28"
+                          flood-color="#5a0a1e" flood-opacity="0.55"/>
+          </filter>
+
+          <!-- Subtle inner shadow on the page (depth at spine join) -->
+          <linearGradient id="innerShadow512" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#000000" stop-opacity="0.08"/>
+            <stop offset="18%"  stop-color="#000000" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+
+        <!-- ── Background ───────────────────────────────────────── -->
+        <rect width="512" height="512" fill="url(#bg512)"/>
+        <!-- Highlight overlay (soft top-center glow) -->
+        <rect width="512" height="512" fill="url(#shine512)"/>
+
+        <!-- ── Notebook (floating, centered) ───────────────────── -->
+        <g filter="url(#bookShadow512)">
+
+          <!-- Notebook body: left spine + page area as one rounded rect -->
+          <rect x="108" y="96" width="296" height="320" rx="18" ry="18"
+                fill="url(#page512)"/>
+
+          <!-- Left spine strip (overlaid on left portion) -->
+          <rect x="108" y="96" width="52" height="320" rx="18" ry="18"
+                fill="url(#spine512)"/>
+          <!-- Square off the right edge of spine (only left corners rounded) -->
+          <rect x="136" y="96" width="24" height="320"
+                fill="url(#spine512)"/>
+
+          <!-- Spine sheen -->
+          <rect x="108" y="96" width="52" height="320" rx="18" ry="18"
+                fill="url(#spineSheen512)"/>
+          <rect x="136" y="96" width="24" height="320"
+                fill="url(#spineSheen512)"/>
+
+        </g>
+
+        <!-- Inner shadow at page-spine join (gives depth) -->
+        <rect x="160" y="96" width="80" height="320"
+              fill="url(#innerShadow512)"/>
+
+        <!-- ── Binding holes on spine ───────────────────────────── -->
+        <circle cx="134" cy="176" r="7" fill="#3d0b06" opacity="0.7"/>
+        <circle cx="134" cy="256" r="7" fill="#3d0b06" opacity="0.7"/>
+        <circle cx="134" cy="336" r="7" fill="#3d0b06" opacity="0.7"/>
+
+        <!-- ── Page content ─────────────────────────────────────── -->
+        <!-- Title line — bold, warm rose accent -->
+        <rect x="184" y="160" width="168" height="11" rx="5.5"
+              fill="#c0334e" opacity="0.82"/>
+
+        <!-- Body lines — muted warm gray, varying lengths for realism -->
+        <rect x="184" y="202" width="192" height="7" rx="3.5"
+              fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="228" width="180" height="7" rx="3.5"
+              fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="254" width="196" height="7" rx="3.5"
+              fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="280" width="160" height="7" rx="3.5"
+              fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="306" width="188" height="7" rx="3.5"
+              fill="#b0a090" opacity="0.38"/>
+        <rect x="184" y="332" width="140" height="7" rx="3.5"
+              fill="#b0a090" opacity="0.32"/>
+
+        <!-- ── Page edge highlight (right + bottom) ─────────────── -->
+        <rect x="108" y="96" width="296" height="320" rx="18" ry="18"
+              fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+      </svg>
+    </div>
+    <div class="size-label">512 × 512</div>
+  </div>
+
+  <!-- 180 × 180 (apple-touch-icon) -->
+  <div class="icon-wrap">
+    <div class="icon icon-180">
+      <svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 512 512">
+        <defs>
+          <linearGradient id="bg180" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stop-color="#d4500a"/>
+            <stop offset="55%"  stop-color="#c0334e"/>
+            <stop offset="100%" stop-color="#9d1a6b"/>
+          </linearGradient>
+          <radialGradient id="shine180" cx="50%" cy="18%" r="52%">
+            <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.13"/>
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="page180" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="#fdf6ee"/>
+          </linearGradient>
+          <linearGradient id="spine180" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"   stop-color="#7b1d0e"/>
+            <stop offset="100%" stop-color="#5a1209"/>
+          </linearGradient>
+          <filter id="bookShadow180" x="-18%" y="-12%" width="136%" height="136%">
+            <feDropShadow dx="0" dy="20" stdDeviation="28"
+                          flood-color="#5a0a1e" flood-opacity="0.55"/>
+          </filter>
+          <linearGradient id="innerShadow180" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#000000" stop-opacity="0.08"/>
+            <stop offset="18%"  stop-color="#000000" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <rect width="512" height="512" fill="url(#bg180)"/>
+        <rect width="512" height="512" fill="url(#shine180)"/>
+        <g filter="url(#bookShadow180)">
+          <rect x="108" y="96" width="296" height="320" rx="18" ry="18" fill="url(#page180)"/>
+          <rect x="108" y="96" width="52" height="320" rx="18" ry="18" fill="url(#spine180)"/>
+          <rect x="136" y="96" width="24" height="320" fill="url(#spine180)"/>
+        </g>
+        <rect x="160" y="96" width="80" height="320" fill="url(#innerShadow180)"/>
+        <circle cx="134" cy="176" r="7" fill="#3d0b06" opacity="0.7"/>
+        <circle cx="134" cy="256" r="7" fill="#3d0b06" opacity="0.7"/>
+        <circle cx="134" cy="336" r="7" fill="#3d0b06" opacity="0.7"/>
+        <rect x="184" y="160" width="168" height="11" rx="5.5" fill="#c0334e" opacity="0.82"/>
+        <rect x="184" y="202" width="192" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="228" width="180" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="254" width="196" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="280" width="160" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="306" width="188" height="7" rx="3.5" fill="#b0a090" opacity="0.38"/>
+        <rect x="184" y="332" width="140" height="7" rx="3.5" fill="#b0a090" opacity="0.32"/>
+        <rect x="108" y="96" width="296" height="320" rx="18" ry="18"
+              fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+      </svg>
+    </div>
+    <div class="size-label">180 × 180</div>
+  </div>
+
+  <!-- 60 × 60 (iPhone home screen actual size) -->
+  <div class="icon-wrap">
+    <div class="icon icon-60">
+      <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 512 512">
+        <defs>
+          <linearGradient id="bg60" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stop-color="#d4500a"/>
+            <stop offset="55%"  stop-color="#c0334e"/>
+            <stop offset="100%" stop-color="#9d1a6b"/>
+          </linearGradient>
+          <linearGradient id="page60" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="#fdf6ee"/>
+          </linearGradient>
+          <linearGradient id="spine60" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"   stop-color="#7b1d0e"/>
+            <stop offset="100%" stop-color="#5a1209"/>
+          </linearGradient>
+          <filter id="bookShadow60" x="-18%" y="-12%" width="136%" height="136%">
+            <feDropShadow dx="0" dy="20" stdDeviation="28"
+                          flood-color="#5a0a1e" flood-opacity="0.55"/>
+          </filter>
+        </defs>
+        <rect width="512" height="512" fill="url(#bg60)"/>
+        <g filter="url(#bookShadow60)">
+          <rect x="108" y="96" width="296" height="320" rx="18" ry="18" fill="url(#page60)"/>
+          <rect x="108" y="96" width="52" height="320" rx="18" ry="18" fill="url(#spine60)"/>
+          <rect x="136" y="96" width="24" height="320" fill="url(#spine60)"/>
+        </g>
+        <circle cx="134" cy="176" r="7" fill="#3d0b06" opacity="0.7"/>
+        <circle cx="134" cy="256" r="7" fill="#3d0b06" opacity="0.7"/>
+        <circle cx="134" cy="336" r="7" fill="#3d0b06" opacity="0.7"/>
+        <rect x="184" y="160" width="168" height="11" rx="5.5" fill="#c0334e" opacity="0.82"/>
+        <rect x="184" y="202" width="192" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="228" width="180" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="254" width="196" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="280" width="160" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+        <rect x="184" y="306" width="188" height="7" rx="3.5" fill="#b0a090" opacity="0.38"/>
+      </svg>
+    </div>
+    <div class="size-label">60 × 60 (实际屏幕尺寸)</div>
+  </div>
+
+</div>
+
+<!-- Dark bg preview strip -->
+<div style="display:flex; gap:12px; align-items:center; background:#f2f2f7; border-radius:20px; padding:20px 28px;">
+  <div class="icon icon-60">
+    <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 512 512">
+      <defs>
+        <linearGradient id="bgL" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stop-color="#d4500a"/>
+          <stop offset="55%"  stop-color="#c0334e"/>
+          <stop offset="100%" stop-color="#9d1a6b"/>
+        </linearGradient>
+        <linearGradient id="pageL" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#fdf6ee"/>
+        </linearGradient>
+        <linearGradient id="spineL" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#7b1d0e"/>
+          <stop offset="100%" stop-color="#5a1209"/>
+        </linearGradient>
+        <filter id="bookShadowL" x="-18%" y="-12%" width="136%" height="136%">
+          <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#5a0a1e" flood-opacity="0.4"/>
+        </filter>
+      </defs>
+      <rect width="512" height="512" fill="url(#bgL)"/>
+      <g filter="url(#bookShadowL)">
+        <rect x="108" y="96" width="296" height="320" rx="18" ry="18" fill="url(#pageL)"/>
+        <rect x="108" y="96" width="52" height="320" rx="18" ry="18" fill="url(#spineL)"/>
+        <rect x="136" y="96" width="24" height="320" fill="url(#spineL)"/>
+      </g>
+      <circle cx="134" cy="176" r="7" fill="#3d0b06" opacity="0.7"/>
+      <circle cx="134" cy="256" r="7" fill="#3d0b06" opacity="0.7"/>
+      <circle cx="134" cy="336" r="7" fill="#3d0b06" opacity="0.7"/>
+      <rect x="184" y="160" width="168" height="11" rx="5.5" fill="#c0334e" opacity="0.82"/>
+      <rect x="184" y="202" width="192" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+      <rect x="184" y="228" width="180" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+      <rect x="184" y="254" width="196" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+      <rect x="184" y="280" width="160" height="7" rx="3.5" fill="#b0a090" opacity="0.45"/>
+      <rect x="184" y="306" width="188" height="7" rx="3.5" fill="#b0a090" opacity="0.38"/>
+    </svg>
+  </div>
+  <span style="color:#1c1c1e; font-size:13px; letter-spacing:-0.01em; font-weight:500;">iOS 主屏预览（浅色背景）</span>
+</div>
+
+</body>
+</html>

@@ -1,92 +1,78 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <!-- Dark background: charcoal → deep navy diagonal -->
+    <!-- Background: deep amber → rose → plum -->
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   stop-color="#0d1117"/>
-      <stop offset="100%" stop-color="#19263d"/>
+      <stop offset="0%"   stop-color="#d4500a"/>
+      <stop offset="55%"  stop-color="#c0334e"/>
+      <stop offset="100%" stop-color="#9d1a6b"/>
     </linearGradient>
 
-    <!-- Page: pure white → warm cream -->
-    <linearGradient id="page" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#f0ebe1"/>
-    </linearGradient>
-
-    <!-- Subtle center glow (blue haze behind the page) -->
-    <radialGradient id="glow" cx="50%" cy="52%" r="42%">
-      <stop offset="0%"   stop-color="#1d9bf0" stop-opacity="0.14"/>
-      <stop offset="100%" stop-color="#1d9bf0" stop-opacity="0"/>
+    <!-- Soft top-center highlight (simulates studio light) -->
+    <radialGradient id="shine" cx="50%" cy="18%" r="52%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.13"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
     </radialGradient>
 
-    <!-- Book drop shadow -->
-    <filter id="book-shadow" x="-25%" y="-20%" width="150%" height="150%">
-      <feDropShadow dx="0" dy="14" stdDeviation="22"
-                    flood-color="#000000" flood-opacity="0.55"/>
-    </filter>
+    <!-- Page: white → warm cream -->
+    <linearGradient id="page" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fdf6ee"/>
+    </linearGradient>
 
-    <!-- Pen glow -->
-    <filter id="pen-glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feDropShadow dx="0" dy="0" stdDeviation="8"
-                    flood-color="#1d9bf0" flood-opacity="0.7"/>
+    <!-- Spine: dark burnt sienna -->
+    <linearGradient id="spine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   stop-color="#7b1d0e"/>
+      <stop offset="100%" stop-color="#5a1209"/>
+    </linearGradient>
+
+    <!-- Inner page shadow at spine join -->
+    <linearGradient id="innerShadow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#000000" stop-opacity="0.09"/>
+      <stop offset="20%"  stop-color="#000000" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Notebook drop shadow -->
+    <filter id="bookShadow" x="-18%" y="-12%" width="136%" height="136%">
+      <feDropShadow dx="0" dy="22" stdDeviation="30"
+                    flood-color="#4a0818" flood-opacity="0.58"/>
     </filter>
   </defs>
 
-  <!-- ── Background ─────────────────────────────────────── -->
+  <!-- ── Background ─────────────────────────────────────────── -->
   <rect width="512" height="512" fill="url(#bg)"/>
-  <rect width="512" height="512" fill="url(#glow)"/>
+  <rect width="512" height="512" fill="url(#shine)"/>
 
-  <!-- ── Notebook body (open book, slight perspective) ──── -->
-  <g filter="url(#book-shadow)">
-    <!-- Shadow / back page — offset slightly right+down -->
-    <path d="M278 142 L398 156 L390 374 L268 362 Z"
-          fill="#d8d0c2" opacity="0.45"/>
+  <!-- ── Notebook ───────────────────────────────────────────── -->
+  <g filter="url(#bookShadow)">
+    <!-- Full page body (rounded rect) -->
+    <rect x="108" y="96" width="296" height="320" rx="18" fill="url(#page)"/>
 
-    <!-- Left (main) page -->
-    <path d="M116 156 L256 142 L264 362 L122 374 Z"
-          fill="url(#page)"/>
-
-    <!-- Right page -->
-    <path d="M256 142 L398 156 L390 374 L264 362 Z"
-          fill="url(#page)" opacity="0.72"/>
-
-    <!-- Spine (blue vertical bar) -->
-    <rect x="250" y="142" width="18" height="220" rx="5" fill="#1d9bf0"/>
+    <!-- Spine strip — left side, only left corners rounded -->
+    <rect x="108" y="96" width="52"  height="320" rx="18" fill="url(#spine)"/>
+    <rect x="136" y="96" width="24"  height="320"         fill="url(#spine)"/>
   </g>
 
-  <!-- ── Left-page content lines ────────────────────────── -->
-  <!-- Title line — full blue -->
-  <line x1="148" y1="200" x2="236" y2="199"
-        stroke="#1d9bf0" stroke-width="9" stroke-linecap="round" opacity="0.95"/>
-  <!-- Body lines — warm gray -->
-  <line x1="148" y1="234" x2="232" y2="233"
-        stroke="#a09488" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
-  <line x1="148" y1="260" x2="238" y2="259"
-        stroke="#a09488" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
-  <line x1="148" y1="286" x2="220" y2="285"
-        stroke="#a09488" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
-  <line x1="148" y1="320" x2="234" y2="319"
-        stroke="#a09488" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
-  <line x1="148" y1="346" x2="210" y2="345"
-        stroke="#a09488" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+  <!-- Page-spine depth shadow -->
+  <rect x="160" y="96" width="72" height="320" fill="url(#innerShadow)"/>
 
-  <!-- ── Pencil / pen (lower-right, rotated -38°) ────────── -->
-  <g transform="translate(346 316) rotate(-38)" filter="url(#pen-glow)">
-    <!-- Body -->
-    <rect x="-11" y="-68" width="22" height="88" rx="5" fill="#fbbf24"/>
-    <!-- Ferrule (metal band) -->
-    <rect x="-11" y="18"  width="22" height="13" rx="2" fill="#d97706"/>
-    <!-- Eraser (pink) -->
-    <rect x="-9"  y="-74" width="18" height="12" rx="4" fill="#fca5a5"/>
-    <!-- Wood taper -->
-    <path d="M-11 31 L11 31 L6 52 L-6 52 Z" fill="#d4a878"/>
-    <!-- Graphite tip -->
-    <polygon points="-6,52 6,52 0,66" fill="#374151"/>
-    <!-- Highlight on body -->
-    <rect x="-4" y="-68" width="6" height="82" rx="3"
-          fill="rgba(255,255,255,0.22)"/>
-  </g>
+  <!-- ── Spine binding holes ────────────────────────────────── -->
+  <circle cx="134" cy="180" r="7.5" fill="#3a0a05" opacity="0.65"/>
+  <circle cx="134" cy="256" r="7.5" fill="#3a0a05" opacity="0.65"/>
+  <circle cx="134" cy="332" r="7.5" fill="#3a0a05" opacity="0.65"/>
 
-  <!-- Blue ink dot at pencil tip -->
-  <circle cx="348" cy="345" r="6" fill="#1d9bf0" opacity="0.9"
-          filter="url(#pen-glow)"/>
+  <!-- ── Page content ───────────────────────────────────────── -->
+  <!-- Title bar — bold rose, like a highlighted header -->
+  <rect x="184" y="158" width="172" height="12" rx="6" fill="#c0334e" opacity="0.80"/>
+
+  <!-- Body lines — warm gray, randomised lengths for natural feel -->
+  <rect x="184" y="202" width="196" height="7.5" rx="3.5" fill="#b0a090" opacity="0.44"/>
+  <rect x="184" y="228" width="178" height="7.5" rx="3.5" fill="#b0a090" opacity="0.44"/>
+  <rect x="184" y="254" width="200" height="7.5" rx="3.5" fill="#b0a090" opacity="0.44"/>
+  <rect x="184" y="280" width="158" height="7.5" rx="3.5" fill="#b0a090" opacity="0.44"/>
+  <rect x="184" y="306" width="188" height="7.5" rx="3.5" fill="#b0a090" opacity="0.37"/>
+  <rect x="184" y="332" width="136" height="7.5" rx="3.5" fill="#b0a090" opacity="0.30"/>
+
+  <!-- ── Notebook edge highlight (rim light) ───────────────── -->
+  <rect x="108" y="96" width="296" height="320" rx="18"
+        fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="1.5"/>
 </svg>
