@@ -1,78 +1,51 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <!-- Background: deep amber → rose → plum -->
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   stop-color="#d4500a"/>
-      <stop offset="55%"  stop-color="#c0334e"/>
-      <stop offset="100%" stop-color="#9d1a6b"/>
+    <!-- Telegram exact blue -->
+    <linearGradient id="bg" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%"   stop-color="#37aee2"/>
+      <stop offset="100%" stop-color="#1e96c8"/>
     </linearGradient>
-
-    <!-- Soft top-center highlight (simulates studio light) -->
-    <radialGradient id="shine" cx="50%" cy="18%" r="52%">
-      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.13"/>
+    <radialGradient id="glow" cx="50%" cy="25%" r="55%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.14"/>
       <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
     </radialGradient>
-
-    <!-- Page: white → warm cream -->
-    <linearGradient id="page" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#fdf6ee"/>
-    </linearGradient>
-
-    <!-- Spine: dark burnt sienna -->
-    <linearGradient id="spine" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%"   stop-color="#7b1d0e"/>
-      <stop offset="100%" stop-color="#5a1209"/>
-    </linearGradient>
-
-    <!-- Inner page shadow at spine join -->
-    <linearGradient id="innerShadow" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%"   stop-color="#000000" stop-opacity="0.09"/>
-      <stop offset="20%"  stop-color="#000000" stop-opacity="0"/>
-    </linearGradient>
-
-    <!-- Notebook drop shadow -->
-    <filter id="bookShadow" x="-18%" y="-12%" width="136%" height="136%">
-      <feDropShadow dx="0" dy="22" stdDeviation="30"
-                    flood-color="#4a0818" flood-opacity="0.58"/>
-    </filter>
   </defs>
 
-  <!-- ── Background ─────────────────────────────────────────── -->
+  <!-- Background -->
   <rect width="512" height="512" fill="url(#bg)"/>
-  <rect width="512" height="512" fill="url(#shine)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
 
-  <!-- ── Notebook ───────────────────────────────────────────── -->
-  <g filter="url(#bookShadow)">
-    <!-- Full page body (rounded rect) -->
-    <rect x="108" y="96" width="296" height="320" rx="18" fill="url(#page)"/>
+  <!--
+    A pen / stylus pointing upper-right at ~40°.
+    Same diagonal energy as Telegram's paper plane.
+    Two-tone white (body bright / underside dimmer) = Telegram's fold trick.
+    Centered at (256, 268), rotated -40° around that point.
+  -->
+  <g transform="translate(256,258) rotate(-40)">
 
-    <!-- Spine strip — left side, only left corners rounded -->
-    <rect x="108" y="96" width="52"  height="320" rx="18" fill="url(#spine)"/>
-    <rect x="136" y="96" width="24"  height="320"         fill="url(#spine)"/>
+    <!-- Pen body (main, bright white) -->
+    <rect x="-28" y="-148" width="56" height="224" rx="10"
+          fill="white" opacity="0.97"/>
+
+    <!-- Pen underside / shadow face (Telegram's two-tone depth) -->
+    <rect x="6" y="-148" width="22" height="224" rx="10"
+          fill="white" opacity="0.55"/>
+
+    <!-- Ferrule (metal ring) -->
+    <rect x="-28" y="68" width="56" height="16" rx="4"
+          fill="white" opacity="0.70"/>
+
+    <!-- Tapered tip -->
+    <path d="M -28 84 L 28 84 L 16 130 L -16 130 Z"
+          fill="white" opacity="0.92"/>
+
+    <!-- Tip point -->
+    <polygon points="-16,130 16,130 0,162"
+             fill="white" opacity="0.85"/>
+
+    <!-- Top end cap (slightly rounded) -->
+    <rect x="-28" y="-162" width="56" height="20" rx="10"
+          fill="white" opacity="0.65"/>
+
   </g>
-
-  <!-- Page-spine depth shadow -->
-  <rect x="160" y="96" width="72" height="320" fill="url(#innerShadow)"/>
-
-  <!-- ── Spine binding holes ────────────────────────────────── -->
-  <circle cx="134" cy="180" r="7.5" fill="#3a0a05" opacity="0.65"/>
-  <circle cx="134" cy="256" r="7.5" fill="#3a0a05" opacity="0.65"/>
-  <circle cx="134" cy="332" r="7.5" fill="#3a0a05" opacity="0.65"/>
-
-  <!-- ── Page content ───────────────────────────────────────── -->
-  <!-- Title bar — bold rose, like a highlighted header -->
-  <rect x="184" y="158" width="172" height="12" rx="6" fill="#c0334e" opacity="0.80"/>
-
-  <!-- Body lines — warm gray, randomised lengths for natural feel -->
-  <rect x="184" y="202" width="196" height="7.5" rx="3.5" fill="#b0a090" opacity="0.44"/>
-  <rect x="184" y="228" width="178" height="7.5" rx="3.5" fill="#b0a090" opacity="0.44"/>
-  <rect x="184" y="254" width="200" height="7.5" rx="3.5" fill="#b0a090" opacity="0.44"/>
-  <rect x="184" y="280" width="158" height="7.5" rx="3.5" fill="#b0a090" opacity="0.44"/>
-  <rect x="184" y="306" width="188" height="7.5" rx="3.5" fill="#b0a090" opacity="0.37"/>
-  <rect x="184" y="332" width="136" height="7.5" rx="3.5" fill="#b0a090" opacity="0.30"/>
-
-  <!-- ── Notebook edge highlight (rim light) ───────────────── -->
-  <rect x="108" y="96" width="296" height="320" rx="18"
-        fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="1.5"/>
 </svg>
