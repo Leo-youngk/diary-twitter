@@ -48,3 +48,4 @@ start_ollama_e.bat.ps1
 .qwen/
 
 .vercel
+.gstack/

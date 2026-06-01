@@ -44,7 +44,7 @@ export default function CalendarPage() {
   return (
     <div>
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-x-dark/80 backdrop-blur-md border-b border-x-border">
+      <div className="sticky top-0 z-10 bg-x-dark border-b border-x-border">
         <div className="flex items-center justify-between px-4 py-3">
           <h1 className="text-xl font-bold">日历</h1>
           <button onClick={goToday} className="text-x-blue text-sm font-bold hover:underline">

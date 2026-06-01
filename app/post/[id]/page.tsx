@@ -55,7 +55,7 @@ export default function PostDetailPage() {
   return (
     <div>
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-x-dark/80 backdrop-blur-md border-b border-x-border">
+      <div className="sticky top-0 z-10 bg-x-dark border-b border-x-border">
         <div className="flex items-center gap-4 px-4 py-3">
           <button onClick={() => router.back()} className="p-1.5 rounded-full hover:bg-x-hover transition-colors">
             <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">

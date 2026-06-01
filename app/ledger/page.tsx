@@ -79,7 +79,7 @@ export default function LedgerPage() {
   return (
     <div className="pb-[calc(6rem+env(safe-area-inset-bottom))]">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-x-dark/90 backdrop-blur-md border-b border-x-border">
+      <div className="sticky top-0 z-10 bg-x-dark border-b border-x-border">
         <div className="flex items-center justify-between px-4 py-3">
           <h1 className="text-xl font-bold">账本</h1>
 

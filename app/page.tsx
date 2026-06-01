@@ -41,7 +41,7 @@ export default function HomePage() {
       <div>
         {/* Sticky header — hides on scroll-down, reveals on scroll-up */}
         <div className={cn(
-          'sticky z-10 bg-x-dark/80 backdrop-blur-md border-b border-x-border transition-all duration-300',
+          'sticky z-10 bg-x-dark border-b border-x-border transition-all duration-300',
           headerHidden ? '-top-[80px]' : 'top-0'
         )}>
           <div className="flex items-center justify-between px-4 py-3">
