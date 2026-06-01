@@ -1,51 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <defs>
-    <!-- Telegram exact blue -->
-    <linearGradient id="bg" x1="50%" y1="0%" x2="50%" y2="100%">
-      <stop offset="0%"   stop-color="#37aee2"/>
-      <stop offset="100%" stop-color="#1e96c8"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="25%" r="55%">
-      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.14"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-
-  <!-- Background -->
-  <rect width="512" height="512" fill="url(#bg)"/>
-  <rect width="512" height="512" fill="url(#glow)"/>
+  <!-- 纯黑背景 -->
+  <rect width="512" height="512" fill="#000000"/>
 
   <!--
-    A pen / stylus pointing upper-right at ~40°.
-    Same diagonal energy as Telegram's paper plane.
-    Two-tone white (body bright / underside dimmer) = Telegram's fold trick.
-    Centered at (256, 268), rotated -40° around that point.
+    纸飞机 — 直接坐标，完整居中，Telegram 同款构图
+    机头指向右上 (420, 108)，两翼后掠，折痕清晰
   -->
-  <g transform="translate(256,258) rotate(-40)">
 
-    <!-- Pen body (main, bright white) -->
-    <rect x="-28" y="-148" width="56" height="224" rx="10"
-          fill="white" opacity="0.97"/>
+  <!-- 背面/下翼 (浅蓝灰，在白翼后方) -->
+  <path d="M 420 108  L 88 392  L 260 274 Z"
+        fill="#c8daea"/>
 
-    <!-- Pen underside / shadow face (Telegram's two-tone depth) -->
-    <rect x="6" y="-148" width="22" height="224" rx="10"
-          fill="white" opacity="0.55"/>
+  <!-- 折痕阴影三角 -->
+  <path d="M 260 274  L 88 392  L 188 348 Z"
+        fill="#a9c9dd"/>
 
-    <!-- Ferrule (metal ring) -->
-    <rect x="-28" y="68" width="56" height="16" rx="4"
-          fill="white" opacity="0.70"/>
+  <!-- 主翼 / 上翼 (亮白，主可见面) -->
+  <path d="M 420 108  L 88 172  L 260 274 Z"
+        fill="white"/>
 
-    <!-- Tapered tip -->
-    <path d="M -28 84 L 28 84 L 16 130 L -16 130 Z"
-          fill="white" opacity="0.92"/>
-
-    <!-- Tip point -->
-    <polygon points="-16,130 16,130 0,162"
-             fill="white" opacity="0.85"/>
-
-    <!-- Top end cap (slightly rounded) -->
-    <rect x="-28" y="-162" width="56" height="20" rx="10"
-          fill="white" opacity="0.65"/>
-
-  </g>
+  <!-- 机身内面 (衔接两翼的中间条) -->
+  <path d="M 260 274  L 420 108  L 300 248 Z"
+        fill="#daeaf5"/>
 </svg>
