@@ -31,14 +31,23 @@ html.light {
 
 /* ── iOS PWA full-screen fix ─────────────────────────────────────────────── */
 /*
- * html: overflow hidden → body becomes the scroll container.
- * This is the canonical iOS PWA pattern: html clips everything, body scrolls.
- * position:fixed elements are relative to the viewport (not scroll container)
- * so they are unaffected.
+ * overflow-x: clip on html  clips the viewport in X without creating a new
+ * block formatting context and WITHOUT forcing overflow-y to auto (unlike
+ * overflow-x: hidden which would force overflow-y: auto, making html a scroll
+ * container and clipping long-page content).
+ *
+ * overscroll-behavior-x: none on body kills the iOS rubber-band bounce in the
+ * horizontal direction only — vertical scroll and its natural momentum are
+ * completely unaffected.
+ *
+ * The actual content overflow is prevented structurally:
+ *   – min-w-0 on <main> (flex item won't exceed container)
+ *   – ProfileDrawer wrapped in fixed inset-0 overflow-hidden (closed panel
+ *     translated off-screen left can't register as scrollable area)
  */
 html {
   height: -webkit-fill-available;
-  overflow: hidden;
+  overflow-x: clip;
 }
 
 body {
@@ -46,14 +55,8 @@ body {
   min-height: -webkit-fill-available;
   /* Push page content below status bar */
   padding-top: env(safe-area-inset-top);
-  /*
-   * overflow-x: hidden  → no horizontal scroll
-   * overflow-y: auto    → body IS the vertical scroll container (html is hidden)
-   * overscroll-behavior → kill iOS rubber-band bounce in all directions
-   */
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: none;
+  /* Prevent iOS horizontal rubber-band without affecting vertical scroll */
+  overscroll-behavior-x: none;
 }
 
 /*
