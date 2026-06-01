@@ -48,6 +48,13 @@ html.light {
 html {
   height: -webkit-fill-available;
   overflow-x: clip;
+  /*
+   * touch-action: pan-y — the only reliable way to block horizontal swipe on iOS.
+   * iOS Safari does NOT support overscroll-behavior at all (MDN: unsupported).
+   * pan-y allows vertical scroll but discards horizontal touch gestures entirely.
+   * Elements that legitimately need horizontal scroll must override with touch-auto.
+   */
+  touch-action: pan-y;
 }
 
 body {
@@ -55,8 +62,8 @@ body {
   min-height: -webkit-fill-available;
   /* Push page content below status bar */
   padding-top: env(safe-area-inset-top);
-  /* Prevent iOS horizontal rubber-band without affecting vertical scroll */
-  overscroll-behavior-x: none;
+  touch-action: pan-y; /* inherited by all children unless overridden */
+  overscroll-behavior-x: none; /* works on Chrome/Android, no-op on iOS but harmless */
 }
 
 /*
@@ -173,6 +180,12 @@ textarea,
 select {
   font-size: max(1rem, 16px);
 }
+
+/* Scrollbar hide utilities */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.no-scrollbar,
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* Bottom sheet slide-up animation (used by QuickEntry) */
 .sheet-slide-up {

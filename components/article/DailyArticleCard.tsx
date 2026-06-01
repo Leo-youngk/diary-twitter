@@ -49,7 +49,8 @@ export default function SpeechList() {
   return (
     <div>
       {/* Filter chips */}
-      <div className="flex gap-2 px-4 py-3 border-b border-x-border overflow-x-auto scrollbar-hide">
+      {/* touch-auto re-enables horizontal swipe for this container only */}
+      <div className="flex gap-2 px-4 py-3 border-b border-x-border overflow-x-auto scrollbar-hide touch-auto">
         {(['all', 'TED', 'Commencement', 'Famous Talk'] as const).map((f) => (
           <button
             key={f}
