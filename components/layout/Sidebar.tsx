@@ -158,7 +158,7 @@ export default function Sidebar() {
 
       {/* Mobile Bottom Navigation — only mobileVisible items */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-x-dark border-t border-x-border z-50 safe-bottom">
-        <div className="flex justify-around items-center h-14">
+        <div className="flex justify-around items-center h-12">
           {navItems.filter((item) => item.mobileVisible).map((item) => {
             const isActive = getIsActive(item.key);
             return (
@@ -167,7 +167,7 @@ export default function Sidebar() {
                 href={item.href}
                 onClick={() => setActiveNav(item.key)}
                 className={cn(
-                  'p-3 rounded-full transition-colors',
+                  'p-2 rounded-full transition-colors',
                   isActive ? 'text-white' : 'text-x-gray'
                 )}
               >

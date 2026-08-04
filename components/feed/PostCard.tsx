@@ -207,11 +207,8 @@ export default function PostCard({ post }: PostCardProps) {
             </div>
           )}
 
-          {/* Date — 12px below content, muted auxiliary info */}
-          <p className="text-[12px] text-x-gray/60 mt-3">{formatDateCN(post.createdAt)}</p>
-
-          {/* Action Bar — separated by hairline from date area */}
-          <div className="flex items-center justify-between max-w-[220px] mt-3 pt-3 border-t border-x-border/30 -ml-2">
+          {/* Action Bar */}
+          <div className="flex items-center justify-between max-w-[220px] mt-0.5 -ml-2">
             {/* Reply */}
             <button onClick={(e) => { e.stopPropagation(); openReply(post); }} className="group flex items-center gap-1 text-x-gray hover:text-x-blue transition-colors">
               <div className="p-2 rounded-full group-hover:bg-x-blue/10 transition-colors">

@@ -37,7 +37,7 @@ export default function HomePage() {
           'sticky z-10 bg-x-dark border-b border-x-border transition-all duration-300',
           headerHidden ? '-top-[80px]' : 'top-0'
         )}>
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center justify-between px-4 py-1.5">
             <button
               onClick={() => setShowDrawer(true)}
               className="md:hidden rounded-full focus:outline-none shrink-0"
@@ -70,7 +70,7 @@ export default function HomePage() {
                 role="tab"
                 aria-selected={feedTab === tab.key}
                 className={cn(
-                  'flex-1 py-3 flex items-center justify-center hover:bg-white/[0.03] transition-colors',
+                  'flex-1 py-2.5 flex items-center justify-center hover:bg-white/[0.03] transition-colors',
                   feedTab === tab.key ? 'text-white font-semibold' : 'text-x-gray font-normal'
                 )}
               >
@@ -79,7 +79,7 @@ export default function HomePage() {
                   {feedTab === tab.key && (
                     <span
                       className="absolute left-0 w-full h-[3px] bg-x-blue rounded-full"
-                      style={{ bottom: '-12px' }}
+                      style={{ bottom: '-10px' }}
                     />
                   )}
                 </span>

@@ -16,7 +16,7 @@ export default function MobileComposeButton() {
   return (
     <button
       onClick={openCompose}
-      style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom) + 20px)' }}
+      style={{ bottom: 'calc(3rem + env(safe-area-inset-bottom) + 12px)' }}
       className={cn(
         'fixed right-4 md:hidden w-14 h-14 bg-x-blue rounded-full',
         'flex items-center justify-center shadow-2xl',

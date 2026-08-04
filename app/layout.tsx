@@ -73,7 +73,7 @@ export default function RootLayout({
               <Sidebar />
               <main
                 data-scroll-root
-                className="flex-1 min-w-0 max-w-[600px] border-x border-x-border h-full overflow-y-auto pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0"
+                className="flex-1 min-w-0 max-w-[600px] border-x border-x-border h-full overflow-y-auto pb-[calc(3rem+env(safe-area-inset-bottom))] md:pb-0"
               >
                 {children}
               </main>

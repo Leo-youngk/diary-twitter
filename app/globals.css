@@ -124,15 +124,6 @@ body {
   overscroll-behavior-y: contain;
 }
 
-/*
- * Sticky headers use top-0 in Tailwind, but must stick just BELOW the
- * status bar (not behind it). This one rule fixes ALL pages at once.
- * Specificity: two classes (.sticky + .top-0) beats single-class .top-0.
- */
-.sticky.top-0 {
-  top: env(safe-area-inset-top);
-}
-
 /* Bottom nav & floating buttons: above the home indicator */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
