@@ -1,31 +1,38 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useApp } from '@/lib/context';
 
 export default function ServiceWorkerRegistrar() {
-  const { addToast } = useApp();
-
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
-    let cancelled = false;
+    // Once the new worker takes control, the page is holding stale JS/CSS
+    // references — a one-time reload is the only way to pick up the update.
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+
     navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // An update finished installing while this tab was closed — activate it now.
+      if (reg.waiting) reg.waiting.postMessage('skip-waiting');
+
       reg.addEventListener('updatefound', () => {
         const next = reg.installing;
         if (!next) return;
         next.addEventListener('statechange', () => {
           // A controller already exists, so this is an update rather than the
-          // first install — the running page is now serving stale code.
-          if (next.state === 'installed' && navigator.serviceWorker.controller && !cancelled) {
-            addToast('已有新版本，刷新页面即可更新', 'info');
+          // first install — tell it to activate immediately instead of waiting
+          // for every tab to close.
+          if (next.state === 'installed' && navigator.serviceWorker.controller) {
+            next.postMessage('skip-waiting');
           }
         });
       });
     }).catch(() => {});
-
-    return () => { cancelled = true; };
-  }, [addToast]);
+  }, []);
 
   return null;
 }
