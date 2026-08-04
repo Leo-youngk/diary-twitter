@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 // Admin client — only runs server-side, never exposed to browser
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+// Created lazily so a missing env var fails the request, not the build.
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
 
 /**
  * POST /api/auth/confirm
@@ -17,6 +20,8 @@ export async function POST(request: Request) {
   try {
     const { email } = await request.json();
     if (!email) return NextResponse.json({ error: 'Missing email' }, { status: 400 });
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     // Find the user by email
     const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();

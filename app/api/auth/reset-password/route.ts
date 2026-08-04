@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+// Created lazily so a missing env var fails the request, not the build.
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
 
 // POST /api/auth/reset-password
 // Body: { email, newPassword }
@@ -19,6 +22,8 @@ export async function POST(request: Request) {
     if (newPassword.length < 6) {
       return NextResponse.json({ error: '密码至少 6 位' }, { status: 400 });
     }
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     // Find user by email
     const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
