@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useApp } from '@/lib/context';
-import { formatCount, formatRelativeTime, cn } from '@/lib/utils';
+import { formatRelativeTime, cn } from '@/lib/utils';
 import { formatDateCN } from '@/lib/export';
 import Avatar from '@/components/ui/Avatar';
 
@@ -138,9 +138,6 @@ export default function PostDetailPage() {
           <div className="flex items-center gap-4 text-sm">
             {post.replies.length > 0 && (
               <span><strong>{post.replies.length}</strong> <span className="text-x-gray">回复</span></span>
-            )}
-            {post.views > 0 && (
-              <span><strong>{formatCount(post.views)}</strong> <span className="text-x-gray">浏览</span></span>
             )}
           </div>
 

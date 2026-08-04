@@ -8,9 +8,13 @@ import { Post, User, ToastMessage, NavItem, FeedTab, EntryType } from '@/lib/typ
 import { currentUser as defaultUser, mockPosts } from '@/lib/mockData';
 import { generateId } from '@/lib/utils';
 import { exportPostAsMarkdown, exportPostsAsMarkdown } from '@/lib/export';
-import { getSyncId, setSyncId, pullSync, pushSync } from '@/lib/sync';
+import {
+  getSyncId, setSyncId, pullSync, pushSync,
+  getLocalUpdatedAt, setLocalUpdatedAt, reconcile,
+} from '@/lib/sync';
 
 export type Theme = 'dark' | 'light' | 'zen';
+export type SyncStatus = 'idle' | 'syncing' | 'ok' | 'error';
 
 interface AppContextType {
   posts: Post[];
@@ -23,6 +27,8 @@ interface AppContextType {
   theme: Theme;
   dbLoading: boolean;
   syncId: string;
+  syncStatus: SyncStatus;
+  lastSyncedAt: string | null;
   setActiveNav: (nav: NavItem) => void;
   setFeedTab: (tab: FeedTab) => void;
   toggleLike: (postId: string) => void;
@@ -56,117 +62,165 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('dark');
   const [dbLoading, setDbLoading] = useState(true);
   const [syncId, setSyncIdState] = useState('');
-  const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
-  // ── Theme (localStorage only) ───────────────────────────────────────────────
+  // Counts real user edits. Hydration and adopting a remote copy deliberately
+  // don't bump it — otherwise every boot would look newer than the remote and
+  // last-write-wins would always pick the device that opened the app last.
+  const [revision, setRevision] = useState(0);
+  const persistedRevision = useRef(0);
+  const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quotaWarned = useRef(false);
+  const pushFailed = useRef(false);
+
+  const bump = useCallback(() => setRevision((r) => r + 1), []);
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  const addToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
+    const id = generateId();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
+  }, []);
+  const removeToast = useCallback((id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
+
+  // ── Theme ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     try { const t = localStorage.getItem('diary-theme'); if (t) setThemeState(JSON.parse(t)); } catch {}
   }, []);
 
   useEffect(() => {
     const html = document.documentElement;
-    if (theme === 'dark') {
-      html.classList.add('dark');
-      html.classList.remove('light', 'zen');
-    } else if (theme === 'light') {
-      html.classList.add('light');
-      html.classList.remove('dark', 'zen');
-    } else {
-      html.classList.add('zen');
-      html.classList.remove('dark', 'light');
-    }
+    html.classList.remove('dark', 'light', 'zen');
+    html.classList.add(theme);
     try { localStorage.setItem('diary-theme', JSON.stringify(theme)); } catch {}
   }, [theme]);
 
-  // ── Bootstrap: load from localStorage, then reconcile with remote KV ────────
-  useEffect(() => {
-    let mounted = true;
-    async function init() {
-      const id = getSyncId();
-      if (mounted) setSyncIdState(id);
-
-      let localPosts: Post[] | null = null;
-      let localUser: User | null = null;
-      try {
-        const sp = localStorage.getItem('diary-posts');
-        if (sp) localPosts = JSON.parse(sp);
-        const su = localStorage.getItem('diary-user');
-        if (su) localUser = JSON.parse(su);
-      } catch {}
-
-      if (mounted) {
-        setPosts(localPosts ?? mockPosts);
-        setCurrentUser(localUser ?? defaultUser);
-      }
-
-      if (id) {
-        try {
-          const remote = await pullSync(id);
-          if (remote && mounted) {
-            setPosts(remote.posts as Post[]);
-            setCurrentUser(remote.user as User);
-          } else if (localPosts) {
-            // No remote copy yet — push what we have locally.
-            await pushSync(id, { posts: localPosts, user: localUser ?? defaultUser, updatedAt: new Date().toISOString() });
-          }
-        } catch (err) {
-          console.warn('[sync] pull failed, using local data', err);
-        }
-      }
-
-      if (mounted) setDbLoading(false);
-    }
-    init();
-    return () => { mounted = false; };
-  }, []);
-
-  // ── Persist to localStorage + debounced push to KV ──────────────────────────
-  const persist = useCallback((nextPosts: Post[], nextUser: User) => {
+  // ── Persistence ────────────────────────────────────────────────────────────
+  const writeLocal = useCallback((nextPosts: Post[], nextUser: User, updatedAt: string) => {
     try {
       localStorage.setItem('diary-posts', JSON.stringify(nextPosts));
       localStorage.setItem('diary-user', JSON.stringify(nextUser));
+      setLocalUpdatedAt(updatedAt);
+    } catch {
+      // Almost always QuotaExceededError from base64 images. Swallowing this is
+      // how data silently fails to survive a reload, so say it out loud — once.
+      if (!quotaWarned.current) {
+        quotaWarned.current = true;
+        addToast('本地存储已满，新内容可能无法保存。请先导出备份，再删除部分带图记录', 'error');
+      }
+    }
+  }, [addToast]);
+
+  const schedulePush = useCallback((nextPosts: Post[], nextUser: User, updatedAt: string) => {
+    const id = getSyncId();
+    if (!id) return;
+    if (pushTimer.current) clearTimeout(pushTimer.current);
+    setSyncStatus('syncing');
+    pushTimer.current = setTimeout(async () => {
+      const ok = await pushSync(id, { posts: nextPosts, user: nextUser, updatedAt });
+      setSyncStatus(ok ? 'ok' : 'error');
+      if (ok) {
+        setLastSyncedAt(updatedAt);
+        pushFailed.current = false;
+      } else if (!pushFailed.current) {
+        // Only on the transition into failure — offline shouldn't spam toasts.
+        pushFailed.current = true;
+        addToast('云端同步失败，数据已保存在本机', 'error');
+      }
+    }, 800);
+  }, [addToast]);
+
+  // ── Bootstrap ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let mounted = true;
+    const id = getSyncId();
+    setSyncIdState(id);
+
+    let localPosts: Post[] | null = null;
+    let localUser: User | null = null;
+    try {
+      const sp = localStorage.getItem('diary-posts');
+      if (sp) localPosts = JSON.parse(sp);
+      const su = localStorage.getItem('diary-user');
+      if (su) localUser = JSON.parse(su);
     } catch {}
 
-    if (pushTimer.current) clearTimeout(pushTimer.current);
-    pushTimer.current = setTimeout(() => {
-      const id = getSyncId();
-      if (id) pushSync(id, { posts: nextPosts, user: nextUser, updatedAt: new Date().toISOString() });
-    }, 800);
-  }, []);
+    setPosts(localPosts ?? mockPosts);
+    setCurrentUser(localUser ?? defaultUser);
+    // Local data is already in hand — render now and let the network catch up.
+    setDbLoading(false);
+
+    if (!id) return;
+
+    setSyncStatus('syncing');
+    pullSync(id)
+      .then((remote) => {
+        if (!mounted) return;
+        const decision = reconcile(getLocalUpdatedAt(), remote);
+        if (decision.action === 'adopt-remote') {
+          const { posts: rp, user: ru, updatedAt } = decision.payload;
+          setPosts(rp as Post[]);
+          setCurrentUser(ru as User);
+          // Keep the remote timestamp, so the next boot reconciles to 'none'.
+          writeLocal(rp as Post[], ru as User, updatedAt);
+          setLastSyncedAt(updatedAt);
+          setSyncStatus('ok');
+        } else if (decision.action === 'push-local') {
+          const updatedAt = getLocalUpdatedAt() ?? new Date().toISOString();
+          schedulePush(localPosts ?? mockPosts, localUser ?? defaultUser, updatedAt);
+        } else {
+          setLastSyncedAt(getLocalUpdatedAt());
+          setSyncStatus('ok');
+        }
+      })
+      .catch((err) => {
+        console.warn('[sync] pull failed, using local data', err);
+        if (mounted) setSyncStatus('error');
+      });
+
+    return () => { mounted = false; };
+  }, [writeLocal, schedulePush]);
+
+  // Single place that persists. Runs after render, never inside a state updater.
+  useEffect(() => {
+    if (revision === 0 || revision === persistedRevision.current) return;
+    persistedRevision.current = revision;
+    const updatedAt = new Date().toISOString();
+    writeLocal(posts, currentUser, updatedAt);
+    schedulePush(posts, currentUser, updatedAt);
+  }, [revision, posts, currentUser, writeLocal, schedulePush]);
 
   const restoreFromSyncId = useCallback(async (id: string): Promise<boolean> => {
-    const remote = await pullSync(id);
-    if (!remote) return false;
-    setSyncId(id);
-    setSyncIdState(id);
-    setPosts(remote.posts as Post[]);
-    setCurrentUser(remote.user as User);
     try {
-      localStorage.setItem('diary-posts', JSON.stringify(remote.posts));
-      localStorage.setItem('diary-user', JSON.stringify(remote.user));
-    } catch {}
-    return true;
-  }, []);
+      const remote = await pullSync(id);
+      if (!remote) return false;
+      setSyncId(id);
+      setSyncIdState(id);
+      setPosts(remote.posts as Post[]);
+      setCurrentUser(remote.user as User);
+      writeLocal(remote.posts as Post[], remote.user as User, remote.updatedAt);
+      setLastSyncedAt(remote.updatedAt);
+      setSyncStatus('ok');
+      return true;
+    } catch {
+      setSyncStatus('error');
+      return false;
+    }
+  }, [writeLocal]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
-
   const setTheme = useCallback((t: Theme) => setThemeState(t), []);
 
   const updateUser = useCallback((updates: Partial<User>) => {
-    setCurrentUser((prev) => {
-      const next = { ...prev, ...updates };
-      persist(posts, next);
-      return next;
-    });
-  }, [persist, posts]);
+    setCurrentUser((prev) => ({ ...prev, ...updates }));
+    bump();
+  }, [bump]);
 
   const toggleLike = useCallback((postId: string) => {
-    setPosts((prev) => {
-      const next = prev.map((p) => p.id === postId ? { ...p, isLiked: !p.isLiked } : p);
-      persist(next, currentUser);
-      return next;
-    });
-  }, [persist, currentUser]);
+    setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, isLiked: !p.isLiked } : p)));
+    bump();
+  }, [bump]);
 
   const addPost = useCallback((
     content: string, images: string[], entryType: EntryType, title?: string
@@ -176,39 +230,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       title: title?.trim() || undefined,
       content, images,
       createdAt: new Date().toISOString(),
-      replies: [], isLiked: false, views: 0,
+      replies: [], isLiked: false,
     };
-    setPosts((prev) => {
-      const next = [newPost, ...prev];
-      persist(next, currentUser);
-      return next;
-    });
-  }, [persist, currentUser]);
+    setPosts((prev) => [newPost, ...prev]);
+    bump();
+  }, [bump]);
 
   const deletePost = useCallback((postId: string) => {
-    setPosts((prev) => {
-      const next = prev.filter((p) => p.id !== postId);
-      persist(next, currentUser);
-      return next;
-    });
-  }, [persist, currentUser]);
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    bump();
+  }, [bump]);
 
   const addReply = useCallback((postId: string, content: string) => {
     const newReply = { id: generateId(), postId, content, createdAt: new Date().toISOString() };
-    setPosts((prev) => {
-      const next = prev.map((p) => p.id === postId ? { ...p, replies: [...p.replies, newReply] } : p);
-      persist(next, currentUser);
-      return next;
-    });
-  }, [persist, currentUser]);
-
-  // ── Toast ──────────────────────────────────────────────────────────────────
-  const addToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
-    const id = generateId();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
-  }, []);
-  const removeToast = useCallback((id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
+    setPosts((prev) => prev.map((p) => (
+      p.id === postId ? { ...p, replies: [...p.replies, newReply] } : p
+    )));
+    bump();
+  }, [bump]);
 
   // ── Search / Export ────────────────────────────────────────────────────────
   const searchPosts = useCallback((query: string) => {
@@ -233,6 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       posts, currentUser, activeNav, feedTab, toasts,
       isComposeOpen, replyingToPost, theme, dbLoading, syncId,
+      syncStatus, lastSyncedAt,
       setActiveNav, setFeedTab, toggleLike, addPost, deletePost,
       addReply, openCompose, closeCompose, openReply, closeReply,
       addToast, removeToast, searchPosts, exportPost, exportAll,

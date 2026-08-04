@@ -1,15 +1,3 @@
-import { Post } from './types';
-
-export function formatCount(count: number): string {
-  if (count >= 1000000) {
-    return (count / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-  }
-  if (count >= 1000) {
-    return (count / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-  }
-  return count.toString();
-}
-
 export function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
@@ -25,10 +13,6 @@ export function formatRelativeTime(dateString: string): string {
   if (diffDays < 7) return `${diffDays}d`;
 
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-}
-
-export function getMediaPosts(posts: Post[]): Post[] {
-  return posts.filter((p) => p.images.length > 0);
 }
 
 export function generateId(): string {

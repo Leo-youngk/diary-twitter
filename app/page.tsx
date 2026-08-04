@@ -12,7 +12,6 @@ import ProfileDrawer from '@/components/layout/ProfileDrawer';
 
 export default function HomePage() {
   const { posts, feedTab, setFeedTab, currentUser } = useApp();
-  const [initialLoading, setInitialLoading] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const headerHidden = useScrollDirection();
 
@@ -21,12 +20,6 @@ export default function HomePage() {
     if (feedTab === 'diary') return posts.filter((p) => p.entryType === 'diary');
     return posts;
   }, [posts, feedTab]);
-
-  const handleTabChange = (tab: FeedTab) => {
-    setInitialLoading(true);
-    setFeedTab(tab);
-    setTimeout(() => setInitialLoading(false), 300);
-  };
 
   const tabs: { key: FeedTab; label: string }[] = [
     { key: 'all', label: '全部' },
@@ -62,11 +55,13 @@ export default function HomePage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex">
+          <div className="flex" role="tablist">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => handleTabChange(tab.key)}
+                onClick={() => setFeedTab(tab.key)}
+                role="tab"
+                aria-selected={feedTab === tab.key}
                 className={cn(
                   'flex-1 py-3 flex items-center justify-center hover:bg-white/[0.03] transition-colors',
                   feedTab === tab.key ? 'text-white font-semibold' : 'text-x-gray font-normal'
@@ -89,7 +84,7 @@ export default function HomePage() {
         {feedTab === 'article' ? (
           <SpeechList />
         ) : (
-          <FeedList posts={filteredPosts} loading={initialLoading} />
+          <FeedList posts={filteredPosts} resetKey={feedTab} />
         )}
       </div>
     </>

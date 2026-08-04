@@ -15,7 +15,7 @@ export const mockPosts: Post[] = [
     id: 'post-welcome-1',
     entryType: 'diary',
     title: '欢迎来到你的日记本',
-    content: '这是你的私人空间，像发推一样记录生活。\n\n随想：短小精悍的想法，上限 280 字。\n日记：更长的记录，最多 2000 字。\n\n所有内容只保存在你的设备上，没有人能看到。想到什么就写什么，不用在意别人的眼光。',
+    content: '这是你的私人空间，像发推一样记录生活。\n\n随想：短小精悍的想法，上限 280 字。\n日记：更长的记录，最多 2000 字。\n\n内容保存在本机，并用一串「同步码」备份到云端——在设置页复制这串码，在另一台设备上粘贴，就能把记录接着写下去。没有账号，所以请保管好它。',
     images: [],
     createdAt: '2025-05-25T10:00:00Z',
     replies: [
@@ -27,7 +27,6 @@ export const mockPosts: Post[] = [
       },
     ],
     isLiked: true,
-    views: 3,
     tags: ['入门'],
   },
   {
@@ -38,7 +37,6 @@ export const mockPosts: Post[] = [
     createdAt: '2025-05-25T09:30:00Z',
     replies: [],
     isLiked: false,
-    views: 1,
     mood: '😊',
   },
   {
@@ -49,7 +47,6 @@ export const mockPosts: Post[] = [
     createdAt: '2025-05-25T09:00:00Z',
     replies: [],
     isLiked: false,
-    views: 1,
     tags: ['功能提示'],
   },
 ];

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Post } from '@/lib/types';
 import { useApp } from '@/lib/context';
-import { formatCount, formatRelativeTime, cn } from '@/lib/utils';
+import { formatRelativeTime, cn } from '@/lib/utils';
 import { formatDateCN } from '@/lib/export';
 import Avatar from '@/components/ui/Avatar';
 
@@ -19,6 +19,16 @@ export default function PostCard({ post }: PostCardProps) {
   const [likeAnimating, setLikeAnimating] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exiting, setExiting] = useState(false);
+
+  const handleDelete = () => {
+    setShowMenu(false);
+    setConfirmDelete(false);
+    setExiting(true);
+    // Let the card fade out before it leaves the list, otherwise everything
+    // below it snaps upward.
+    setTimeout(() => { deletePost(post.id); addToast('已删除'); }, 200);
+  };
 
   const handleCopy = async () => {
     const text = post.title ? `${post.title}\n\n${post.content}` : post.content;
@@ -56,11 +66,20 @@ export default function PostCard({ post }: PostCardProps) {
     : 'bg-x-blue/20 text-x-blue';
 
   const navigateToPost = () => {
+    // The whole card is clickable, so dragging to select a passage would
+    // otherwise navigate away the moment the mouse comes up.
+    if (window.getSelection()?.toString()) return;
     router.push(`/post/${post.id}`);
   };
 
   return (
-    <article onClick={navigateToPost} className="border-b border-x-border/40 px-4 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer">
+    <article
+      onClick={navigateToPost}
+      className={cn(
+        'border-b border-x-border/40 px-4 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer',
+        exiting ? 'post-exit' : 'post-enter'
+      )}
+    >
       <div className="flex gap-3">
         {/* Avatar column */}
         <div className="shrink-0 flex flex-col items-center">
@@ -137,7 +156,7 @@ export default function PostCard({ post }: PostCardProps) {
                         <p className="text-sm font-medium mb-3">确认删除这条记录？</p>
                         <div className="flex gap-2">
                           <button
-                            onClick={(e) => { e.stopPropagation(); deletePost(post.id); addToast('已删除'); closeMenu(); }}
+                            onClick={(e) => { e.stopPropagation(); handleDelete(); }}
                             className="flex-1 py-1.5 text-sm font-bold text-white bg-x-danger hover:bg-x-danger/80 rounded-full transition-colors"
                           >
                             删除
@@ -201,11 +220,16 @@ export default function PostCard({ post }: PostCardProps) {
                   <path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.366c4.49 0 8.129 3.64 8.129 8.13 0 2.26-.9 4.42-2.51 6.01l-5.22 5.17c-.45.44-1.17.44-1.61 0l-5.22-5.17c-1.6-1.59-2.51-3.75-2.51-6.01V10zm8.005-6C7.152 4 4.751 6.41 4.751 10v.13c0 1.6.63 3.14 1.77 4.28L11.122 19l4.6-4.59c1.14-1.14 1.77-2.68 1.77-4.28V10.13c0-3.51-2.85-6.36-6.36-6.36h-4.37z" />
                 </svg>
               </div>
-              {post.replies.length > 0 && <span className="text-xs">{formatCount(post.replies.length)}</span>}
+              {post.replies.length > 0 && <span className="text-xs">{post.replies.length}</span>}
             </button>
 
             {/* Like */}
-            <button onClick={(e) => { e.stopPropagation(); handleLike(); }} className={cn('group flex items-center gap-1 transition-colors', post.isLiked ? 'text-x-danger' : 'text-x-gray hover:text-x-danger')}>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleLike(); }}
+              aria-pressed={post.isLiked}
+              aria-label={post.isLiked ? '取消收藏' : '收藏'}
+              className={cn('group flex items-center gap-1 transition-colors', post.isLiked ? 'text-x-danger' : 'text-x-gray hover:text-x-danger')}
+            >
               <div className={cn('p-2 rounded-full group-hover:bg-x-danger/10 transition-colors', likeAnimating && 'like-animation')}>
                 <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] fill-current">
                   {post.isLiked ? (

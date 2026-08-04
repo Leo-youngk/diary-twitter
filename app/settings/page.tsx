@@ -5,39 +5,14 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '@/lib/context';
 import { Theme } from '@/lib/context';
 import Avatar from '@/components/ui/Avatar';
-
-function compressImage(file: File, maxWidth: number, maxKB: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new window.Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width, height } = img;
-      if (width > maxWidth) {
-        height = Math.round(height * (maxWidth / width));
-        width = maxWidth;
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, width, height);
-      let quality = 0.85;
-      let result = canvas.toDataURL('image/jpeg', quality);
-      while (result.length > maxKB * 1024 * 1.37 && quality > 0.1) {
-        quality -= 0.1;
-        result = canvas.toDataURL('image/jpeg', quality);
-      }
-      resolve(result);
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed')); };
-    img.src = url;
-  });
-}
+import { compressImage, AVATAR_OPTS, BANNER_OPTS } from '@/lib/image';
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { currentUser, updateUser, theme, setTheme, addToast, syncId, restoreFromSyncId } = useApp();
+  const {
+    currentUser, updateUser, theme, setTheme, addToast,
+    syncId, restoreFromSyncId, syncStatus, lastSyncedAt,
+  } = useApp();
   const [restoreId, setRestoreId] = useState('');
   const [restoring, setRestoring] = useState(false);
 
@@ -73,7 +48,7 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressed = await compressImage(file, 400, 200);
+      const compressed = await compressImage(file, AVATAR_OPTS);
       updateUser({ avatar: compressed });
       addToast('头像已更新');
     } catch {
@@ -86,7 +61,7 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressed = await compressImage(file, 1200, 500);
+      const compressed = await compressImage(file, BANNER_OPTS);
       updateUser({ banner: compressed });
       addToast('背景已更新');
     } catch {
@@ -240,6 +215,32 @@ export default function SettingsPage() {
         <h2 className="font-bold text-lg mb-3">数据</h2>
         <p className="text-sm text-x-gray mb-2">数据保存在本机，并自动同步到云端。任何持有下方同步码的人都能访问这些数据，请勿分享给他人。</p>
         <p className="text-sm text-x-gray mb-4">建议定期在「我的」页面导出 Markdown 备份。</p>
+
+        <div className="border border-x-border rounded-lg p-3 mb-3 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs text-x-gray mb-1">云端同步</p>
+            <p className="text-sm">
+              {syncStatus === 'error'
+                ? '同步异常，数据已保存在本机'
+                : syncStatus === 'syncing'
+                ? '同步中…'
+                : lastSyncedAt
+                ? `上次同步 ${new Date(lastSyncedAt).toLocaleString('zh-CN')}`
+                : '尚未同步'}
+            </p>
+          </div>
+          <span
+            className={`shrink-0 w-2.5 h-2.5 rounded-full ${
+              syncStatus === 'error'
+                ? 'bg-x-danger'
+                : syncStatus === 'syncing'
+                ? 'bg-amber-500'
+                : syncStatus === 'ok'
+                ? 'bg-x-green'
+                : 'bg-x-gray'
+            }`}
+          />
+        </div>
 
         <div className="border border-x-border rounded-lg p-3 mb-3">
           <p className="text-xs text-x-gray mb-1">本设备同步码</p>

@@ -4,47 +4,12 @@ import { useState, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/lib/context';
-import { getMediaPosts, cn } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import { compressImage, AVATAR_OPTS, BANNER_OPTS } from '@/lib/image';
 import Avatar from '@/components/ui/Avatar';
 import FeedList from '@/components/feed/FeedList';
 import Button from '@/components/ui/Button';
 import { ProfileTab } from '@/lib/types';
-
-// Compress image via canvas — returns a base64 JPEG under maxKB
-function compressImage(file: File, maxWidth: number, maxKB: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new window.Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      // Scale down if wider than maxWidth
-      let { width, height } = img;
-      if (width > maxWidth) {
-        height = Math.round(height * (maxWidth / width));
-        width = maxWidth;
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, width, height);
-
-      // Try decreasing quality until under maxKB
-      let quality = 0.85;
-      let result = canvas.toDataURL('image/jpeg', quality);
-      while (result.length > maxKB * 1024 * 1.37 && quality > 0.1) {
-        quality -= 0.1;
-        result = canvas.toDataURL('image/jpeg', quality);
-      }
-      resolve(result);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Failed to load image'));
-    };
-    img.src = url;
-  });
-}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -58,8 +23,7 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      // Compress to max 400px wide, under 200KB
-      const compressed = await compressImage(file, 400, 200);
+      const compressed = await compressImage(file, AVATAR_OPTS);
       updateUser({ avatar: compressed });
       addToast('头像已更新');
     } catch {
@@ -72,8 +36,7 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      // Compress to max 1200px wide, under 500KB
-      const compressed = await compressImage(file, 1200, 500);
+      const compressed = await compressImage(file, BANNER_OPTS);
       updateUser({ banner: compressed });
       addToast('背景已更新');
     } catch {
@@ -256,7 +219,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Posts */}
-      <FeedList posts={filteredPosts} />
+      <FeedList posts={filteredPosts} resetKey={activeTab} />
     </div>
   );
 }

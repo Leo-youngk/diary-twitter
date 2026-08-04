@@ -123,7 +123,7 @@ export default function CalendarPage() {
             {selectedDate} · {selectedPosts.length} 条记录
           </div>
           {selectedPosts.length > 0 ? (
-            <FeedList posts={selectedPosts} />
+            <FeedList posts={selectedPosts} resetKey={selectedDate} />
           ) : (
             <div className="px-4 py-8 text-center text-x-gray text-sm">
               这一天没有记录

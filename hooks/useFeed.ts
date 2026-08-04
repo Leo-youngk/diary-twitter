@@ -1,35 +1,27 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Post } from '@/lib/types';
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 15;
 
-export function useFeed(allPosts: Post[]) {
-  const [displayedPosts, setDisplayedPosts] = useState<Post[]>([]);
+// `displayedPosts` is derived, not stored — so editing a post (like, reply,
+// delete) flows straight through without resetting how far the user scrolled.
+// Only a resetKey change (switching tabs) rewinds to the first page.
+export function useFeed(allPosts: Post[], resetKey: string) {
   const [page, setPage] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
     setPage(0);
-    setDisplayedPosts(allPosts.slice(0, PAGE_SIZE));
-    setHasMore(allPosts.length > PAGE_SIZE);
-  }, [allPosts]);
+  }, [resetKey]);
 
-  const loadMore = useCallback(() => {
-    if (loading || !hasMore) return;
-    setLoading(true);
-    setTimeout(() => {
-      const nextPage = page + 1;
-      const start = nextPage * PAGE_SIZE;
-      const newPosts = allPosts.slice(start, start + PAGE_SIZE);
-      setDisplayedPosts((prev) => [...prev, ...newPosts]);
-      setPage(nextPage);
-      setHasMore(start + PAGE_SIZE < allPosts.length);
-      setLoading(false);
-    }, 500);
-  }, [loading, hasMore, page, allPosts]);
+  const displayedPosts = useMemo(
+    () => allPosts.slice(0, (page + 1) * PAGE_SIZE),
+    [allPosts, page]
+  );
 
-  return { displayedPosts, loading, hasMore, loadMore };
+  const hasMore = allPosts.length > displayedPosts.length;
+  const loadMore = useCallback(() => setPage((p) => p + 1), []);
+
+  return { displayedPosts, hasMore, loadMore };
 }

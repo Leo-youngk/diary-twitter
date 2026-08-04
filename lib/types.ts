@@ -26,7 +26,6 @@ export interface Post {
   createdAt: string;
   replies: Reply[];
   isLiked: boolean;
-  views: number;
   mood?: string;
   tags?: string[];
 }

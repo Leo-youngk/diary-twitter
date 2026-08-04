@@ -281,4 +281,38 @@ select {
     from { transform: translateY(0); opacity: 1; }
     to { transform: translateY(-20px); opacity: 0; }
   }
+
+  .post-enter {
+    animation: fadeInUp 0.15s ease-out;
+  }
+
+  @keyframes fadeInUp {
+    from { transform: translateY(6px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+  }
+
+  .post-exit {
+    animation: fadeOutCollapse 0.2s ease-in forwards;
+    overflow: hidden;
+  }
+
+  @keyframes fadeOutCollapse {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(0.98); }
+  }
+}
+
+/* The default focus ring is nearly invisible on the dark theme. */
+:focus-visible {
+  outline: 2px solid rgb(var(--color-x-blue));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

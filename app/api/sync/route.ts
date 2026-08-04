@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
-const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MB
+const MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB — KV value limit is 25 MB
 const ID_PATTERN = /^[a-z0-9]{16,64}$/i;
 
 // GET /api/sync?id=xxx — fetch this device's synced data
@@ -15,13 +15,17 @@ export async function GET(request: Request) {
   const value = await env.DIARY_KV.get(`diary:${id}`);
   if (!value) return NextResponse.json({ data: null });
 
-  return new NextResponse(value, { headers: { 'Content-Type': 'application/json' } });
+  // Splice the stored payload into the envelope as a string — re-parsing a
+  // multi-megabyte body just to re-serialize it would double the work.
+  return new NextResponse(`{"data":${value}}`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 // POST /api/sync — body: { id, data }
 export async function POST(request: Request) {
   const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) {
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
     return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
   }
 

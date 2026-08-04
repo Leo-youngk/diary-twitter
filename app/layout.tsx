@@ -17,6 +17,7 @@ import ComposeModal from '@/components/post/ComposeModal';
 import ReplyModal from '@/components/post/ReplyModal';
 import ToastContainer from '@/components/common/Toast';
 import MobileComposeButton from '@/components/common/MobileComposeButton';
+import ServiceWorkerRegistrar from '@/components/common/ServiceWorkerRegistrar';
 
 export const metadata: Metadata = {
   title: '我的日记本',
@@ -56,6 +57,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN" className={`dark ${notoSansSC.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Applies the saved theme before first paint. React only learns the real
+            theme after hydration, which is a visible black flash on light/zen. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=JSON.parse(localStorage.getItem('diary-theme')||'"dark"');var c=document.documentElement.classList;c.remove('dark','light','zen');c.add(t);}catch(e){}})()`,
+          }}
+        />
+      </head>
       <body className={notoSansSC.className}>
         <AppProvider>
           <AppShell>
@@ -71,6 +81,7 @@ export default function RootLayout({
             <MobileComposeButton />
           </AppShell>
           <ToastContainer />
+          <ServiceWorkerRegistrar />
         </AppProvider>
       </body>
     </html>

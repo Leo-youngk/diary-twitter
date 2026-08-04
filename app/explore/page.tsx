@@ -72,7 +72,7 @@ export default function ExplorePage() {
           {likedPosts.length > 0 && (
             <div>
               <h2 className="text-xl font-extrabold px-4 pt-3 pb-2">收藏的记录</h2>
-              <FeedList posts={likedPosts} />
+              <FeedList posts={likedPosts} resetKey="liked" />
             </div>
           )}
 
@@ -93,7 +93,7 @@ export default function ExplorePage() {
               <p className="px-4 py-3 text-sm text-x-gray border-b border-x-border">
                 找到 {searchResults.length} 条结果
               </p>
-              <FeedList posts={searchResults} />
+              <FeedList posts={searchResults} resetKey={query} />
             </>
           ) : (
             <div className="px-4 py-12 text-center text-x-gray">

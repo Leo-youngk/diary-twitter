@@ -8,11 +8,12 @@ import { FeedSkeleton } from '@/components/common/Loading';
 
 interface FeedListProps {
   posts: Post[];
+  resetKey: string;
   loading?: boolean;
 }
 
-export default function FeedList({ posts, loading: initialLoading }: FeedListProps) {
-  const { displayedPosts, loading, hasMore, loadMore } = useFeed(posts);
+export default function FeedList({ posts, resetKey, loading: initialLoading }: FeedListProps) {
+  const { displayedPosts, hasMore, loadMore } = useFeed(posts, resetKey);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -20,16 +21,14 @@ export default function FeedList({ posts, loading: initialLoading }: FeedListPro
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading) {
-          loadMore();
-        }
+        if (entries[0].isIntersecting) loadMore();
       },
       { threshold: 0.1 }
     );
 
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [hasMore, loading, loadMore]);
+  }, [hasMore, loadMore]);
 
   if (initialLoading) {
     return <FeedSkeleton />;
@@ -42,17 +41,7 @@ export default function FeedList({ posts, loading: initialLoading }: FeedListPro
       ))}
 
       {/* Infinite scroll sentinel */}
-      {hasMore && (
-        <div ref={sentinelRef} className="py-4 text-center">
-          {loading ? (
-            <div className="flex justify-center">
-              <div className="w-6 h-6 border-2 border-x-blue border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : (
-            <div className="h-4" />
-          )}
-        </div>
-      )}
+      {hasMore && <div ref={sentinelRef} className="h-4" />}
 
       {!hasMore && displayedPosts.length > 0 && (
         <div className="py-8 text-center text-x-gray text-sm">
