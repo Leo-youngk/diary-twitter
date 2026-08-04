@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useApp } from '@/lib/context';
@@ -15,6 +15,15 @@ export default function PostDetailPage() {
   const [replyContent, setReplyContent] = useState('');
   const [likeAnimating, setLikeAnimating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const replyTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow the reply box with its content instead of scrolling text sideways.
+  useEffect(() => {
+    const el = replyTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [replyContent]);
 
   const post = posts.find((p) => p.id === params.id);
   if (!post) {
@@ -209,13 +218,13 @@ export default function PostDetailPage() {
         <div className="flex gap-3">
           <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" />
           <div className="flex-1 min-w-0">
-            <input
-              type="text"
+            <textarea
+              ref={replyTextareaRef}
               value={replyContent}
               onChange={(e) => setReplyContent(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && replyContent.trim()) handleReply(); }}
               placeholder="追加想法..."
-              className="w-full bg-transparent text-base text-white placeholder-x-gray outline-none"
+              rows={1}
+              className="w-full bg-transparent text-base text-white placeholder-x-gray outline-none resize-none overflow-y-auto max-h-[40vh] leading-6 border-b border-x-border focus:border-x-blue transition-colors"
             />
             <div className="flex justify-end mt-2">
               <button

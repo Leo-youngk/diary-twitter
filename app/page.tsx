@@ -40,14 +40,21 @@ export default function HomePage() {
           <div className="flex items-center justify-between px-4 py-3">
             <button
               onClick={() => setShowDrawer(true)}
-              className="md:hidden rounded-full focus:outline-none"
+              className="md:hidden rounded-full focus:outline-none shrink-0"
               aria-label="个人菜单"
             >
               <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" />
             </button>
-            <span className="text-x-blue md:hidden">
-              <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
-                <path d="M22.585 6.614l-5.093-1.845c-.326-.118-.695-.015-.912.254L12 11.024l-4.58-5.001c-.218-.27-.587-.372-.913-.254L1.415 6.614c-.36.13-.575.496-.515.873L3.44 19.87c.06.377.377.649.759.649h3.567c.382 0 .699-.272.759-.649l1.282-8.085L12 15.976l2.593-3.542 1.282 8.085c.06.377.377.649.759.649h3.567c.382 0 .699-.272.759-.649l2.54-12.383c.06-.377-.155-.743-.515-.873z" />
+            <h1 className="md:hidden flex-1 text-center text-base font-bold truncate px-2">
+              {currentUser.displayName}
+            </h1>
+            {/* Brand badge — paper plane, matches public/icon.svg */}
+            <span className="md:hidden shrink-0 w-8 h-8 rounded-full bg-x-blue flex items-center justify-center overflow-hidden">
+              <svg viewBox="0 0 512 512" className="w-[70%] h-[70%]">
+                <path d="M 420 108  L 88 392  L 260 274 Z" fill="#c8daea" />
+                <path d="M 260 274  L 88 392  L 188 348 Z" fill="#a9c9dd" />
+                <path d="M 420 108  L 88 172  L 260 274 Z" fill="white" />
+                <path d="M 260 274  L 420 108  L 300 248 Z" fill="#daeaf5" />
               </svg>
             </span>
             {/* Desktop: page title */}

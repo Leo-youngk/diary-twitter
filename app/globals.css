@@ -92,7 +92,8 @@ html.zen ::-webkit-scrollbar-thumb:hover { background: #a09890; }
  *     translated off-screen left can't register as scrollable area)
  */
 html {
-  height: -webkit-fill-available;
+  height: 100%;
+  overflow: hidden; /* html/body never scroll — kills the iOS rubber-band bounce for good */
   overflow-x: clip;
   /*
    * touch-action: pan-y — the only reliable way to block horizontal swipe on iOS.
@@ -104,12 +105,23 @@ html {
 }
 
 body {
-  min-height: 100vh;
-  min-height: -webkit-fill-available;
+  height: 100%;
+  overflow: hidden;
   /* Push page content below status bar */
   padding-top: env(safe-area-inset-top);
   touch-action: pan-y; /* inherited by all children unless overridden */
   overscroll-behavior-x: none; /* works on Chrome/Android, no-op on iOS but harmless */
+}
+
+/*
+ * App-shell scroll container — the single element allowed to scroll.
+ * html/body are fixed & overflow:hidden above, so there is nothing left
+ * for iOS to rubber-band; only this element (the <main> column) moves.
+ */
+[data-scroll-root] {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 /*

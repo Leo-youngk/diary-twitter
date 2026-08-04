@@ -8,6 +8,7 @@ import { useApp } from '@/lib/context';
 import { formatRelativeTime, cn } from '@/lib/utils';
 import { formatDateCN } from '@/lib/export';
 import Avatar from '@/components/ui/Avatar';
+import PostContent from '@/components/feed/PostContent';
 
 interface PostCardProps {
   post: Post;
@@ -181,10 +182,8 @@ export default function PostCard({ post }: PostCardProps) {
             <h3 className="font-bold text-lg mt-1 mb-0">{post.title}</h3>
           )}
 
-          {/* Post Content — 1.75 line-height makes long entries breathe */}
-          <p className="text-[15px] leading-[1.75] mt-1 whitespace-pre-wrap break-words">
-            {post.content}
-          </p>
+          {/* Post Content — collapses long entries; diary previews to a "read more" link */}
+          <PostContent post={post} />
 
           {/* Tags */}
           {post.tags && post.tags.length > 0 && (
@@ -212,7 +211,7 @@ export default function PostCard({ post }: PostCardProps) {
           <p className="text-[12px] text-x-gray/60 mt-3">{formatDateCN(post.createdAt)}</p>
 
           {/* Action Bar — separated by hairline from date area */}
-          <div className="flex items-center gap-1 mt-3 pt-3 border-t border-x-border/30 -ml-2">
+          <div className="flex items-center justify-between max-w-[220px] mt-3 pt-3 border-t border-x-border/30 -ml-2">
             {/* Reply */}
             <button onClick={(e) => { e.stopPropagation(); openReply(post); }} className="group flex items-center gap-1 text-x-gray hover:text-x-blue transition-colors">
               <div className="p-2 rounded-full group-hover:bg-x-blue/10 transition-colors">
@@ -237,6 +236,19 @@ export default function PostCard({ post }: PostCardProps) {
                   ) : (
                     <path d="M16.697 5.5c-1.222-.06-2.679.51-3.89 2.16l-.805 1.09-.806-1.09C9.984 6.01 8.526 5.44 7.304 5.5c-1.243.07-2.349.78-2.91 1.91-.552 1.12-.633 2.78.479 4.82 1.074 1.97 3.257 4.27 7.129 6.61 3.87-2.34 6.052-4.64 7.126-6.61 1.111-2.04 1.03-3.7.477-4.82-.561-1.13-1.666-1.84-2.908-1.91zm4.187 7.69c-1.351 2.48-4.001 5.12-8.379 7.67l-.503.3-.504-.3c-4.379-2.55-7.029-5.19-8.382-7.67-1.36-2.5-1.45-4.97-.334-6.79C3.9 4.57 5.965 3.5 8.204 3.5c1.837 0 3.136.78 3.796 1.41.66-.63 1.959-1.41 3.796-1.41 2.24 0 4.304 1.07 5.422 2.9 1.116 1.82 1.026 4.29-.334 6.79z" />
                   )}
+                </svg>
+              </div>
+            </button>
+
+            {/* Share — reuses the existing markdown export */}
+            <button
+              onClick={(e) => { e.stopPropagation(); exportPost(post); }}
+              aria-label="分享"
+              className="group flex items-center gap-1 text-x-gray hover:text-x-blue transition-colors"
+            >
+              <div className="p-2 rounded-full group-hover:bg-x-blue/10 transition-colors">
+                <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] fill-current">
+                  <path d="M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z" />
                 </svg>
               </div>
             </button>

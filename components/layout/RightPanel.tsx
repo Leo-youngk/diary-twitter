@@ -26,7 +26,7 @@ export default function RightPanel() {
 
   return (
     <aside className="hidden lg:block w-[350px] mr-6">
-      <div className="sticky top-0 h-screen overflow-y-auto pt-2 pb-20 pl-6">
+      <div className="sticky top-0 h-full overflow-y-auto pt-2 pb-20 pl-6">
         {/* Search */}
         <div className="relative mb-4">
           <div

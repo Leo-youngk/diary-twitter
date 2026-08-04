@@ -8,12 +8,17 @@ export function useScrollDirection(threshold = 10) {
   const ticking = useRef(false);
 
   useEffect(() => {
+    // The app shell scrolls inside <main data-scroll-root>, not the window —
+    // html/body are fixed to kill iOS rubber-band bounce (see globals.css).
+    const el = document.querySelector<HTMLElement>('[data-scroll-root]');
+    if (!el) return;
+
     const onScroll = () => {
       if (ticking.current) return;
       ticking.current = true;
 
       requestAnimationFrame(() => {
-        const currentY = window.scrollY;
+        const currentY = el.scrollTop;
         const diff = currentY - lastScrollY.current;
 
         if (Math.abs(diff) > threshold) {
@@ -32,8 +37,8 @@ export function useScrollDirection(threshold = 10) {
       });
     };
 
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
   }, [threshold]);
 
   return hidden;
