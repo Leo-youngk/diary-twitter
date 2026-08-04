@@ -24,6 +24,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# cloudflare / opennext
+.open-next/
+.wrangler/
+env.d.ts
+
 # ide
 .vscode/
 .idea/
@@ -49,3 +54,4 @@ start_ollama_e.bat.ps1
 
 .vercel
 .gstack/
+.claude/scheduled_tasks.lock
