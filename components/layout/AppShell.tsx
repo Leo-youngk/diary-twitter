@@ -1,13 +1,12 @@
 'use client';
 
 import { useApp } from '@/lib/context';
-import AuthGate from '@/components/auth/AuthGate';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { sessionReady, dbLoading } = useApp();
+  const { dbLoading } = useApp();
 
-  // Still checking auth — show blank (prevents flash)
-  if (!sessionReady && dbLoading) {
+  // Loading local/synced data — show blank (prevents flash of empty state)
+  if (dbLoading) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <svg className="animate-spin w-7 h-7 text-x-blue" viewBox="0 0 24 24" fill="none">
@@ -18,11 +17,5 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // No session → show auth gate
-  if (!sessionReady) {
-    return <AuthGate />;
-  }
-
-  // Has session → normal app
   return <>{children}</>;
 }

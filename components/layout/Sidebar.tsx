@@ -1,13 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/lib/context';
 import { NavItem } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import Avatar from '@/components/ui/Avatar';
-import BindEmailModal from '@/components/auth/BindEmailModal';
 
 const navItems: { key: NavItem; label: string; href: string; mobileVisible: boolean; icon: React.ReactNode }[] = [
   {
@@ -68,9 +66,8 @@ const navItems: { key: NavItem; label: string; href: string; mobileVisible: bool
 ];
 
 export default function Sidebar() {
-  const { activeNav, setActiveNav, currentUser, openCompose, isAnonymous, signOut } = useApp();
+  const { activeNav, setActiveNav, currentUser, openCompose } = useApp();
   const pathname = usePathname();
-  const [showBind, setShowBind] = useState(false);
 
   const getIsActive = (key: NavItem) => {
     if (key === 'home') return pathname === '/';
@@ -145,29 +142,6 @@ export default function Sidebar() {
               <span className="hidden xl:block text-base">设置</span>
             </Link>
 
-            {/* Sync / Sign-out button */}
-            {isAnonymous ? (
-              <button
-                onClick={() => setShowBind(true)}
-                className="flex items-center gap-4 px-3 py-3 rounded-full transition-colors hover:bg-x-hover w-fit text-amber-500"
-              >
-                <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
-                  <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
-                </svg>
-                <span className="hidden xl:block text-base">绑定账号同步</span>
-              </button>
-            ) : (
-              <button
-                onClick={signOut}
-                className="flex items-center gap-4 px-3 py-3 rounded-full transition-colors hover:bg-x-hover w-fit text-x-gray hover:text-white"
-              >
-                <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
-                  <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-                </svg>
-                <span className="hidden xl:block text-base">退出登录</span>
-              </button>
-            )}
-
             <Link
               href="/profile"
               className="flex items-center gap-3 p-3 rounded-full hover:bg-x-hover transition-colors w-full"
@@ -176,9 +150,6 @@ export default function Sidebar() {
               <div className="hidden xl:block text-left flex-1 min-w-0">
                 <p className="text-sm font-bold truncate">{currentUser.displayName}</p>
                 <p className="text-sm text-x-gray truncate">@{currentUser.username}</p>
-                {isAnonymous && (
-                  <p className="text-xs text-amber-500 truncate">未同步 · 点击绑定账号</p>
-                )}
               </div>
             </Link>
           </div>
@@ -206,8 +177,6 @@ export default function Sidebar() {
           })}
         </div>
       </nav>
-
-      {showBind && <BindEmailModal onClose={() => setShowBind(false)} />}
     </>
   );
 }

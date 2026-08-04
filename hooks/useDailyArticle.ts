@@ -40,7 +40,7 @@ export function useSpeechContent(speech: SpeechMeta | null) {
       const res = await fetch(
         `/api/daily-article?id=${s.id}&url=${encodeURIComponent(s.sourceUrl)}`
       );
-      const data = await res.json();
+      const data: { content?: string; error?: string } = await res.json();
 
       if (data.content && data.content.length > 100) {
         setContent(data.content);

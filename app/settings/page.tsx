@@ -37,7 +37,32 @@ function compressImage(file: File, maxWidth: number, maxKB: number): Promise<str
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { currentUser, updateUser, theme, setTheme, addToast } = useApp();
+  const { currentUser, updateUser, theme, setTheme, addToast, syncId, restoreFromSyncId } = useApp();
+  const [restoreId, setRestoreId] = useState('');
+  const [restoring, setRestoring] = useState(false);
+
+  const handleCopySyncId = async () => {
+    try {
+      await navigator.clipboard.writeText(syncId);
+      addToast('同步码已复制');
+    } catch {
+      addToast('复制失败', 'error');
+    }
+  };
+
+  const handleRestore = async () => {
+    const id = restoreId.trim();
+    if (!id) return;
+    setRestoring(true);
+    const ok = await restoreFromSyncId(id);
+    setRestoring(false);
+    if (ok) {
+      addToast('已恢复该设备的数据');
+      setRestoreId('');
+    } else {
+      addToast('未找到该同步码对应的数据', 'error');
+    }
+  };
   const [displayName, setDisplayName] = useState(currentUser.displayName);
   const [username, setUsername] = useState(currentUser.username);
   const [bio, setBio] = useState(currentUser.bio);
@@ -213,8 +238,41 @@ export default function SettingsPage() {
       {/* Data */}
       <div className="px-4 py-4">
         <h2 className="font-bold text-lg mb-3">数据</h2>
-        <p className="text-sm text-x-gray mb-2">所有数据通过 Supabase 加密存储在云端，登录后可在任意设备访问。</p>
-        <p className="text-sm text-x-gray">建议定期在「我的」页面导出 Markdown 备份。</p>
+        <p className="text-sm text-x-gray mb-2">数据保存在本机，并自动同步到云端。任何持有下方同步码的人都能访问这些数据，请勿分享给他人。</p>
+        <p className="text-sm text-x-gray mb-4">建议定期在「我的」页面导出 Markdown 备份。</p>
+
+        <div className="border border-x-border rounded-lg p-3 mb-3">
+          <p className="text-xs text-x-gray mb-1">本设备同步码</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-sm break-all">{syncId}</code>
+            <button
+              onClick={handleCopySyncId}
+              className="shrink-0 text-sm text-x-blue hover:underline"
+            >
+              复制
+            </button>
+          </div>
+        </div>
+
+        <div className="border border-x-border rounded-lg p-3">
+          <p className="text-xs text-x-gray mb-2">从其他设备恢复数据（输入该设备的同步码）</p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={restoreId}
+              onChange={(e) => setRestoreId(e.target.value)}
+              placeholder="粘贴同步码"
+              className="flex-1 bg-transparent border border-x-border rounded-lg px-3 py-2 text-sm outline-none focus:border-x-blue transition-colors"
+            />
+            <button
+              onClick={handleRestore}
+              disabled={restoring || !restoreId.trim()}
+              className="shrink-0 text-sm bg-x-blue hover:bg-x-blue-hover disabled:opacity-50 text-white font-bold rounded-full px-4 py-2 transition-colors"
+            >
+              {restoring ? '恢复中…' : '恢复'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

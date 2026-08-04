@@ -11,17 +11,12 @@ interface ProfileDrawerProps {
 }
 
 export default function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
-  const { currentUser, signOut, exportAll, posts, addToast } = useApp();
+  const { currentUser, exportAll, posts, addToast } = useApp();
 
   const handleExportAll = () => {
     if (posts.length === 0) { addToast('没有记录可导出', 'info'); return; }
     exportAll(posts, `全部记录_${new Date().toISOString().slice(0, 10)}.md`);
     addToast(`已导出 ${posts.length} 条记录`);
-    onClose();
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
     onClose();
   };
 
@@ -65,7 +60,10 @@ export default function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
         <div className="border-t border-x-border/50 mx-4" />
 
         {/* Navigation */}
-        <nav className="flex-1 py-3 overflow-y-auto">
+        <nav
+          className="flex-1 py-3 overflow-y-auto"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+        >
           <Link
             href="/profile"
             onClick={onClose}
@@ -98,20 +96,6 @@ export default function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
             <span className="text-[15px]">导出日记</span>
           </button>
         </nav>
-
-        <div className="border-t border-x-border/50 mx-4" />
-
-        {/* Sign out */}
-        <button
-          onClick={handleSignOut}
-          className="flex items-center gap-3 px-5 py-4 hover:bg-x-hover transition-colors text-x-danger"
-          style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
-        >
-          <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current shrink-0">
-            <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" />
-          </svg>
-          <span className="text-[15px]">退出登录</span>
-        </button>
       </div>
     </div>  /* end fixed inset-0 wrapper */
   );
