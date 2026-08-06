@@ -185,7 +185,7 @@ export default function SettingsPage() {
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full bg-transparent border border-x-border rounded-lg px-3 py-2 text-[15px] outline-none focus:border-x-blue transition-colors"
+              className="w-full bg-transparent border border-x-border rounded-lg px-3 py-2 text-base outline-none focus:border-x-blue transition-colors"
             />
           </div>
           <div>
@@ -196,7 +196,7 @@ export default function SettingsPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="flex-1 bg-transparent px-2 py-2 text-[15px] outline-none"
+                className="flex-1 bg-transparent px-2 py-2 text-base outline-none"
               />
             </div>
           </div>
@@ -206,7 +206,7 @@ export default function SettingsPage() {
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               rows={3}
-              className="w-full bg-transparent border border-x-border rounded-lg px-3 py-2 text-[15px] outline-none focus:border-x-blue transition-colors resize-none"
+              className="w-full bg-transparent border border-x-border rounded-lg px-3 py-2 text-base outline-none focus:border-x-blue transition-colors resize-none"
             />
           </div>
           <button
@@ -271,7 +271,7 @@ export default function SettingsPage() {
               value={restoreId}
               onChange={(e) => setRestoreId(e.target.value)}
               placeholder="粘贴同步码"
-              className="flex-1 bg-transparent border border-x-border rounded-lg px-3 py-2 text-sm outline-none focus:border-x-blue transition-colors"
+              className="flex-1 bg-transparent border border-x-border rounded-lg px-3 py-2 text-base outline-none focus:border-x-blue transition-colors"
             />
             <button
               onClick={handleRestore}

@@ -35,7 +35,7 @@ export default function ExplorePage() {
             placeholder="搜索你的记录..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="bg-transparent py-3 px-3 text-white placeholder-x-gray outline-none w-full text-[15px]"
+            className="bg-transparent py-3 px-3 text-white placeholder-x-gray outline-none w-full text-base"
           />
           {query && (
             <button onClick={() => setQuery('')} className="pr-4 text-x-gray hover:text-white">

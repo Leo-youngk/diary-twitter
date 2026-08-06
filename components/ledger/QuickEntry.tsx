@@ -132,13 +132,13 @@ export default function QuickEntry({ onClose, onAdd }: QuickEntryProps) {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="备注（可选）"
-            className="flex-1 bg-transparent text-[14px] text-white outline-none placeholder:text-x-gray/50"
+            className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-x-gray/50"
           />
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="bg-transparent text-xs text-x-gray/70 outline-none text-right [color-scheme:dark]"
+            className="bg-transparent text-base text-x-gray/70 outline-none text-right [color-scheme:dark]"
           />
         </div>
 
