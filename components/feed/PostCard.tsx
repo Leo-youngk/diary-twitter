@@ -171,8 +171,7 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
             </div>
           </div>
 
-          {/* Title for diary — only in full view */}
-          {!compact && post.title && (
+          {post.title && (
             <h3 className="font-bold text-lg mt-1 mb-0">{post.title}</h3>
           )}
 
@@ -190,8 +189,7 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
             </div>
           )}
 
-          {/* Images — only in full view */}
-          {!compact && post.images.length > 0 && (
+          {post.images.length > 0 && (
             <div className={cn('grid gap-0.5 mt-3 rounded-2xl overflow-hidden border border-x-border', imageGridClass, post.images.length === 3 && 'grid-rows-2')}>
               {post.images.slice(0, 4).map((img, index) => (
                 <div key={index} className={cn('relative aspect-square', post.images.length === 3 && index === 0 && 'row-span-2')}>
