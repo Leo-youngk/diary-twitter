@@ -12,9 +12,10 @@ import PostContent from '@/components/feed/PostContent';
 
 interface PostCardProps {
   post: Post;
+  compact?: boolean;
 }
 
-export default function PostCard({ post }: PostCardProps) {
+export default function PostCard({ post, compact = false }: PostCardProps) {
   const router = useRouter();
   const { toggleLike, deletePost, openReply, currentUser, exportPost, addToast } = useApp();
   const [likeAnimating, setLikeAnimating] = useState(false);
@@ -77,26 +78,19 @@ export default function PostCard({ post }: PostCardProps) {
     <article
       onClick={navigateToPost}
       className={cn(
-        'border-b border-x-border/40 px-4 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer',
+        'px-4 py-3 transition-colors cursor-pointer',
+        compact
+          ? 'rounded-2xl bg-white shadow-sm dark:bg-x-darker dark:shadow-none mb-3 mx-3 hover:shadow-md dark:hover:bg-white/[0.03]'
+          : 'border-b border-x-border/40 hover:bg-white/[0.03]',
         exiting ? 'post-exit' : 'post-enter'
       )}
     >
       <div className="flex gap-3">
-        {/* Avatar column */}
-        <div className="shrink-0 flex flex-col items-center">
-          <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="md-sm" />
-          {post.replies.length > 0 && <div className="w-0.5 flex-1 bg-x-border mt-1" />}
-        </div>
-
         <div className="flex-1 min-w-0">
-          {/* Header — reduced visual weight: lighter name, smaller time/handle */}
-          <div className="flex items-center gap-1">
-            <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
-              <span className="font-medium text-[14px] truncate">
-                {currentUser.displayName}
-              </span>
-              <span className="text-x-gray/60 text-[13px]">·</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${typeColor}`}>
+          {/* Header — tag + time + more menu */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="shrink-0 text-xs px-2.5 py-1 rounded-full font-medium bg-x-blue/15 text-x-blue">
                 {typeLabel}
               </span>
               <span className="text-x-gray/60 text-[13px]">·</span>
@@ -109,17 +103,17 @@ export default function PostCard({ post }: PostCardProps) {
               {post.mood && (
                 <>
                   <span className="text-x-gray/60 text-[13px]">·</span>
-                  <span className="text-[13px]">{post.mood}</span>
+                  <span className="text-[13px] text-x-gray/80">{post.mood}</span>
                 </>
               )}
             </div>
-            {/* More menu — further receded */}
+            {/* More menu */}
             <div className="relative shrink-0">
               <button
                 onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-                className="p-1.5 rounded-full hover:bg-x-blue/10 text-x-gray/60 hover:text-x-blue transition-colors"
+                className="p-1 rounded-full hover:bg-x-blue/10 text-x-gray/60 hover:text-x-blue transition-colors"
               >
-                <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] fill-current">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
                   <path d="M3 12c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm9 2c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm7 0c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z" />
                 </svg>
               </button>
@@ -177,16 +171,16 @@ export default function PostCard({ post }: PostCardProps) {
             </div>
           </div>
 
-          {/* Title for diary — 4px gap to content (mt-1) */}
-          {post.title && (
+          {/* Title for diary — only in full view */}
+          {!compact && post.title && (
             <h3 className="font-bold text-lg mt-1 mb-0">{post.title}</h3>
           )}
 
           {/* Post Content — collapses long entries; diary previews to a "read more" link */}
-          <PostContent post={post} />
+          <PostContent post={post} compact={compact} />
 
-          {/* Tags */}
-          {post.tags && post.tags.length > 0 && (
+          {/* Tags — only in full view */}
+          {!compact && post.tags && post.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {post.tags.map((tag) => (
                 <span key={tag} className="text-xs text-x-blue bg-x-blue/10 px-2 py-0.5 rounded-full">
@@ -196,8 +190,8 @@ export default function PostCard({ post }: PostCardProps) {
             </div>
           )}
 
-          {/* Images */}
-          {post.images.length > 0 && (
+          {/* Images — only in full view */}
+          {!compact && post.images.length > 0 && (
             <div className={cn('grid gap-0.5 mt-3 rounded-2xl overflow-hidden border border-x-border', imageGridClass, post.images.length === 3 && 'grid-rows-2')}>
               {post.images.slice(0, 4).map((img, index) => (
                 <div key={index} className={cn('relative aspect-square', post.images.length === 3 && index === 0 && 'row-span-2')}>
@@ -208,12 +202,12 @@ export default function PostCard({ post }: PostCardProps) {
           )}
 
           {/* Action Bar */}
-          <div className="flex items-center justify-between max-w-[220px] mt-0.5 -ml-2">
+          <div className="flex items-center gap-6 mt-2 -ml-1.5">
             {/* Reply */}
-            <button onClick={(e) => { e.stopPropagation(); openReply(post); }} className="group flex items-center gap-1 text-x-gray hover:text-x-blue transition-colors">
-              <div className="p-2 rounded-full group-hover:bg-x-blue/10 transition-colors">
-                <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] fill-current">
-                  <path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.366c4.49 0 8.129 3.64 8.129 8.13 0 2.26-.9 4.42-2.51 6.01l-5.22 5.17c-.45.44-1.17.44-1.61 0l-5.22-5.17c-1.6-1.59-2.51-3.75-2.51-6.01V10zm8.005-6C7.152 4 4.751 6.41 4.751 10v.13c0 1.6.63 3.14 1.77 4.28L11.122 19l4.6-4.59c1.14-1.14 1.77-2.68 1.77-4.28V10.13c0-3.51-2.85-6.36-6.36-6.36h-4.37z" />
+            <button onClick={(e) => { e.stopPropagation(); openReply(post); }} className="group flex items-center gap-1 text-x-gray/70 hover:text-x-blue transition-colors">
+              <div className="p-1.5 rounded-full group-hover:bg-x-blue/10 transition-colors">
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                 </svg>
               </div>
               {post.replies.length > 0 && <span className="text-xs">{post.replies.length}</span>}
@@ -224,15 +218,11 @@ export default function PostCard({ post }: PostCardProps) {
               onClick={(e) => { e.stopPropagation(); handleLike(); }}
               aria-pressed={post.isLiked}
               aria-label={post.isLiked ? '取消收藏' : '收藏'}
-              className={cn('group flex items-center gap-1 transition-colors', post.isLiked ? 'text-x-danger' : 'text-x-gray hover:text-x-danger')}
+              className={cn('group flex items-center gap-1 transition-colors', post.isLiked ? 'text-x-danger' : 'text-x-gray/70 hover:text-x-danger')}
             >
-              <div className={cn('p-2 rounded-full group-hover:bg-x-danger/10 transition-colors', likeAnimating && 'like-animation')}>
-                <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] fill-current">
-                  {post.isLiked ? (
-                    <path d="M20.884 13.19c-1.351 2.48-4.001 5.12-8.379 7.67l-.503.3-.504-.3c-4.379-2.55-7.029-5.19-8.382-7.67-1.36-2.5-1.45-4.97-.334-6.79C3.9 4.57 5.965 3.5 8.204 3.5c1.837 0 3.136.78 3.796 1.41.66-.63 1.959-1.41 3.796-1.41 2.24 0 4.304 1.07 5.422 2.9 1.116 1.82 1.026 4.29-.334 6.79z" />
-                  ) : (
-                    <path d="M16.697 5.5c-1.222-.06-2.679.51-3.89 2.16l-.805 1.09-.806-1.09C9.984 6.01 8.526 5.44 7.304 5.5c-1.243.07-2.349.78-2.91 1.91-.552 1.12-.633 2.78.479 4.82 1.074 1.97 3.257 4.27 7.129 6.61 3.87-2.34 6.052-4.64 7.126-6.61 1.111-2.04 1.03-3.7.477-4.82-.561-1.13-1.666-1.84-2.908-1.91zm4.187 7.69c-1.351 2.48-4.001 5.12-8.379 7.67l-.503.3-.504-.3c-4.379-2.55-7.029-5.19-8.382-7.67-1.36-2.5-1.45-4.97-.334-6.79C3.9 4.57 5.965 3.5 8.204 3.5c1.837 0 3.136.78 3.796 1.41.66-.63 1.959-1.41 3.796-1.41 2.24 0 4.304 1.07 5.422 2.9 1.116 1.82 1.026 4.29-.334 6.79z" />
-                  )}
+              <div className={cn('p-1.5 rounded-full group-hover:bg-x-danger/10 transition-colors', likeAnimating && 'like-animation')}>
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill={post.isLiked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                 </svg>
               </div>
             </button>
@@ -241,11 +231,13 @@ export default function PostCard({ post }: PostCardProps) {
             <button
               onClick={(e) => { e.stopPropagation(); exportPost(post); }}
               aria-label="分享"
-              className="group flex items-center gap-1 text-x-gray hover:text-x-blue transition-colors"
+              className="group flex items-center gap-1 text-x-gray/70 hover:text-x-blue transition-colors"
             >
-              <div className="p-2 rounded-full group-hover:bg-x-blue/10 transition-colors">
-                <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] fill-current">
-                  <path d="M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z" />
+              <div className="p-1.5 rounded-full group-hover:bg-x-blue/10 transition-colors">
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                  <polyline points="16 6 12 2 8 6" />
+                  <line x1="12" y1="2" x2="12" y2="15" />
                 </svg>
               </div>
             </button>
@@ -253,8 +245,8 @@ export default function PostCard({ post }: PostCardProps) {
         </div>
       </div>
 
-      {/* Inline Replies — avatars aligned with main post avatar */}
-      {post.replies.length > 0 && (
+      {/* Inline Replies — avatars aligned with main post avatar; hidden in compact feed */}
+      {!compact && post.replies.length > 0 && (
         <div>
           {post.replies.map((reply, index) => (
             <div key={reply.id} onClick={navigateToPost} className="flex gap-3 py-2 hover:bg-white/[0.03] transition-colors cursor-pointer">

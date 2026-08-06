@@ -35,9 +35,9 @@ export default function FeedList({ posts, resetKey, loading: initialLoading }: F
   }
 
   return (
-    <div>
+    <div className="pt-2">
       {displayedPosts.map((post) => (
-        <PostCard key={post.id} post={post} />
+        <PostCard key={post.id} post={post} compact />
       ))}
 
       {/* Infinite scroll sentinel */}

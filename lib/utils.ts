@@ -15,6 +15,13 @@ export function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
+// YYYY-MM-DD in the device's timezone. Slicing the ISO string instead would
+// bucket anything written before 08:00 China time into the previous day.
+export function toLocalDateKey(date: string | Date): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }

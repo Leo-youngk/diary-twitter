@@ -56,13 +56,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" className={`dark ${notoSansSC.variable}`} suppressHydrationWarning>
+    <html lang="zh-CN" className={`zen ${notoSansSC.variable}`} suppressHydrationWarning>
       <head>
         {/* Applies the saved theme before first paint. React only learns the real
             theme after hydration, which is a visible black flash on light/zen. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=JSON.parse(localStorage.getItem('diary-theme')||'"dark"');var c=document.documentElement.classList;c.remove('dark','light','zen');c.add(t);}catch(e){}})()`,
+            __html: `(function(){try{var t=JSON.parse(localStorage.getItem('diary-theme')||'"zen"');var c=document.documentElement.classList;c.remove('dark','light','zen');c.add(t);}catch(e){}})()`,
+          }}
+        />
+        {/*
+          iOS Safari/WebKit ignores user-scalable=no (accessibility), so pinch
+          zoom must be blocked via gesture events. These are iOS-only events,
+          harmless elsewhere; they stop pinch zoom without affecting scrolling.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `document.addEventListener('gesturestart',function(e){e.preventDefault()});document.addEventListener('gesturechange',function(e){e.preventDefault()});document.addEventListener('gestureend',function(e){e.preventDefault()});`,
           }}
         />
       </head>
@@ -73,7 +83,7 @@ export default function RootLayout({
               <Sidebar />
               <main
                 data-scroll-root
-                className="flex-1 min-w-0 max-w-[600px] border-x border-x-border h-full overflow-y-auto pb-[calc(3rem+env(safe-area-inset-bottom))] md:pb-0"
+                className="flex-1 min-w-0 max-w-[600px] h-full overflow-y-auto pb-[var(--nav-h)] md:pb-0"
               >
                 {children}
               </main>

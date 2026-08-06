@@ -51,6 +51,21 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const DEFAULT_THEME: Theme = 'zen';
+
+// Must agree with the pre-paint script in app/layout.tsx: that script has
+// already put the right class on <html>, so starting from a different value
+// here would make the first effect overwrite it — and persist the wrong theme.
+function readStoredTheme(): Theme {
+  if (typeof window === 'undefined') return DEFAULT_THEME;
+  try {
+    const stored = localStorage.getItem('diary-theme');
+    return stored ? JSON.parse(stored) : DEFAULT_THEME;
+  } catch {
+    return DEFAULT_THEME;
+  }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [currentUser, setCurrentUser] = useState<User>(defaultUser);
@@ -59,7 +74,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [replyingToPost, setReplyingToPost] = useState<Post | null>(null);
-  const [theme, setThemeState] = useState<Theme>('dark');
+  const [theme, setThemeState] = useState<Theme>(readStoredTheme);
   const [dbLoading, setDbLoading] = useState(true);
   const [syncId, setSyncIdState] = useState('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
@@ -85,10 +100,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const removeToast = useCallback((id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
 
   // ── Theme ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    try { const t = localStorage.getItem('diary-theme'); if (t) setThemeState(JSON.parse(t)); } catch {}
-  }, []);
-
   useEffect(() => {
     const html = document.documentElement;
     html.classList.remove('dark', 'light', 'zen');

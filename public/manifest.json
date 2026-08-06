@@ -4,8 +4,8 @@
   "description": "推特风格的个人日记，随时记录想法",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#1d9bf0",
+  "background_color": "#f5f0e8",
+  "theme_color": "#f5f0e8",
   "icons": [
     {
       "src": "/icon-192.png",

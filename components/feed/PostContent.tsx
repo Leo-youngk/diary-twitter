@@ -6,9 +6,10 @@ import { cn } from '@/lib/utils';
 
 interface PostContentProps {
   post: Post;
+  compact?: boolean;
 }
 
-export default function PostContent({ post }: PostContentProps) {
+export default function PostContent({ post, compact = false }: PostContentProps) {
   const isDiary = post.entryType === 'diary';
   const textRef = useRef<HTMLParagraphElement>(null);
   const [isTruncated, setIsTruncated] = useState(false);
@@ -23,17 +24,18 @@ export default function PostContent({ post }: PostContentProps) {
 
   return (
     <div>
-      <div className={cn(isDiary && 'relative')}>
+      <div className={cn(isDiary && !compact && 'relative')}>
         <p
           ref={textRef}
           className={cn(
-            'text-[15px] leading-[1.75] mt-1 whitespace-pre-wrap break-words',
+            'text-[15px] leading-[1.65] mt-1.5 whitespace-pre-wrap break-words',
             !expanded && (isDiary ? 'line-clamp-4' : 'line-clamp-6')
           )}
         >
           {post.content}
         </p>
-        {isDiary && isTruncated && (
+        {/* The fade blends into the page background, so it only works outside a card. */}
+        {!compact && isDiary && isTruncated && (
           <div className="absolute bottom-0 inset-x-0 h-10 bg-gradient-to-t from-x-dark to-transparent pointer-events-none" />
         )}
       </div>

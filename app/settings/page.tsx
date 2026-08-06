@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/lib/context';
 import { Theme } from '@/lib/context';
@@ -43,6 +43,14 @@ export default function SettingsPage() {
   const [bio, setBio] = useState(currentUser.bio);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  // Restoring from another device replaces the profile; without this the form
+  // still holds the old values and 保存 would push them back over the restore.
+  useEffect(() => {
+    setDisplayName(currentUser.displayName);
+    setUsername(currentUser.username);
+    setBio(currentUser.bio);
+  }, [currentUser.displayName, currentUser.username, currentUser.bio]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -214,7 +222,7 @@ export default function SettingsPage() {
       <div className="px-4 py-4">
         <h2 className="font-bold text-lg mb-3">数据</h2>
         <p className="text-sm text-x-gray mb-2">数据保存在本机，并自动同步到云端。任何持有下方同步码的人都能访问这些数据，请勿分享给他人。</p>
-        <p className="text-sm text-x-gray mb-4">建议定期在「我的」页面导出 Markdown 备份。</p>
+        <p className="text-sm text-x-gray mb-4">建议定期在「我的记录」页面导出 Markdown 备份。</p>
 
         <div className="border border-x-border rounded-lg p-3 mb-3 flex items-center justify-between gap-2">
           <div>

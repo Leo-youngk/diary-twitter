@@ -7,6 +7,16 @@
   --color-x-blue: 29 155 240;        /* #1d9bf0 twitter blue */
   --color-x-blue-hover: 26 140 216;  /* #1a8cd8 */
   --color-x-gray: 113 118 123;       /* #71767b */
+
+  /*
+   * Bottom-nav geometry — single source of truth for the nav bar, the scroll
+   * container's bottom padding and every floating button that sits above it.
+   * Padding the nav by the full safe-area inset leaves a dead band above the
+   * home indicator, so only the part that isn't already visual margin is kept.
+   */
+  --nav-row-h: 2.75rem;
+  --nav-pb: max(0.25rem, calc(env(safe-area-inset-bottom) - 1rem));
+  --nav-h: calc(var(--nav-row-h) + var(--nav-pb));
 }
 
 html.dark {
@@ -122,11 +132,6 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-}
-
-/* Bottom nav & floating buttons: above the home indicator */
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
 }
 
 html.dark {

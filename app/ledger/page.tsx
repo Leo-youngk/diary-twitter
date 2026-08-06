@@ -77,8 +77,9 @@ export default function LedgerPage() {
     { key: 'income', label: '收入' },
   ] as const;
 
+  // pb-20 clears the FAB only — space for the nav comes from [data-scroll-root].
   return (
-    <div className="pb-[calc(6rem+env(safe-area-inset-bottom))]">
+    <div className="pb-20">
       {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-x-dark border-b border-x-border">
         <div className="flex items-center justify-between px-4 py-3">
@@ -249,7 +250,7 @@ export default function LedgerPage() {
       {/* Mobile FAB */}
       <button
         onClick={() => setShowEntry(true)}
-        style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom) + 20px)' }}
+        style={{ bottom: 'calc(var(--nav-h) + 12px)' }}
         className={cn(
           'fixed right-4 md:hidden w-14 h-14 bg-x-blue rounded-full',
           'flex items-center justify-center shadow-2xl',

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useApp } from '@/lib/context';
-import { cn } from '@/lib/utils';
+import { cn, toLocalDateKey } from '@/lib/utils';
 import FeedList from '@/components/feed/FeedList';
 
 export default function CalendarPage() {
@@ -19,7 +19,7 @@ export default function CalendarPage() {
   const postsByDate = useMemo(() => {
     const map: Record<string, typeof posts> = {};
     posts.forEach((p) => {
-      const dateKey = p.createdAt.slice(0, 10);
+      const dateKey = toLocalDateKey(p.createdAt);
       if (!map[dateKey]) map[dateKey] = [];
       map[dateKey].push(p);
     });
@@ -33,8 +33,7 @@ export default function CalendarPage() {
   const nextMonth = () => setCurrentMonth(new Date(year, month + 1, 1));
   const goToday = () => {
     setCurrentMonth(new Date());
-    const today = new Date().toISOString().slice(0, 10);
-    setSelectedDate(today);
+    setSelectedDate(toLocalDateKey(new Date()));
   };
 
   const monthLabel = `${year}年${month + 1}月`;
@@ -83,10 +82,10 @@ export default function CalendarPage() {
             <div key={`blank-${i}`} />
           ))}
           {days.map((day) => {
-            const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const dateKey = toLocalDateKey(new Date(year, month, day));
             const dayPosts = postsByDate[dateKey] || [];
             const isSelected = selectedDate === dateKey;
-            const isToday = dateKey === new Date().toISOString().slice(0, 10);
+            const isToday = dateKey === toLocalDateKey(new Date());
             const hasThought = dayPosts.some((p) => p.entryType === 'thought');
             const hasDiary = dayPosts.some((p) => p.entryType === 'diary');
             const hasArticle = dayPosts.some((p) => p.entryType === 'article');
