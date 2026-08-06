@@ -12,6 +12,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // in — anywhere else, or past that element's edges, the touch is swallowed.
   // The scroller has to be resolved per gesture: modals and sheets live outside
   // [data-scroll-root] and scroll on their own.
+  //
+  // Separately: iOS PWAs added to the home screen still run WKWebView's native
+  // edge-swipe back/forward navigation gesture whenever there's browser
+  // history (e.g. right after navigating into a page). That gesture visually
+  // drags the whole page horizontally and CSS touch-action: pan-y cannot stop
+  // it — it's a system gesture recognizer that sits above the page's own
+  // touch handling. The only web-side mitigation is to claim touches that
+  // start within the gesture's activation zone at the screen edge before the
+  // system recognizer does, via preventDefault on touchstart.
+  const EDGE_GUARD_PX = 24;
+
   useEffect(() => {
     let scroller: HTMLElement | null = null;
     let lastTouchY = 0;
@@ -28,9 +39,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       return null;
     };
 
+    // Elements that legitimately scroll sideways (e.g. filter-chip rows) opt
+    // back in with `touch-auto`; the edge guard must not swallow their drags.
+    const findHScroller = (el: Element | null): HTMLElement | null => {
+      while (el && el !== document.body) {
+        const node = el as HTMLElement;
+        const overflowX = getComputedStyle(node).overflowX;
+        if ((overflowX === 'auto' || overflowX === 'scroll') && node.scrollWidth > node.clientWidth) {
+          return node;
+        }
+        el = node.parentElement;
+      }
+      return null;
+    };
+
     const onTouchStart = (e: TouchEvent) => {
-      lastTouchY = e.touches[0]?.clientY ?? 0;
+      const touch = e.touches[0];
+      lastTouchY = touch?.clientY ?? 0;
       scroller = findScroller(e.target as Element);
+
+      const x = touch?.clientX ?? 0;
+      const nearEdge = x < EDGE_GUARD_PX || x > window.innerWidth - EDGE_GUARD_PX;
+      if (nearEdge && !findHScroller(e.target as Element)) {
+        e.preventDefault();
+      }
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -47,7 +79,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       lastTouchY = y;
     };
 
-    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchstart', onTouchStart, { passive: false });
     document.addEventListener('touchmove', onTouchMove, { passive: false });
     return () => {
       document.removeEventListener('touchstart', onTouchStart);
