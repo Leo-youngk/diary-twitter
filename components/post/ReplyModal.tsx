@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import TextareaAutosize from 'react-textarea-autosize';
 import { useApp } from '@/lib/context';
 import { formatRelativeTime } from '@/lib/utils';
 import Avatar from '@/components/ui/Avatar';
@@ -61,11 +62,21 @@ export default function ReplyModal() {
         <div className="flex gap-3 px-4 pb-4">
           <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="md" />
           <div className="flex-1 min-w-0">
-            <textarea
+            <TextareaAutosize
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => {
+                const el = e.target;
+                setContent(el.value);
+                // Voice-input IMEs insert whole sentences programmatically, which
+                // doesn't trigger the browser's native "scroll caret into view" —
+                // so when the caret is at the end, force it visible ourselves.
+                if (el.selectionStart === el.value.length) {
+                  requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+                }
+              }}
               placeholder="写下你的回复..."
-              className="w-full bg-transparent text-xl text-white placeholder-x-gray outline-none resize-none min-h-[80px] leading-7"
+              minRows={3}
+              className="w-full bg-transparent text-xl text-white placeholder-x-gray outline-none resize-none max-h-[40vh] overflow-y-auto leading-7"
               autoFocus
             />
           </div>

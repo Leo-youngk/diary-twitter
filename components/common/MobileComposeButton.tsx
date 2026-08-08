@@ -10,8 +10,9 @@ export default function MobileComposeButton() {
   const hidden = useScrollDirection();
   const pathname = usePathname();
 
-  // Ledger page has its own FAB; hide the diary one there
-  if (pathname === '/ledger') return null;
+  // Ledger page has its own FAB; post detail page has its own primary action
+  // (the reply "追加" button) that this FAB otherwise overlaps on short posts.
+  if (pathname === '/ledger' || pathname?.startsWith('/post/')) return null;
 
   return (
     <button

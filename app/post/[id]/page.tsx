@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
+import TextareaAutosize from 'react-textarea-autosize';
 import { useApp } from '@/lib/context';
 import { formatRelativeTime, cn } from '@/lib/utils';
 import { formatDateCN } from '@/lib/export';
@@ -15,15 +16,6 @@ export default function PostDetailPage() {
   const [replyContent, setReplyContent] = useState('');
   const [likeAnimating, setLikeAnimating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const replyTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Grow the reply box with its content instead of scrolling text sideways.
-  useEffect(() => {
-    const el = replyTextareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }, [replyContent]);
 
   const post = posts.find((p) => p.id === params.id);
   if (!post) {
@@ -218,12 +210,20 @@ export default function PostDetailPage() {
         <div className="flex gap-3">
           <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="sm" />
           <div className="flex-1 min-w-0">
-            <textarea
-              ref={replyTextareaRef}
+            <TextareaAutosize
               value={replyContent}
-              onChange={(e) => setReplyContent(e.target.value)}
+              onChange={(e) => {
+                const el = e.target;
+                setReplyContent(el.value);
+                // Voice-input IMEs insert whole sentences programmatically, which
+                // doesn't trigger the browser's native "scroll caret into view" —
+                // so when the caret is at the end, force it visible ourselves.
+                if (el.selectionStart === el.value.length) {
+                  requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+                }
+              }}
               placeholder="追加想法..."
-              rows={1}
+              minRows={1}
               className="w-full bg-transparent text-base text-white placeholder-x-gray outline-none resize-none overflow-y-auto max-h-[40vh] leading-6 border-b border-x-border focus:border-x-blue transition-colors"
             />
             <div className="flex justify-end mt-2">

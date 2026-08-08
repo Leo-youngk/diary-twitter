@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
+import TextareaAutosize from 'react-textarea-autosize';
 import { useApp } from '@/lib/context';
 import { EntryType } from '@/lib/types';
 import { compressImage, POST_IMAGE_OPTS } from '@/lib/image';
@@ -34,7 +35,6 @@ export default function ComposeModal() {
   const [title, setTitle] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const draftLoaded = useRef(false);
   const postRef = useRef<() => void>(() => {});
 
@@ -62,14 +62,6 @@ export default function ComposeModal() {
     }, 500);
     return () => clearTimeout(timer);
   }, [content, title, entryType, isComposeOpen]);
-
-  // Grow the textarea with its content; CSS max-height turns it back into a scroller.
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }, [content, entryType, isComposeOpen]);
 
   // Esc closes, Cmd/Ctrl+Enter publishes — bound at the window so it works
   // regardless of which field has focus.
@@ -198,10 +190,18 @@ export default function ComposeModal() {
                 className="w-full bg-transparent text-lg font-bold text-white placeholder-x-gray outline-none mb-2 border-b border-x-border pb-2"
               />
             )}
-            <textarea
-              ref={textareaRef}
+            <TextareaAutosize
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => {
+                const el = e.target;
+                setContent(el.value);
+                // Voice-input IMEs insert whole sentences programmatically, which
+                // doesn't trigger the browser's native "scroll caret into view" —
+                // so when the caret is at the end, force it visible ourselves.
+                if (el.selectionStart === el.value.length) {
+                  requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+                }
+              }}
               onPaste={handlePaste}
               placeholder={entryType === 'diary' ? '写下今天的日记...' : '有什么随想？'}
               className="w-full bg-transparent text-xl text-white placeholder-x-gray outline-none resize-none min-h-[120px] max-h-[45vh] overflow-y-auto leading-7"

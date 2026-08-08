@@ -243,8 +243,8 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
         </div>
       </div>
 
-      {/* Inline Replies — avatars aligned with main post avatar; hidden in compact feed */}
-      {!compact && post.replies.length > 0 && (
+      {/* Inline Replies — avatars aligned with main post avatar */}
+      {post.replies.length > 0 && (
         <div>
           {post.replies.map((reply, index) => (
             <div key={reply.id} onClick={navigateToPost} className="flex gap-3 py-2 hover:bg-white/[0.03] transition-colors cursor-pointer">
