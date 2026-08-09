@@ -58,6 +58,13 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className={`zen ${notoSansSC.variable}`} suppressHydrationWarning>
       <head>
+        {/* Next 15's appleWebApp.capable only emits the standardised
+            `mobile-web-app-capable`, which WebKit doesn't recognise. Apple
+            requires this exact name for the status-bar-style tag below to take
+            effect; without it black-translucent only half-applies — the page
+            origin moves under the status bar but the viewport keeps its
+            shorter height, leaving a dead band at the bottom of the screen. */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
         {/* Applies the saved theme before first paint. React only learns the real
             theme after hydration, which is a visible black flash on light/zen. */}
         <script
