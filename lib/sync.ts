@@ -32,6 +32,7 @@ export function setLocalUpdatedAt(updatedAt: string) {
 export interface SyncPayload {
   posts: unknown;
   user: unknown;
+  ledger?: unknown;
   updatedAt: string;
 }
 

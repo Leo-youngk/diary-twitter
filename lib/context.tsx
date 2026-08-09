@@ -8,6 +8,7 @@ import { Post, User, ToastMessage, NavItem, FeedTab, EntryType } from '@/lib/typ
 import { currentUser as defaultUser, mockPosts } from '@/lib/mockData';
 import { generateId } from '@/lib/utils';
 import { exportPostAsMarkdown, exportPostsAsMarkdown } from '@/lib/export';
+import { Transaction, loadTransactions, saveTransactions } from '@/lib/ledger';
 import {
   getSyncId, setSyncId, pullSync, pushSync,
   getLocalUpdatedAt, setLocalUpdatedAt, reconcile,
@@ -47,6 +48,7 @@ interface AppContextType {
   setTheme: (theme: Theme) => void;
   updateUser: (updates: Partial<User>) => void;
   restoreFromSyncId: (id: string) => Promise<boolean>;
+  notifyLedgerChange: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -129,7 +131,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (pushTimer.current) clearTimeout(pushTimer.current);
     setSyncStatus('syncing');
     pushTimer.current = setTimeout(async () => {
-      const ok = await pushSync(id, { posts: nextPosts, user: nextUser, updatedAt });
+      // Ledger is a separate, isolated module with its own localStorage key and
+      // its own writer (app/ledger/page.tsx) — read the freshest copy off disk
+      // here rather than threading it through every caller of schedulePush.
+      const ledger = loadTransactions();
+      const ok = await pushSync(id, { posts: nextPosts, user: nextUser, ledger, updatedAt });
       setSyncStatus(ok ? 'ok' : 'error');
       if (ok) {
         setLastSyncedAt(updatedAt);
@@ -170,9 +176,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
         const decision = reconcile(getLocalUpdatedAt(), remote);
         if (decision.action === 'adopt-remote') {
-          const { posts: rp, user: ru, updatedAt } = decision.payload;
+          const { posts: rp, user: ru, ledger: rl, updatedAt } = decision.payload;
           setPosts(rp as Post[]);
           setCurrentUser(ru as User);
+          if (Array.isArray(rl)) saveTransactions(rl as Transaction[]);
           // Keep the remote timestamp, so the next boot reconciles to 'none'.
           writeLocal(rp as Post[], ru as User, updatedAt);
           setLastSyncedAt(updatedAt);
@@ -210,6 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSyncIdState(id);
       setPosts(remote.posts as Post[]);
       setCurrentUser(remote.user as User);
+      if (Array.isArray(remote.ledger)) saveTransactions(remote.ledger as Transaction[]);
       writeLocal(remote.posts as Post[], remote.user as User, remote.updatedAt);
       setLastSyncedAt(remote.updatedAt);
       setSyncStatus('ok');
@@ -219,6 +227,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return false;
     }
   }, [writeLocal]);
+
+  // Ledger keeps its own localStorage key and writes itself; this just piggybacks
+  // on the same push cycle (and shared updatedAt) so its changes reach the cloud.
+  const notifyLedgerChange = useCallback(() => {
+    const updatedAt = new Date().toISOString();
+    setLocalUpdatedAt(updatedAt);
+    schedulePush(posts, currentUser, updatedAt);
+  }, [posts, currentUser, schedulePush]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const setTheme = useCallback((t: Theme) => setThemeState(t), []);
@@ -287,7 +303,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActiveNav, setFeedTab, toggleLike, addPost, deletePost,
       addReply, openCompose, closeCompose, openReply, closeReply,
       addToast, removeToast, searchPosts, exportPost, exportAll,
-      setTheme, updateUser, restoreFromSyncId,
+      setTheme, updateUser, restoreFromSyncId, notifyLedgerChange,
     }}>
       {children}
     </AppContext.Provider>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useScrollDirection } from '@/hooks/useScrollDirection';
+import { useApp } from '@/lib/context';
 import {
   Transaction, loadTransactions, saveTransactions, generateTxId,
   getMonthStats, getCategoryEmoji, formatLedgerDate, fmtAmt, todayLocal,
@@ -10,6 +11,7 @@ import { cn } from '@/lib/utils';
 import QuickEntry from '@/components/ledger/QuickEntry';
 
 export default function LedgerPage() {
+  const { notifyLedgerChange } = useApp();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [filter, setFilter] = useState<'all' | 'expense' | 'income'>('all');
@@ -61,6 +63,7 @@ export default function LedgerPage() {
       saveTransactions(next);
       return next;
     });
+    notifyLedgerChange();
   };
 
   const deleteTransaction = (id: string) => {
@@ -69,6 +72,7 @@ export default function LedgerPage() {
       saveTransactions(next);
       return next;
     });
+    notifyLedgerChange();
   };
 
   const tabs = [
