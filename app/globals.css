@@ -11,13 +11,13 @@
   /*
    * Bottom-nav geometry — single source of truth for the floating nav pill,
    * the scroll container's bottom padding and every floating button above it.
-   * The pill sits flush against the viewport's bottom edge — no safe-area
-   * buffer. Note that on an iOS standalone PWA the viewport can be shorter
-   * than the screen; anything placed past its bottom edge is not rendered at
-   * all, so negative offsets here are not an option.
+   * Now that the status bar is opaque (see appleWebApp in app/layout.tsx) the
+   * viewport reaches the screen's real bottom edge, so safe-area-inset-bottom
+   * finally reports the home-indicator's actual height instead of 0 — the gap
+   * clears that strip so the pill doesn't sit inside the system swipe-up zone.
    */
   --nav-row-h: 3.25rem;
-  --nav-gap: 0px;
+  --nav-gap: env(safe-area-inset-bottom);
   --nav-h: calc(var(--nav-row-h) + var(--nav-gap));
 
   /* Nav pill surface. x-dark/x-hover are bare hex vars with no alpha variants,
