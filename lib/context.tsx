@@ -55,6 +55,14 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const DEFAULT_THEME: Theme = 'zen';
 
+// iOS paints the standalone PWA's status bar with theme-color. Keep in step
+// with the pre-paint script in app/layout.tsx.
+const THEME_COLOR: Record<Theme, string> = {
+  dark: '#000000',
+  light: '#ffffff',
+  zen: '#f5f0e8',
+};
+
 // Must agree with the pre-paint script in app/layout.tsx: that script has
 // already put the right class on <html>, so starting from a different value
 // here would make the first effect overwrite it — and persist the wrong theme.
@@ -106,6 +114,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const html = document.documentElement;
     html.classList.remove('dark', 'light', 'zen');
     html.classList.add(theme);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', THEME_COLOR[theme]);
     try { localStorage.setItem('diary-theme', JSON.stringify(theme)); } catch {}
   }, [theme]);
 

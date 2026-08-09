@@ -1,6 +1,6 @@
 // Bump this on every deploy that changes cached assets — the activate handler
 // deletes every cache that doesn't match, which is what prevents stale bundles.
-const VERSION = 'diary-v9';
+const VERSION = 'diary-v10';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 

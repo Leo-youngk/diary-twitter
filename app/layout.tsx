@@ -32,7 +32,12 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    // Not black-translucent: iOS then gives the page a viewport 47pt shorter
+    // than the screen and pins it to the top, so the bottom 47pt is neither
+    // part of the page nor paintable — that's the blank band under the nav.
+    // An opaque status bar puts the same 47pt where iOS already draws the
+    // clock, and the viewport reaches the real bottom edge.
+    statusBarStyle: 'default',
     title: '日记本',
   },
 };
@@ -44,10 +49,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',   // ← critical for iOS full-screen PWA
-  themeColor: [
-    { media: '(prefers-color-scheme: dark)', color: '#000000' },
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-  ],
+  // iOS paints the now-opaque status bar with this, so it has to track the
+  // in-app theme rather than the OS colour scheme; the scripts below keep it
+  // in sync. This is the default (zen) value.
+  themeColor: '#f5f0e8',
 };
 
 export default function RootLayout({
@@ -69,7 +74,7 @@ export default function RootLayout({
             theme after hydration, which is a visible black flash on light/zen. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=JSON.parse(localStorage.getItem('diary-theme')||'"zen"');var c=document.documentElement.classList;c.remove('dark','light','zen');c.add(t);}catch(e){}})()`,
+            __html: `(function(){try{var t=JSON.parse(localStorage.getItem('diary-theme')||'"zen"');var c=document.documentElement.classList;c.remove('dark','light','zen');c.add(t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',{dark:'#000000',light:'#ffffff',zen:'#f5f0e8'}[t]||'#f5f0e8');}catch(e){}})()`,
           }}
         />
         {/*
