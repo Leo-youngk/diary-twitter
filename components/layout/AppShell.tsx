@@ -23,31 +23,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // system recognizer does, via preventDefault on touchstart.
   const EDGE_GUARD_PX = 24;
 
-  // See --vp-deficit in globals.css: iOS hands a standalone PWA a layout
-  // viewport shorter than the screen, so bottom-anchored chrome stops short of
-  // the real bottom edge. Publish the shortfall so the nav geometry can undo it.
-  useEffect(() => {
-    const sync = () => {
-      const standalone = (window.navigator as unknown as { standalone?: boolean }).standalone;
-      const shortfall = window.screen.height - window.innerHeight;
-      // screen.height doesn't rotate on iOS, and the keyboard shrinks the
-      // viewport too — both produce shortfalls far larger than a status bar.
-      const isStatusBarShortfall =
-        standalone === true &&
-        window.innerHeight > window.innerWidth &&
-        shortfall > 0 &&
-        shortfall <= 80;
-      document.documentElement.style.setProperty(
-        '--vp-deficit',
-        isStatusBarShortfall ? `${shortfall}px` : '0px'
-      );
-    };
-
-    sync();
-    window.addEventListener('resize', sync);
-    return () => window.removeEventListener('resize', sync);
-  }, []);
-
   useEffect(() => {
     let scroller: HTMLElement | null = null;
     let lastTouchY = 0;

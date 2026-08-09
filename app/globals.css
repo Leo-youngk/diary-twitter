@@ -9,21 +9,15 @@
   --color-x-gray: 113 118 123;       /* #71767b */
 
   /*
-   * How far the layout viewport falls short of the physical screen. In an iOS
-   * standalone PWA with a black-translucent status bar the page origin moves to
-   * the top of the screen but the viewport keeps its screen-minus-status-bar
-   * height, so bottom:0 lands ~47pt above the real bottom edge. AppShell
-   * measures it; everywhere else it stays 0.
-   */
-  --vp-deficit: 0px;
-
-  /*
    * Bottom-nav geometry — single source of truth for the floating nav pill,
    * the scroll container's bottom padding and every floating button above it.
-   * The pill sits flush against the physical screen edge — no safe-area buffer.
+   * The pill sits flush against the viewport's bottom edge — no safe-area
+   * buffer. Note that on an iOS standalone PWA the viewport can be shorter
+   * than the screen; anything placed past its bottom edge is not rendered at
+   * all, so negative offsets here are not an option.
    */
   --nav-row-h: 3.25rem;
-  --nav-gap: calc(-1 * var(--vp-deficit));
+  --nav-gap: 0px;
   --nav-h: calc(var(--nav-row-h) + var(--nav-gap));
 
   /* Nav pill surface. x-dark/x-hover are bare hex vars with no alpha variants,
