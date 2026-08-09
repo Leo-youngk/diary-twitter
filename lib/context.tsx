@@ -24,6 +24,7 @@ interface AppContextType {
   feedTab: FeedTab;
   toasts: ToastMessage[];
   isComposeOpen: boolean;
+  editingPost: Post | null;
   replyingToPost: Post | null;
   theme: Theme;
   dbLoading: boolean;
@@ -34,10 +35,12 @@ interface AppContextType {
   setFeedTab: (tab: FeedTab) => void;
   toggleLike: (postId: string) => void;
   addPost: (content: string, images: string[], entryType: EntryType, title?: string) => void;
+  updatePost: (postId: string, content: string, images: string[], entryType: EntryType, title?: string) => void;
   deletePost: (postId: string) => void;
   addReply: (postId: string, content: string) => void;
   openCompose: () => void;
   closeCompose: () => void;
+  openEdit: (post: Post) => void;
   openReply: (post: Post) => void;
   closeReply: () => void;
   addToast: (message: string, type?: ToastMessage['type']) => void;
@@ -83,6 +86,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [feedTab, setFeedTab] = useState<FeedTab>('all');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [replyingToPost, setReplyingToPost] = useState<Post | null>(null);
   const [theme, setThemeState] = useState<Theme>(readStoredTheme);
   const [dbLoading, setDbLoading] = useState(true);
@@ -274,6 +278,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     bump();
   }, [bump]);
 
+  const updatePost = useCallback((
+    postId: string, content: string, images: string[], entryType: EntryType, title?: string
+  ) => {
+    setPosts((prev) => prev.map((p) => (
+      p.id === postId ? { ...p, content, images, entryType, title: title?.trim() || undefined } : p
+    )));
+    bump();
+  }, [bump]);
+
   const deletePost = useCallback((postId: string) => {
     setPosts((prev) => prev.filter((p) => p.id !== postId));
     bump();
@@ -302,17 +315,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Compose / Reply ────────────────────────────────────────────────────────
   const openCompose = useCallback(() => setIsComposeOpen(true), []);
-  const closeCompose = useCallback(() => setIsComposeOpen(false), []);
+  const closeCompose = useCallback(() => { setIsComposeOpen(false); setEditingPost(null); }, []);
+  const openEdit = useCallback((post: Post) => { setEditingPost(post); setIsComposeOpen(true); }, []);
   const openReply = useCallback((post: Post) => setReplyingToPost(post), []);
   const closeReply = useCallback(() => setReplyingToPost(null), []);
 
   return (
     <AppContext.Provider value={{
       posts, currentUser, activeNav, feedTab, toasts,
-      isComposeOpen, replyingToPost, theme, dbLoading, syncId,
+      isComposeOpen, editingPost, replyingToPost, theme, dbLoading, syncId,
       syncStatus, lastSyncedAt,
-      setActiveNav, setFeedTab, toggleLike, addPost, deletePost,
-      addReply, openCompose, closeCompose, openReply, closeReply,
+      setActiveNav, setFeedTab, toggleLike, addPost, updatePost, deletePost,
+      addReply, openCompose, closeCompose, openEdit, openReply, closeReply,
       addToast, removeToast, searchPosts, exportPost, exportAll,
       setTheme, updateUser, restoreFromSyncId, notifyLedgerChange,
     }}>

@@ -18,7 +18,7 @@ interface PostCardProps {
 
 export default function PostCard({ post, compact = false }: PostCardProps) {
   const router = useRouter();
-  const { toggleLike, deletePost, openReply, currentUser, exportPost, addToast } = useApp();
+  const { toggleLike, deletePost, openReply, openEdit, currentUser, exportPost, addToast } = useApp();
   const [likeAnimating, setLikeAnimating] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -125,6 +125,15 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
                   <div className="absolute right-0 top-full mt-1 bg-x-dark border border-x-border rounded-xl shadow-xl overflow-hidden z-50 min-w-[160px]">
                     {!confirmDelete ? (
                       <>
+                        {post.entryType !== 'article' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openEdit(post); setShowMenu(false); }}
+                            className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm transition-colors flex items-center gap-2"
+                          >
+                            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" /></svg>
+                            编辑
+                          </button>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); handleCopy(); }}
                           className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm transition-colors flex items-center gap-2"

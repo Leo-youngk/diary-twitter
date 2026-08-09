@@ -271,7 +271,7 @@ export default function SettingsPage() {
               value={restoreId}
               onChange={(e) => setRestoreId(e.target.value)}
               placeholder="粘贴同步码"
-              className="flex-1 bg-transparent border border-x-border rounded-lg px-3 py-2 text-base outline-none focus:border-x-blue transition-colors"
+              className="flex-1 min-w-0 bg-transparent border border-x-border rounded-lg px-3 py-2 text-base outline-none focus:border-x-blue transition-colors"
             />
             <button
               onClick={handleRestore}

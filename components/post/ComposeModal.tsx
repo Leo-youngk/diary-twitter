@@ -28,7 +28,8 @@ function loadDraft(): Draft {
 }
 
 export default function ComposeModal() {
-  const { isComposeOpen, closeCompose, currentUser, addPost, addToast } = useApp();
+  const { isComposeOpen, editingPost, closeCompose, currentUser, addPost, updatePost, addToast } = useApp();
+  const isEditing = editingPost !== null;
   const [content, setContent] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [entryType, setEntryType] = useState<EntryType>('thought');
@@ -38,30 +39,39 @@ export default function ComposeModal() {
   const draftLoaded = useRef(false);
   const postRef = useRef<() => void>(() => {});
 
-  // Load draft when modal opens
+  // Load the post being edited, or the saved draft, when the modal opens.
   useEffect(() => {
     if (isComposeOpen && !draftLoaded.current) {
-      const draft = loadDraft();
-      if (draft.content || draft.title) {
-        setContent(draft.content);
-        setTitle(draft.title);
-        setEntryType(draft.entryType);
+      if (editingPost) {
+        setContent(editingPost.content);
+        setTitle(editingPost.title ?? '');
+        setEntryType(editingPost.entryType);
+        setImages(editingPost.images);
+      } else {
+        const draft = loadDraft();
+        if (draft.content || draft.title) {
+          setContent(draft.content);
+          setTitle(draft.title);
+          setEntryType(draft.entryType);
+        }
       }
       draftLoaded.current = true;
     }
     if (!isComposeOpen) {
       draftLoaded.current = false;
     }
-  }, [isComposeOpen]);
+  }, [isComposeOpen, editingPost]);
 
-  // Auto-save draft
+  // Auto-save draft — skipped while editing an existing post, since that
+  // content already lives in the post itself and shouldn't leak into the
+  // next new-post draft.
   useEffect(() => {
-    if (!isComposeOpen) return;
+    if (!isComposeOpen || isEditing) return;
     const timer = setTimeout(() => {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ content, title, entryType }));
     }, 500);
     return () => clearTimeout(timer);
-  }, [content, title, entryType, isComposeOpen]);
+  }, [content, title, entryType, isComposeOpen, isEditing]);
 
   // Esc closes, Cmd/Ctrl+Enter publishes — bound at the window so it works
   // regardless of which field has focus.
@@ -86,13 +96,19 @@ export default function ComposeModal() {
 
   const handlePost = () => {
     if (!canPost) return;
-    addPost(content.trim(), images, entryType, entryType === 'diary' ? title : undefined);
-    addToast(entryType === 'diary' ? '日记发布成功！' : '随想发布成功！');
+    const finalTitle = entryType === 'diary' ? title : undefined;
+    if (editingPost) {
+      updatePost(editingPost.id, content.trim(), images, entryType, finalTitle);
+      addToast('已更新');
+    } else {
+      addPost(content.trim(), images, entryType, finalTitle);
+      addToast(entryType === 'diary' ? '日记发布成功！' : '随想发布成功！');
+      localStorage.removeItem(DRAFT_KEY);
+    }
     setContent('');
     setImages([]);
     setTitle('');
     setEntryType('thought');
-    localStorage.removeItem(DRAFT_KEY);
     closeCompose();
   };
 
@@ -148,6 +164,7 @@ export default function ComposeModal() {
               <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
             </svg>
           </button>
+          {isEditing && <span className="font-bold">编辑</span>}
         </div>
 
         {/* Entry Type Selector */}
@@ -278,7 +295,7 @@ export default function ComposeModal() {
                   entryType === 'diary' ? 'bg-x-green hover:bg-x-green/80' : 'bg-x-blue hover:bg-x-blue-hover'
                 }`}
               >
-                {entryType === 'diary' ? '发布日记' : '发布随想'}
+                {isEditing ? '保存' : entryType === 'diary' ? '发布日记' : '发布随想'}
               </button>
             </div>
           </div>

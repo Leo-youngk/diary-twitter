@@ -159,6 +159,11 @@ body {
  */
 [data-scroll-root] {
   overflow-y: auto;
+  /* Without this, overflow-y: auto forces overflow-x's computed value from
+     visible to auto too (CSS overflow spec), so any child that overflows
+     horizontally — e.g. a flex row missing min-w-0 — makes the whole page
+     swipeable sideways. */
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
