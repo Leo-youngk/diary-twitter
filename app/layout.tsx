@@ -18,7 +18,6 @@ import ReplyModal from '@/components/post/ReplyModal';
 import ToastContainer from '@/components/common/Toast';
 import MobileComposeButton from '@/components/common/MobileComposeButton';
 import ServiceWorkerRegistrar from '@/components/common/ServiceWorkerRegistrar';
-import DebugOverlay from '@/components/common/DebugOverlay';
 
 export const metadata: Metadata = {
   title: '我的日记本',
@@ -96,7 +95,6 @@ export default function RootLayout({
           </AppShell>
           <ToastContainer />
           <ServiceWorkerRegistrar />
-          <DebugOverlay />
         </AppProvider>
       </body>
     </html>
