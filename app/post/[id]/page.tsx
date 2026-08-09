@@ -8,6 +8,7 @@ import { useApp } from '@/lib/context';
 import { formatRelativeTime, cn } from '@/lib/utils';
 import { formatDateCN } from '@/lib/export';
 import Avatar from '@/components/ui/Avatar';
+import ImageLightbox from '@/components/common/ImageLightbox';
 
 export default function PostDetailPage() {
   const params = useParams();
@@ -16,6 +17,7 @@ export default function PostDetailPage() {
   const [replyContent, setReplyContent] = useState('');
   const [likeAnimating, setLikeAnimating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const post = posts.find((p) => p.id === params.id);
   if (!post) {
@@ -114,11 +116,15 @@ export default function PostDetailPage() {
         {post.images.length > 0 && (
           <div className={cn('grid gap-0.5 mt-4 rounded-2xl overflow-hidden border border-x-border', imageGridClass)}>
             {post.images.slice(0, 4).map((img, index) => (
-              <div key={index} className="relative aspect-video">
+              <div key={index} onClick={() => setLightboxIndex(index)} className="relative aspect-video cursor-zoom-in">
                 <Image src={img} alt={`Image ${index + 1}`} fill className="object-cover" unoptimized />
               </div>
             ))}
           </div>
+        )}
+
+        {lightboxIndex !== null && (
+          <ImageLightbox images={post.images} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
         )}
 
         {/* Metadata */}

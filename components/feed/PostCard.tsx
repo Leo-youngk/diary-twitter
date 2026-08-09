@@ -9,6 +9,7 @@ import { formatRelativeTime, cn } from '@/lib/utils';
 import { formatDateCN } from '@/lib/export';
 import Avatar from '@/components/ui/Avatar';
 import PostContent from '@/components/feed/PostContent';
+import ImageLightbox from '@/components/common/ImageLightbox';
 
 interface PostCardProps {
   post: Post;
@@ -22,6 +23,7 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const handleDelete = () => {
     setShowMenu(false);
@@ -192,7 +194,11 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
           {post.images.length > 0 && (
             <div className={cn('grid gap-0.5 mt-3 rounded-2xl overflow-hidden border border-x-border', imageGridClass, post.images.length === 3 && 'grid-rows-2')}>
               {post.images.slice(0, 4).map((img, index) => (
-                <div key={index} className={cn('relative aspect-square', post.images.length === 3 && index === 0 && 'row-span-2')}>
+                <div
+                  key={index}
+                  onClick={(e) => { e.stopPropagation(); setLightboxIndex(index); }}
+                  className={cn('relative aspect-square cursor-zoom-in', post.images.length === 3 && index === 0 && 'row-span-2')}
+                >
                   <Image src={img} alt={`Image ${index + 1}`} fill className="object-cover" unoptimized />
                 </div>
               ))}
@@ -264,6 +270,10 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
             </div>
           ))}
         </div>
+      )}
+
+      {lightboxIndex !== null && (
+        <ImageLightbox images={post.images} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
       )}
     </article>
   );
