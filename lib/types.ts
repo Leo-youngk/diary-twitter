@@ -6,6 +6,8 @@ export interface User {
   banner: string;
   bio: string;
   joinedDate: string;
+  /** ISO 'YYYY-MM-DD'. Optional — drives the calendar's life-in-weeks view. */
+  birthDate?: string;
 }
 
 export type EntryType = 'thought' | 'diary' | 'article';

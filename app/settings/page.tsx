@@ -41,6 +41,7 @@ export default function SettingsPage() {
   const [displayName, setDisplayName] = useState(currentUser.displayName);
   const [username, setUsername] = useState(currentUser.username);
   const [bio, setBio] = useState(currentUser.bio);
+  const [birthDate, setBirthDate] = useState(currentUser.birthDate || '');
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,7 +51,8 @@ export default function SettingsPage() {
     setDisplayName(currentUser.displayName);
     setUsername(currentUser.username);
     setBio(currentUser.bio);
-  }, [currentUser.displayName, currentUser.username, currentUser.bio]);
+    setBirthDate(currentUser.birthDate || '');
+  }, [currentUser.displayName, currentUser.username, currentUser.bio, currentUser.birthDate]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -83,6 +85,7 @@ export default function SettingsPage() {
       displayName: displayName.trim() || currentUser.displayName,
       username: username.trim() || currentUser.username,
       bio: bio.trim(),
+      birthDate: birthDate || undefined,
     });
     addToast('资料已保存');
   };
@@ -208,6 +211,19 @@ export default function SettingsPage() {
               rows={3}
               className="w-full bg-transparent border border-x-border rounded-lg px-3 py-2 text-base outline-none focus:border-x-blue transition-colors resize-none"
             />
+          </div>
+          <div>
+            <label className="text-sm text-x-gray block mb-1">出生日期</label>
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              max={new Date().toISOString().slice(0, 10)}
+              className="w-full bg-transparent border border-x-border rounded-lg px-3 py-2 text-base outline-none focus:border-x-blue transition-colors [color-scheme:dark]"
+            />
+            <p className="text-xs text-x-gray mt-1">
+              用于日历页的「人生周历」：按 80 岁计算，直观显示你已经度过和还剩下的周数。不填就不会显示这个视图。
+            </p>
           </div>
           <button
             onClick={handleSaveProfile}
