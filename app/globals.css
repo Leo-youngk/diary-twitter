@@ -9,14 +9,24 @@
   --color-x-gray: 113 118 123;       /* #71767b */
 
   /*
-   * Bottom-nav geometry — single source of truth for the nav bar, the scroll
-   * container's bottom padding and every floating button that sits above it.
-   * Padding the nav by the full safe-area inset leaves a dead band above the
-   * home indicator, so only the part that isn't already visual margin is kept.
+   * Bottom-nav geometry — single source of truth for the floating nav pill,
+   * the scroll container's bottom padding and every floating button above it.
+   * The pill hovers over the content, so --nav-gap is the distance from the
+   * screen edge to its underside; the full safe-area inset would push it too
+   * far up, so only the part that isn't already visual margin is kept.
    */
-  --nav-row-h: 2.75rem;
-  --nav-pb: max(0.25rem, calc(env(safe-area-inset-bottom) - 1rem));
-  --nav-h: calc(var(--nav-row-h) + var(--nav-pb));
+  --nav-row-h: 3.25rem;
+  --nav-gap: max(0.5rem, calc(env(safe-area-inset-bottom) - 0.75rem));
+  --nav-h: calc(var(--nav-row-h) + var(--nav-gap));
+
+  /* Nav pill surface. x-dark/x-hover are bare hex vars with no alpha variants,
+     and x-hover is invisible against the dark theme's black, so the
+     translucent pill carries its own per-theme values. Fallback is dark. */
+  --nav-bg: rgba(22, 24, 28, 0.72);
+  --nav-border: rgba(255, 255, 255, 0.10);
+  --nav-chip: rgba(255, 255, 255, 0.12);
+  --nav-fg-active: #ffffff;
+  --nav-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
 }
 
 html.dark {
@@ -25,6 +35,12 @@ html.dark {
   --color-x-border: #2f3336;
   --color-x-hover: #080808;
   --color-x-search: #202327;
+
+  --nav-bg: rgba(22, 24, 28, 0.72);
+  --nav-border: rgba(255, 255, 255, 0.10);
+  --nav-chip: rgba(255, 255, 255, 0.12);
+  --nav-fg-active: #ffffff;
+  --nav-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
 }
 
 html.light {
@@ -33,6 +49,12 @@ html.light {
   --color-x-border: #eff3f4;
   --color-x-hover: #f7f9f9;
   --color-x-search: #eff3f4;
+
+  --nav-bg: rgba(255, 255, 255, 0.78);
+  --nav-border: rgba(0, 0, 0, 0.08);
+  --nav-chip: rgba(0, 0, 0, 0.06);
+  --nav-fg-active: #0f1419;
+  --nav-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
 }
 
 /* ── 禅意主题 ────────────────────────────────────────────────────────────────
@@ -50,6 +72,12 @@ html.zen {
   --color-x-blue-hover: 74 122 98; /* 深苔绿 #4a7a62 */
   --color-x-gray: 138 128 112;     /* 暖灰 #8a8070 */
   color-scheme: light;
+
+  --nav-bg: rgba(245, 240, 232, 0.80);
+  --nav-border: rgba(45, 42, 36, 0.10);
+  --nav-chip: rgba(45, 42, 36, 0.08);
+  --nav-fg-active: #2d2a24;
+  --nav-shadow: 0 6px 24px rgba(90, 76, 50, 0.16);
 }
 
 html.zen body {

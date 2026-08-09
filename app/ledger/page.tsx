@@ -16,7 +16,7 @@ export default function LedgerPage() {
   const [showEntry, setShowEntry] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const fabHidden = useScrollDirection();
+  const navHidden = useScrollDirection();
 
   // Load from localStorage after mount
   useEffect(() => {
@@ -247,17 +247,15 @@ export default function LedgerPage() {
         })
       )}
 
-      {/* Mobile FAB */}
+      {/* Mobile FAB — the only way to add a transaction on mobile, so it stays
+          put and only drops down into the space the nav pill vacates. */}
       <button
         onClick={() => setShowEntry(true)}
-        style={{ bottom: 'calc(var(--nav-h) + 12px)' }}
+        style={{ bottom: navHidden ? 'calc(var(--nav-gap) + 6px)' : 'calc(var(--nav-h) + 12px)' }}
         className={cn(
           'fixed right-4 md:hidden w-14 h-14 bg-x-blue rounded-full',
           'flex items-center justify-center shadow-2xl',
           'hover:bg-x-blue-hover transition-all duration-300 z-40',
-          fabHidden
-            ? 'opacity-0 pointer-events-none translate-y-3'
-            : 'opacity-100 translate-y-0',
         )}
         aria-label="记一笔"
       >

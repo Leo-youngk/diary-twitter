@@ -3,11 +3,28 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/lib/context';
+import { useScrollDirection } from '@/hooks/useScrollDirection';
 import { NavItem } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import Avatar from '@/components/ui/Avatar';
 
-const navItems: { key: NavItem; label: string; href: string; mobileVisible: boolean; icon: React.ReactNode }[] = [
+// Outline strokes are shared by every inactive mobile tab icon.
+const strokeProps = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+};
+
+const navItems: {
+  key: NavItem;
+  label: string;
+  href: string;
+  mobileVisible: boolean;
+  icon: React.ReactNode;
+  iconOutline: React.ReactNode;
+}[] = [
   {
     key: 'home',
     label: '首页',
@@ -16,6 +33,11 @@ const navItems: { key: NavItem; label: string; href: string; mobileVisible: bool
     icon: (
       <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
         <path d="M21.591 7.146L12.52 1.157c-.316-.21-.724-.21-1.04 0l-9.071 5.99c-.26.173-.409.456-.409.757v13.183c0 .502.418.913.929.913h5.025c.511 0 .929-.41.929-.913v-7.075h3.856v7.075c0 .502.418.913.929.913h5.025c.511 0 .929-.41.929-.913V7.903c0-.3-.15-.584-.41-.757z" />
+      </svg>
+    ),
+    iconOutline: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" {...strokeProps}>
+        <path d="M3.6 10.4 12 4.4l8.4 6v9.2a.9.9 0 0 1-.9.9h-4.4v-6.4H8.9v6.4H4.5a.9.9 0 0 1-.9-.9z" />
       </svg>
     ),
   },
@@ -29,6 +51,12 @@ const navItems: { key: NavItem; label: string; href: string; mobileVisible: bool
         <path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z" />
       </svg>
     ),
+    iconOutline: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" {...strokeProps}>
+        <circle cx="10.6" cy="10.6" r="6.85" />
+        <path d="m15.6 15.6 4.8 4.8" />
+      </svg>
+    ),
   },
   {
     key: 'calendar',
@@ -38,6 +66,12 @@ const navItems: { key: NavItem; label: string; href: string; mobileVisible: bool
     icon: (
       <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
         <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z" />
+      </svg>
+    ),
+    iconOutline: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" {...strokeProps}>
+        <rect x="3.2" y="5.1" width="17.6" height="15.7" rx="2.6" />
+        <path d="M3.2 10.1h17.6M7.8 2.9v4.2M16.2 2.9v4.2" />
       </svg>
     ),
   },
@@ -51,6 +85,12 @@ const navItems: { key: NavItem; label: string; href: string; mobileVisible: bool
         <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 9h12v2H6V9zm0 4h8v2H6v-2z" />
       </svg>
     ),
+    iconOutline: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" {...strokeProps}>
+        <rect x="2.9" y="4.9" width="18.2" height="14.2" rx="2.4" />
+        <path d="M6.6 10h10.8M6.6 14h6.8" />
+      </svg>
+    ),
   },
   {
     key: 'profile',
@@ -62,12 +102,19 @@ const navItems: { key: NavItem; label: string; href: string; mobileVisible: bool
         <path d="M5.651 19h12.698c-.337-1.8-1.023-3.21-1.945-4.19C15.318 13.65 13.838 13 12 13s-3.317.65-4.404 1.81c-.922.98-1.608 2.39-1.945 4.19zm.486-5.56C7.627 11.85 9.648 11 12 11s4.373.85 5.863 2.44c1.477 1.58 2.366 3.8 2.632 6.46l.11 1.1H3.395l.11-1.1c.266-2.66 1.155-4.88 2.632-6.46zM12 4c-1.105 0-2 .9-2 2s.895 2 2 2 2-.9 2-2-.895-2-2-2zM8 6c0-2.21 1.791-4 4-4s4 1.79 4 4-1.791 4-4 4-4-1.79-4-4z" />
       </svg>
     ),
+    iconOutline: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" {...strokeProps}>
+        <circle cx="12" cy="7" r="3.6" />
+        <path d="M4.6 20.2c.9-4.2 3.6-6.6 7.4-6.6s6.5 2.4 7.4 6.6" />
+      </svg>
+    ),
   },
 ];
 
 export default function Sidebar() {
   const { activeNav, setActiveNav, currentUser, openCompose } = useApp();
   const pathname = usePathname();
+  const navHidden = useScrollDirection();
 
   const getIsActive = (key: NavItem) => {
     if (key === 'home') return pathname === '/';
@@ -76,6 +123,29 @@ export default function Sidebar() {
     if (key === 'calendar') return pathname === '/calendar';
     if (key === 'ledger') return pathname === '/ledger';
     return activeNav === key;
+  };
+
+  const mobileItems = navItems.filter((item) => item.mobileVisible);
+
+  const renderTab = (item: (typeof navItems)[number]) => {
+    const isActive = getIsActive(item.key);
+    return (
+      <Link
+        key={item.key}
+        href={item.href}
+        onClick={() => setActiveNav(item.key)}
+        aria-label={item.label}
+        aria-current={isActive ? 'page' : undefined}
+        style={isActive ? { background: 'var(--nav-chip)', color: 'var(--nav-fg-active)' } : undefined}
+        className={cn(
+          'flex items-center justify-center w-[56px] h-[38px] rounded-[13px] transition-colors',
+          '[&_svg]:w-[23px] [&_svg]:h-[23px]',
+          !isActive && 'text-x-gray'
+        )}
+      >
+        {isActive ? item.icon : item.iconOutline}
+      </Link>
+    );
   };
 
   return (
@@ -156,27 +226,38 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Mobile Bottom Navigation — only mobileVisible items */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-x-dark z-50 pb-[var(--nav-pb)] shadow-[0_-2px_12px_rgba(0,0,0,0.1)] dark:shadow-[0_-2px_12px_rgba(0,0,0,0.04)]">
-        <div className="flex justify-around items-center h-[var(--nav-row-h)]">
-          {navItems.filter((item) => item.mobileVisible).map((item) => {
-            const isActive = getIsActive(item.key);
-            return (
-              <Link
-                key={item.key}
-                href={item.href}
-                onClick={() => setActiveNav(item.key)}
-                className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 h-full px-2 rounded-xl transition-colors [&_svg]:w-5 [&_svg]:h-5',
-                  isActive ? 'text-x-blue' : 'text-x-gray'
-                )}
-              >
-                {item.icon}
-                <span className="text-[10px] leading-none">{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
+      {/* Mobile Bottom Navigation — floating pill, only mobileVisible items */}
+      <nav
+        style={{
+          bottom: 'var(--nav-gap)',
+          background: 'var(--nav-bg)',
+          borderColor: 'var(--nav-border)',
+          boxShadow: 'var(--nav-shadow)',
+          transform: navHidden ? 'translateY(calc(100% + 1.5rem))' : 'translateY(0)',
+        }}
+        className={cn(
+          'md:hidden fixed left-3 right-3 z-50 h-[var(--nav-row-h)] rounded-full border',
+          'flex justify-around items-center backdrop-blur-xl',
+          'transition-[transform,opacity] duration-300 ease-out',
+          navHidden && 'opacity-0 pointer-events-none'
+        )}
+      >
+        {mobileItems.slice(0, 2).map(renderTab)}
+
+        {/* Compose lives in the pill because the FAB only surfaces once the
+            pill scrolls away — on a short page it would never be reachable. */}
+        <button
+          onClick={openCompose}
+          aria-label="新建记录"
+          style={{ background: 'var(--nav-chip)', color: 'var(--nav-fg-active)' }}
+          className="flex items-center justify-center w-[56px] h-[38px] rounded-[13px]"
+        >
+          <svg viewBox="0 0 24 24" className="w-[23px] h-[23px]" {...strokeProps}>
+            <path d="M12 5.2v13.6M5.2 12h13.6" />
+          </svg>
+        </button>
+
+        {mobileItems.slice(2).map(renderTab)}
       </nav>
     </>
   );
