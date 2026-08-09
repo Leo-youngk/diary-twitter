@@ -15,6 +15,8 @@ export default function ServiceWorkerRegistrar() {
       window.location.reload();
     });
 
+    let onVisible: (() => void) | undefined;
+
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       // An update finished installing while this tab was closed — activate it now.
       if (reg.waiting) reg.waiting.postMessage('skip-waiting');
@@ -31,7 +33,17 @@ export default function ServiceWorkerRegistrar() {
           }
         });
       });
+
+      // An iOS PWA resumed from the app switcher restores a frozen page without
+      // issuing a navigation, so a deploy would otherwise never be noticed —
+      // re-check for a new worker every time the app comes back to the front.
+      onVisible = () => { if (document.visibilityState === 'visible') reg.update(); };
+      document.addEventListener('visibilitychange', onVisible);
     }).catch(() => {});
+
+    return () => {
+      if (onVisible) document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   return null;
