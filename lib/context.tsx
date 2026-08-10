@@ -15,7 +15,15 @@ import {
 } from '@/lib/sync';
 
 export type Theme = 'dark' | 'light' | 'zen';
+export type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
 export type SyncStatus = 'idle' | 'syncing' | 'ok' | 'error';
+
+export const FONT_SCALE: Record<FontSize, number> = {
+  small: 0.9,
+  medium: 1,
+  large: 1.15,
+  xlarge: 1.3,
+};
 
 interface AppContextType {
   posts: Post[];
@@ -27,6 +35,7 @@ interface AppContextType {
   editingPost: Post | null;
   replyingToPost: Post | null;
   theme: Theme;
+  fontSize: FontSize;
   dbLoading: boolean;
   syncId: string;
   syncStatus: SyncStatus;
@@ -49,6 +58,7 @@ interface AppContextType {
   exportPost: (post: Post) => void;
   exportAll: (posts: Post[], filename?: string) => void;
   setTheme: (theme: Theme) => void;
+  setFontSize: (size: FontSize) => void;
   updateUser: (updates: Partial<User>) => void;
   restoreFromSyncId: (id: string) => Promise<boolean>;
   notifyLedgerChange: () => void;
@@ -79,6 +89,18 @@ function readStoredTheme(): Theme {
   }
 }
 
+const DEFAULT_FONT_SIZE: FontSize = 'medium';
+
+function readStoredFontSize(): FontSize {
+  if (typeof window === 'undefined') return DEFAULT_FONT_SIZE;
+  try {
+    const stored = localStorage.getItem('diary-font-size');
+    return stored ? (JSON.parse(stored) as FontSize) : DEFAULT_FONT_SIZE;
+  } catch {
+    return DEFAULT_FONT_SIZE;
+  }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [currentUser, setCurrentUser] = useState<User>(defaultUser);
@@ -89,6 +111,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [replyingToPost, setReplyingToPost] = useState<Post | null>(null);
   const [theme, setThemeState] = useState<Theme>(readStoredTheme);
+  const [fontSize, setFontSizeState] = useState<FontSize>(readStoredFontSize);
   const [dbLoading, setDbLoading] = useState(true);
   const [syncId, setSyncIdState] = useState('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
@@ -123,6 +146,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ?.setAttribute('content', THEME_COLOR[theme]);
     try { localStorage.setItem('diary-theme', JSON.stringify(theme)); } catch {}
   }, [theme]);
+
+  // ── Font size ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    document.documentElement.style.setProperty('--font-scale', String(FONT_SCALE[fontSize]));
+    try { localStorage.setItem('diary-font-size', JSON.stringify(fontSize)); } catch {}
+  }, [fontSize]);
 
   // ── Persistence ────────────────────────────────────────────────────────────
   const writeLocal = useCallback((nextPosts: Post[], nextUser: User, updatedAt: string) => {
@@ -253,6 +282,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const setTheme = useCallback((t: Theme) => setThemeState(t), []);
+  const setFontSize = useCallback((s: FontSize) => setFontSizeState(s), []);
 
   const updateUser = useCallback((updates: Partial<User>) => {
     setCurrentUser((prev) => ({ ...prev, ...updates }));
@@ -323,12 +353,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       posts, currentUser, activeNav, feedTab, toasts,
-      isComposeOpen, editingPost, replyingToPost, theme, dbLoading, syncId,
+      isComposeOpen, editingPost, replyingToPost, theme, fontSize, dbLoading, syncId,
       syncStatus, lastSyncedAt,
       setActiveNav, setFeedTab, toggleLike, addPost, updatePost, deletePost,
       addReply, openCompose, closeCompose, openEdit, openReply, closeReply,
       addToast, removeToast, searchPosts, exportPost, exportAll,
-      setTheme, updateUser, restoreFromSyncId, notifyLedgerChange,
+      setTheme, setFontSize, updateUser, restoreFromSyncId, notifyLedgerChange,
     }}>
       {children}
     </AppContext.Provider>

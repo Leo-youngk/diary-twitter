@@ -97,7 +97,7 @@ export default function PostDetailPage() {
         )}
 
         {/* Content */}
-        <p className="text-[17px] leading-[1.9] whitespace-pre-wrap break-words">
+        <p className="text-[length:calc(17px*var(--font-scale))] leading-[1.9] whitespace-pre-wrap break-words">
           {post.content}
         </p>
 
@@ -273,7 +273,7 @@ export default function PostDetailPage() {
                   <span className="text-x-gray/60 text-[12px]">·</span>
                   <span className="text-x-gray/70 text-[12px]">{formatRelativeTime(reply.createdAt)}</span>
                 </div>
-                <p className="text-[14px] leading-[1.7] mt-1 whitespace-pre-wrap break-words">{reply.content}</p>
+                <p className="text-[length:calc(14px*var(--font-scale))] leading-[1.7] mt-1 whitespace-pre-wrap break-words">{reply.content}</p>
               </div>
             </div>
           ))}

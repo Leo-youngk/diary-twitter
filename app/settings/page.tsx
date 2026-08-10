@@ -3,14 +3,21 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/lib/context';
-import { Theme } from '@/lib/context';
+import { Theme, FontSize } from '@/lib/context';
 import Avatar from '@/components/ui/Avatar';
 import { compressImage, AVATAR_OPTS, BANNER_OPTS } from '@/lib/image';
+
+const FONT_SIZE_OPTIONS: { value: FontSize; label: string; preview: string }[] = [
+  { value: 'small', label: '小', preview: 'text-sm' },
+  { value: 'medium', label: '中', preview: 'text-base' },
+  { value: 'large', label: '大', preview: 'text-lg' },
+  { value: 'xlarge', label: '特大', preview: 'text-xl' },
+];
 
 export default function SettingsPage() {
   const router = useRouter();
   const {
-    currentUser, updateUser, theme, setTheme, addToast,
+    currentUser, updateUser, theme, setTheme, fontSize, setFontSize, addToast,
     syncId, restoreFromSyncId, syncStatus, lastSyncedAt,
   } = useApp();
   const [restoreId, setRestoreId] = useState('');
@@ -145,6 +152,28 @@ export default function SettingsPage() {
             />
             <p className="text-sm font-bold text-center">禅</p>
           </button>
+        </div>
+      </div>
+
+      {/* Font size */}
+      <div className="px-4 py-4 border-b border-x-border">
+        <h2 className="font-bold text-lg mb-3">字体大小</h2>
+        <p className="text-sm text-x-gray mb-3">调整帖子正文的显示大小，不影响界面其他部分。</p>
+        <div className="flex gap-3">
+          {FONT_SIZE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setFontSize(opt.value)}
+              className={`flex-1 py-3 px-2 rounded-xl border-2 transition-colors ${
+                fontSize === opt.value
+                  ? 'border-x-blue bg-x-blue/10'
+                  : 'border-x-border hover:border-x-gray'
+              }`}
+            >
+              <p className={`font-bold text-center ${opt.preview}`}>Aa</p>
+              <p className="text-xs text-center text-x-gray mt-1">{opt.label}</p>
+            </button>
+          ))}
         </div>
       </div>
 

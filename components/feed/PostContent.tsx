@@ -28,7 +28,7 @@ export default function PostContent({ post, compact = false }: PostContentProps)
         <p
           ref={textRef}
           className={cn(
-            'text-[15px] leading-[1.65] mt-1.5 whitespace-pre-wrap break-words',
+            'text-[length:calc(15px*var(--font-scale))] leading-[1.65] mt-1.5 whitespace-pre-wrap break-words',
             !expanded && (isDiary ? 'line-clamp-4' : 'line-clamp-6')
           )}
         >

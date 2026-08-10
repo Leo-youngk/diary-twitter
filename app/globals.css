@@ -28,6 +28,10 @@
   --nav-chip: rgba(255, 255, 255, 0.12);
   --nav-fg-active: #ffffff;
   --nav-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+
+  /* Reading font scale — multiplies every post/reply/article font-size below.
+     Set on <html> by the font-size setting in 设置页; 1 = 中 (default). */
+  --font-scale: 1;
 }
 
 html.dark {

@@ -113,7 +113,7 @@ export default function ArticleReader({ speech, onClose }: ArticleReaderProps) {
       // Detect very short "dramatic" lines (≤ 60 chars, likely a punchy quote)
       if (trimmed.length <= 60 && !trimmed.endsWith('.') && i > 0) {
         return (
-          <p key={i} className="article-para text-[17px] leading-[1.9] font-medium my-5">
+          <p key={i} className="article-para text-[length:calc(17px*var(--font-scale))] leading-[1.9] font-medium my-5">
             {trimmed}
           </p>
         );
@@ -121,7 +121,7 @@ export default function ArticleReader({ speech, onClose }: ArticleReaderProps) {
 
       // Normal paragraph
       return (
-        <p key={i} className="article-para text-[17px] leading-[1.9] my-4">
+        <p key={i} className="article-para text-[length:calc(17px*var(--font-scale))] leading-[1.9] my-4">
           {trimmed}
         </p>
       );
