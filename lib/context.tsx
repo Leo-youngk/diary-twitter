@@ -13,6 +13,7 @@ import {
   getSyncId, setSyncId, pullSync, pushSync,
   getLocalUpdatedAt, setLocalUpdatedAt, reconcile,
 } from '@/lib/sync';
+import { idbGet, idbSet } from '@/lib/idbStore';
 
 export type Theme = 'dark' | 'light' | 'zen';
 export type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
@@ -89,6 +90,46 @@ function readStoredTheme(): Theme {
   }
 }
 
+const POSTS_KEY = 'diary-posts';
+const USER_KEY = 'diary-user';
+
+// Posts (with their base64 images) live in IndexedDB, whose quota is a share
+// of free disk space rather than localStorage's small fixed cap — that's the
+// actual fix for "storage full after a few image uploads". This one-time
+// migration picks up anyone who still has data under the old localStorage
+// keys and clears them afterwards to reclaim that space.
+async function loadLocalData(): Promise<{ posts: Post[] | null; user: User | null }> {
+  try {
+    const [idbPosts, idbUser] = await Promise.all([
+      idbGet<Post[]>(POSTS_KEY),
+      idbGet<User>(USER_KEY),
+    ]);
+    if (idbPosts || idbUser) return { posts: idbPosts ?? null, user: idbUser ?? null };
+  } catch {}
+
+  let posts: Post[] | null = null;
+  let user: User | null = null;
+  try {
+    const sp = localStorage.getItem(POSTS_KEY);
+    if (sp) posts = JSON.parse(sp);
+    const su = localStorage.getItem(USER_KEY);
+    if (su) user = JSON.parse(su);
+  } catch {}
+
+  if (posts || user) {
+    try {
+      await Promise.all([
+        posts ? idbSet(POSTS_KEY, posts) : Promise.resolve(),
+        user ? idbSet(USER_KEY, user) : Promise.resolve(),
+      ]);
+      localStorage.removeItem(POSTS_KEY);
+      localStorage.removeItem(USER_KEY);
+    } catch {}
+  }
+
+  return { posts, user };
+}
+
 const DEFAULT_FONT_SIZE: FontSize = 'medium';
 
 function readStoredFontSize(): FontSize {
@@ -154,10 +195,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [fontSize]);
 
   // ── Persistence ────────────────────────────────────────────────────────────
-  const writeLocal = useCallback((nextPosts: Post[], nextUser: User, updatedAt: string) => {
+  const writeLocal = useCallback(async (nextPosts: Post[], nextUser: User, updatedAt: string) => {
     try {
-      localStorage.setItem('diary-posts', JSON.stringify(nextPosts));
-      localStorage.setItem('diary-user', JSON.stringify(nextUser));
+      await Promise.all([idbSet(POSTS_KEY, nextPosts), idbSet(USER_KEY, nextUser)]);
       setLocalUpdatedAt(updatedAt);
     } catch {
       // Almost always QuotaExceededError from base64 images. Swallowing this is
@@ -198,48 +238,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const id = getSyncId();
     setSyncIdState(id);
 
-    let localPosts: Post[] | null = null;
-    let localUser: User | null = null;
-    try {
-      const sp = localStorage.getItem('diary-posts');
-      if (sp) localPosts = JSON.parse(sp);
-      const su = localStorage.getItem('diary-user');
-      if (su) localUser = JSON.parse(su);
-    } catch {}
+    loadLocalData().then(({ posts: localPosts, user: localUser }) => {
+      if (!mounted) return;
+      setPosts(localPosts ?? mockPosts);
+      setCurrentUser(localUser ?? defaultUser);
+      // Local data is already in hand — render now and let the network catch up.
+      setDbLoading(false);
 
-    setPosts(localPosts ?? mockPosts);
-    setCurrentUser(localUser ?? defaultUser);
-    // Local data is already in hand — render now and let the network catch up.
-    setDbLoading(false);
+      if (!id) return;
 
-    if (!id) return;
-
-    setSyncStatus('syncing');
-    pullSync(id)
-      .then((remote) => {
-        if (!mounted) return;
-        const decision = reconcile(getLocalUpdatedAt(), remote);
-        if (decision.action === 'adopt-remote') {
-          const { posts: rp, user: ru, ledger: rl, updatedAt } = decision.payload;
-          setPosts(rp as Post[]);
-          setCurrentUser(ru as User);
-          if (Array.isArray(rl)) saveTransactions(rl as Transaction[]);
-          // Keep the remote timestamp, so the next boot reconciles to 'none'.
-          writeLocal(rp as Post[], ru as User, updatedAt);
-          setLastSyncedAt(updatedAt);
-          setSyncStatus('ok');
-        } else if (decision.action === 'push-local') {
-          const updatedAt = getLocalUpdatedAt() ?? new Date().toISOString();
-          schedulePush(localPosts ?? mockPosts, localUser ?? defaultUser, updatedAt);
-        } else {
-          setLastSyncedAt(getLocalUpdatedAt());
-          setSyncStatus('ok');
-        }
-      })
-      .catch((err) => {
-        console.warn('[sync] pull failed, using local data', err);
-        if (mounted) setSyncStatus('error');
-      });
+      setSyncStatus('syncing');
+      pullSync(id)
+        .then((remote) => {
+          if (!mounted) return;
+          const decision = reconcile(getLocalUpdatedAt(), remote);
+          if (decision.action === 'adopt-remote') {
+            const { posts: rp, user: ru, ledger: rl, updatedAt } = decision.payload;
+            setPosts(rp as Post[]);
+            setCurrentUser(ru as User);
+            if (Array.isArray(rl)) saveTransactions(rl as Transaction[]);
+            // Keep the remote timestamp, so the next boot reconciles to 'none'.
+            writeLocal(rp as Post[], ru as User, updatedAt);
+            setLastSyncedAt(updatedAt);
+            setSyncStatus('ok');
+          } else if (decision.action === 'push-local') {
+            const updatedAt = getLocalUpdatedAt() ?? new Date().toISOString();
+            schedulePush(localPosts ?? mockPosts, localUser ?? defaultUser, updatedAt);
+          } else {
+            setLastSyncedAt(getLocalUpdatedAt());
+            setSyncStatus('ok');
+          }
+        })
+        .catch((err) => {
+          console.warn('[sync] pull failed, using local data', err);
+          if (mounted) setSyncStatus('error');
+        });
+    });
 
     return () => { mounted = false; };
   }, [writeLocal, schedulePush]);
