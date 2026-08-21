@@ -77,6 +77,7 @@ html.zen {
   --color-x-blue-hover: 74 122 98; /* 深苔绿 #4a7a62 */
   --color-x-gray: 138 128 112;     /* 暖灰 #8a8070 */
   color-scheme: light;
+  background-color: #f5f0e8;       /* 根背景，供 iOS 状态栏采样，见 html.light 注释 */
 
   --nav-bg: rgba(245, 240, 232, 0.80);
   --nav-border: rgba(45, 42, 36, 0.10);
@@ -172,12 +173,18 @@ body {
   overscroll-behavior-y: contain;
 }
 
+/* Background must live on the <html> root, not just <body>: iOS paints the
+ * opaque status-bar strip (and any safe-area gutter) from the root box. With
+ * only <body> coloured, the root stayed transparent and the strip showed the
+ * webview's black backdrop — a black band above light/zen themes. */
 html.dark {
   color-scheme: dark;
+  background-color: #000000;
 }
 
 html.light {
   color-scheme: light;
+  background-color: #ffffff;
 }
 
 html.dark body {
