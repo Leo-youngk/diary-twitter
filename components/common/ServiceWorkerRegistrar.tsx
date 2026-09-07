@@ -6,14 +6,11 @@ export default function ServiceWorkerRegistrar() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
-    // Once the new worker takes control, the page is holding stale JS/CSS
-    // references — a one-time reload is the only way to pick up the update.
-    let reloading = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloading) return;
-      reloading = true;
-      window.location.reload();
-    });
+    // Do not reload while the user is writing. Apply the update the next time
+    // the PWA returns to the foreground, when it is safe to refresh the page.
+    let updatePending = false;
+    const onControllerChange = () => { updatePending = true; };
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
 
     let onVisible: (() => void) | undefined;
 
@@ -37,12 +34,21 @@ export default function ServiceWorkerRegistrar() {
       // An iOS PWA resumed from the app switcher restores a frozen page without
       // issuing a navigation, so a deploy would otherwise never be noticed —
       // re-check for a new worker every time the app comes back to the front.
-      onVisible = () => { if (document.visibilityState === 'visible') reg.update(); };
+      onVisible = () => {
+        if (document.visibilityState !== 'visible') return;
+        if (updatePending) {
+          updatePending = false;
+          window.location.reload();
+          return;
+        }
+        void reg.update();
+      };
       document.addEventListener('visibilitychange', onVisible);
     }).catch(() => {});
 
     return () => {
       if (onVisible) document.removeEventListener('visibilitychange', onVisible);
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
     };
   }, []);
 

@@ -22,8 +22,11 @@ export default function LedgerPage() {
 
   // Load from localStorage after mount
   useEffect(() => {
-    setTransactions(loadTransactions());
+    const reload = () => setTransactions(loadTransactions());
+    reload();
     setMounted(true);
+    window.addEventListener('diary:ledger-changed', reload);
+    return () => window.removeEventListener('diary:ledger-changed', reload);
   }, []);
 
   const year = currentDate.getFullYear();
@@ -93,7 +96,7 @@ export default function LedgerPage() {
           <div className="flex items-center gap-1">
             <button
               onClick={prevMonth}
-              className="p-1.5 rounded-full hover:bg-x-hover transition-colors text-x-gray hover:text-white"
+              className="p-1.5 rounded-full hover:bg-x-hover transition-colors text-x-gray hover:text-x-fg"
             >
               <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
                 <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
@@ -102,7 +105,7 @@ export default function LedgerPage() {
             <span className="text-sm font-semibold min-w-[80px] text-center">{monthLabel}</span>
             <button
               onClick={nextMonth}
-              className="p-1.5 rounded-full hover:bg-x-hover transition-colors text-x-gray hover:text-white"
+              className="p-1.5 rounded-full hover:bg-x-hover transition-colors text-x-gray hover:text-x-fg"
             >
               <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current rotate-180">
                 <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
@@ -151,7 +154,7 @@ export default function LedgerPage() {
             onClick={() => setFilter(tab.key)}
             className={cn(
               'flex-1 py-3 flex items-center justify-center transition-colors',
-              filter === tab.key ? 'text-white font-semibold' : 'text-x-gray font-normal',
+              filter === tab.key ? 'text-x-fg font-semibold' : 'text-x-gray font-normal',
             )}
           >
             <span className="inline-block relative">
@@ -171,7 +174,7 @@ export default function LedgerPage() {
       {!mounted ? null : grouped.length === 0 ? (
         <div className="py-20 text-center text-x-gray">
           <p className="text-4xl mb-4">💰</p>
-          <p className="font-bold text-lg mb-1 text-white/80">这个月还没有记录</p>
+          <p className="font-bold text-lg mb-1 text-x-fg/80">这个月还没有记录</p>
           <p className="text-sm">点击右下角 + 开始记账</p>
         </div>
       ) : (
@@ -228,7 +231,7 @@ export default function LedgerPage() {
                       </button>
                       <button
                         onClick={() => setConfirmDeleteId(null)}
-                        className="text-xs text-x-gray hover:text-white transition-colors"
+                        className="text-xs text-x-gray hover:text-x-fg transition-colors"
                       >
                         取消
                       </button>
@@ -263,7 +266,7 @@ export default function LedgerPage() {
         )}
         aria-label="记一笔"
       >
-        <svg viewBox="0 0 24 24" className="w-7 h-7 fill-white">
+        <svg viewBox="0 0 24 24" className="w-7 h-7 fill-x-fg">
           <path d="M11 11V3h2v8h8v2h-8v8h-2v-8H3v-2h8z" />
         </svg>
       </button>

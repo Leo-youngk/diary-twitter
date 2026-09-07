@@ -13,6 +13,8 @@ const MAX_CHARS_DIARY = 2000;
 const MAX_IMAGES = 4; // PostCard only renders the first 4
 const DRAFT_KEY = 'diary-compose-draft';
 
+const EMPTY_DRAFT: Draft = { content: '', title: '', entryType: 'thought' };
+
 interface Draft {
   content: string;
   title: string;
@@ -20,11 +22,19 @@ interface Draft {
 }
 
 function loadDraft(): Draft {
-  if (typeof window === 'undefined') return { content: '', title: '', entryType: 'thought' };
+  if (typeof window === 'undefined') return EMPTY_DRAFT;
   try {
     const stored = localStorage.getItem(DRAFT_KEY);
-    return stored ? JSON.parse(stored) : { content: '', title: '', entryType: 'thought' };
-  } catch { return { content: '', title: '', entryType: 'thought' }; }
+    if (!stored) return EMPTY_DRAFT;
+    const value: unknown = JSON.parse(stored);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return EMPTY_DRAFT;
+    const draft = value as Partial<Draft>;
+    return {
+      content: typeof draft.content === 'string' ? draft.content : '',
+      title: typeof draft.title === 'string' ? draft.title : '',
+      entryType: draft.entryType === 'diary' ? 'diary' : 'thought',
+    };
+  } catch { return EMPTY_DRAFT; }
 }
 
 export default function ComposeModal() {
@@ -35,9 +45,10 @@ export default function ComposeModal() {
   const [entryType, setEntryType] = useState<EntryType>('thought');
   const [title, setTitle] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftLoaded = useRef(false);
-  const postRef = useRef<() => void>(() => {});
+  const postRef = useRef<() => void | Promise<void>>(() => {});
 
   // Load the post being edited, or the saved draft, when the modal opens.
   useEffect(() => {
@@ -49,11 +60,10 @@ export default function ComposeModal() {
         setImages(editingPost.images);
       } else {
         const draft = loadDraft();
-        if (draft.content || draft.title) {
-          setContent(draft.content);
-          setTitle(draft.title);
-          setEntryType(draft.entryType);
-        }
+        setContent(draft.content);
+        setTitle(draft.title);
+        setEntryType(draft.entryType);
+        setImages([]);
       }
       draftLoaded.current = true;
     }
@@ -68,7 +78,7 @@ export default function ComposeModal() {
   useEffect(() => {
     if (!isComposeOpen || isEditing) return;
     const timer = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ content, title, entryType }));
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ content, title, entryType })); } catch {}
     }, 500);
     return () => clearTimeout(timer);
   }, [content, title, entryType, isComposeOpen, isEditing]);
@@ -94,26 +104,38 @@ export default function ComposeModal() {
   const isOverLimit = charCount > maxChars;
   const canPost = content.trim().length > 0 && !isOverLimit;
 
-  const handlePost = () => {
-    if (!canPost) return;
+  const handlePost = useCallback(async () => {
+    if (!canPost || saving) return;
+    setSaving(true);
     const finalTitle = entryType === 'diary' ? title : undefined;
-    if (editingPost) {
-      updatePost(editingPost.id, content.trim(), images, entryType, finalTitle);
-      addToast('已更新');
-    } else {
-      addPost(content.trim(), images, entryType, finalTitle);
-      addToast(entryType === 'diary' ? '日记发布成功！' : '随想发布成功！');
-      localStorage.removeItem(DRAFT_KEY);
+    try {
+      const saved = editingPost
+        ? await updatePost(editingPost.id, content.trim(), images, entryType, finalTitle)
+        : await addPost(content.trim(), images, entryType, finalTitle);
+      if (!saved) {
+        addToast('本机保存失败，内容已保留，请重试', 'error');
+        return;
+      }
+      if (editingPost) {
+        addToast('已更新');
+      } else {
+        addToast(entryType === 'diary' ? '日记发布成功！' : '随想发布成功！');
+        try { localStorage.removeItem(DRAFT_KEY); } catch {}
+      }
+      setContent('');
+      setImages([]);
+      setTitle('');
+      setEntryType('thought');
+      closeCompose();
+    } finally {
+      setSaving(false);
     }
-    setContent('');
-    setImages([]);
-    setTitle('');
-    setEntryType('thought');
-    closeCompose();
-  };
+  }, [addPost, addToast, canPost, closeCompose, content, editingPost, entryType, images, saving, title, updatePost]);
 
   // Keep the latest handler reachable from the window-level key listener.
-  postRef.current = handlePost;
+  useEffect(() => {
+    postRef.current = handlePost;
+  }, [handlePost]);
 
   const addImageFiles = async (files: File[]) => {
     const room = MAX_IMAGES - images.length;
@@ -160,7 +182,7 @@ export default function ComposeModal() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3">
           <button onClick={closeCompose} className="p-2 rounded-full hover:bg-x-hover transition-colors">
-            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-x-fg">
               <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
             </svg>
           </button>
@@ -175,7 +197,7 @@ export default function ComposeModal() {
               className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
                 entryType === 'thought'
                   ? 'bg-x-blue text-white'
-                  : 'bg-x-darker text-x-gray hover:text-white'
+                  : 'bg-x-darker text-x-gray hover:text-x-fg'
               }`}
             >
               随想
@@ -185,7 +207,7 @@ export default function ComposeModal() {
               className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
                 entryType === 'diary'
                   ? 'bg-x-green text-white'
-                  : 'bg-x-darker text-x-gray hover:text-white'
+                  : 'bg-x-darker text-x-gray hover:text-x-fg'
               }`}
             >
               日记
@@ -204,7 +226,7 @@ export default function ComposeModal() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="日记标题（可选）"
-                className="w-full bg-transparent text-lg font-bold text-white placeholder-x-gray outline-none mb-2 border-b border-x-border pb-2"
+                className="w-full bg-transparent text-lg font-bold text-x-fg placeholder-x-gray outline-none mb-2 border-b border-x-border pb-2"
               />
             )}
             <TextareaAutosize
@@ -221,7 +243,7 @@ export default function ComposeModal() {
               }}
               onPaste={handlePaste}
               placeholder={entryType === 'diary' ? '写下今天的日记...' : '有什么随想？'}
-              className="w-full bg-transparent text-xl text-white placeholder-x-gray outline-none resize-none min-h-[120px] max-h-[45vh] overflow-y-auto leading-7"
+              className="w-full bg-transparent text-xl text-x-fg placeholder-x-gray outline-none resize-none min-h-[120px] max-h-[45vh] overflow-y-auto leading-7"
               autoFocus
             />
 
@@ -238,7 +260,7 @@ export default function ComposeModal() {
                     <Image src={img} alt={`Upload ${index + 1}`} fill className="object-cover" unoptimized />
                     <button
                       onClick={() => removeImage(index)}
-                      className="absolute top-2 left-2 bg-x-dark/70 rounded-full p-1 hover:bg-x-dark transition-colors"
+                      className="absolute top-2 left-2 bg-black/60 rounded-full p-1 hover:bg-black/80 transition-colors"
                     >
                       <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
                         <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
@@ -287,7 +309,7 @@ export default function ComposeModal() {
               )}
               <button
                 onClick={handlePost}
-                disabled={!canPost || uploading}
+                disabled={!canPost || uploading || saving}
                 title="Ctrl/⌘ + Enter"
                 className={`font-bold rounded-full px-5 py-2 transition-colors disabled:bg-x-border disabled:text-x-gray disabled:cursor-not-allowed text-sm ${
                   canPost ? 'text-white' : ''

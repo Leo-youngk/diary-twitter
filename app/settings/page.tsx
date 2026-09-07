@@ -6,6 +6,7 @@ import { useApp } from '@/lib/context';
 import { Theme, FontSize } from '@/lib/context';
 import Avatar from '@/components/ui/Avatar';
 import { compressImage, AVATAR_OPTS, BANNER_OPTS } from '@/lib/image';
+import { parseBackup } from '@/lib/export';
 
 const FONT_SIZE_OPTIONS: { value: FontSize; label: string; preview: string }[] = [
   { value: 'small', label: '小', preview: 'text-sm' },
@@ -19,6 +20,7 @@ export default function SettingsPage() {
   const {
     currentUser, updateUser, theme, setTheme, fontSize, setFontSize, addToast,
     syncId, restoreFromSyncId, syncStatus, lastSyncedAt,
+    exportBackup, restoreBackup,
   } = useApp();
   const [restoreId, setRestoreId] = useState('');
   const [restoring, setRestoring] = useState(false);
@@ -45,12 +47,36 @@ export default function SettingsPage() {
       addToast('未找到该同步码对应的数据', 'error');
     }
   };
+
+  const handleBackupImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (backupInputRef.current) backupInputRef.current.value = '';
+    if (!file) return;
+    setRestoringBackup(true);
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      const backup = parseBackup(parsed);
+      if (!backup) {
+        addToast('备份文件格式不正确', 'error');
+        return;
+      }
+      if (!window.confirm('导入会覆盖当前本机记录、资料和账本，确定继续吗？')) return;
+      const ok = await restoreBackup(backup);
+      addToast(ok ? '完整备份已恢复' : '本机保存失败，备份未恢复', ok ? 'success' : 'error');
+    } catch {
+      addToast('无法读取备份文件', 'error');
+    } finally {
+      setRestoringBackup(false);
+    }
+  };
   const [displayName, setDisplayName] = useState(currentUser.displayName);
   const [username, setUsername] = useState(currentUser.username);
   const [bio, setBio] = useState(currentUser.bio);
   const [birthDate, setBirthDate] = useState(currentUser.birthDate || '');
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
+  const [restoringBackup, setRestoringBackup] = useState(false);
 
   // Restoring from another device replaces the profile; without this the form
   // still holds the old values and 保存 would push them back over the restore.
@@ -66,8 +92,8 @@ export default function SettingsPage() {
     if (!file) return;
     try {
       const compressed = await compressImage(file, AVATAR_OPTS);
-      updateUser({ avatar: compressed });
-      addToast('头像已更新');
+      const ok = await updateUser({ avatar: compressed });
+      addToast(ok ? '头像已更新' : '本机保存失败，请重试', ok ? 'success' : 'error');
     } catch {
       addToast('图片处理失败', 'error');
     }
@@ -79,22 +105,22 @@ export default function SettingsPage() {
     if (!file) return;
     try {
       const compressed = await compressImage(file, BANNER_OPTS);
-      updateUser({ banner: compressed });
-      addToast('背景已更新');
+      const ok = await updateUser({ banner: compressed });
+      addToast(ok ? '背景已更新' : '本机保存失败，请重试', ok ? 'success' : 'error');
     } catch {
       addToast('图片处理失败', 'error');
     }
     if (bannerInputRef.current) bannerInputRef.current.value = '';
   };
 
-  const handleSaveProfile = () => {
-    updateUser({
+  const handleSaveProfile = async () => {
+    const ok = await updateUser({
       displayName: displayName.trim() || currentUser.displayName,
       username: username.trim() || currentUser.username,
       bio: bio.trim(),
       birthDate: birthDate || undefined,
     });
-    addToast('资料已保存');
+    addToast(ok ? '资料已保存' : '本机保存失败，请重试', ok ? 'success' : 'error');
   };
 
   return (
@@ -248,7 +274,7 @@ export default function SettingsPage() {
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
               max={new Date().toISOString().slice(0, 10)}
-              className="w-full bg-transparent border border-x-border rounded-lg px-3 py-2 text-base outline-none focus:border-x-blue transition-colors [color-scheme:dark]"
+              className="w-full bg-transparent border border-x-border rounded-lg px-3 py-2 text-base outline-none focus:border-x-blue transition-colors"
             />
             <p className="text-xs text-x-gray mt-1">
               用于日历页的「人生周历」：按 80 岁计算，直观显示你已经度过和还剩下的周数。不填就不会显示这个视图。
@@ -268,6 +294,27 @@ export default function SettingsPage() {
         <h2 className="font-bold text-lg mb-3">数据</h2>
         <p className="text-sm text-x-gray mb-2">数据保存在本机，并自动同步到云端。任何持有下方同步码的人都能访问这些数据，请勿分享给他人。</p>
         <p className="text-sm text-x-gray mb-4">建议定期在「我的记录」页面导出 Markdown 备份。</p>
+
+        <div className="border border-x-border rounded-lg p-3 mb-3">
+          <p className="text-xs text-x-gray mb-2">完整备份</p>
+          <p className="text-xs text-x-gray mb-3">包含记录、回复、个人资料和账本，可在另一台设备恢复。</p>
+          <div className="flex gap-2">
+            <button
+              onClick={exportBackup}
+              className="flex-1 border border-x-border rounded-full py-2 text-sm font-bold hover:bg-x-hover transition-colors"
+            >
+              导出完整备份
+            </button>
+            <button
+              onClick={() => backupInputRef.current?.click()}
+              disabled={restoringBackup}
+              className="flex-1 bg-x-blue hover:bg-x-blue-hover disabled:opacity-50 text-white rounded-full py-2 text-sm font-bold transition-colors"
+            >
+              {restoringBackup ? '恢复中…' : '导入完整备份'}
+            </button>
+          </div>
+          <input ref={backupInputRef} type="file" accept="application/json,.json" onChange={handleBackupImport} className="hidden" />
+        </div>
 
         <div className="border border-x-border rounded-lg p-3 mb-3 flex items-center justify-between gap-2">
           <div>

@@ -30,7 +30,7 @@ export default function ReplyModal() {
         {/* Header */}
         <div className="flex items-center px-4 py-3">
           <button onClick={closeReply} className="p-2 rounded-full hover:bg-x-hover transition-colors">
-            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-x-fg">
               <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
             </svg>
           </button>
@@ -76,7 +76,7 @@ export default function ReplyModal() {
               }}
               placeholder="写下你的回复..."
               minRows={3}
-              className="w-full bg-transparent text-xl text-white placeholder-x-gray outline-none resize-none max-h-[40vh] overflow-y-auto leading-7"
+              className="w-full bg-transparent text-xl text-x-fg placeholder-x-gray outline-none resize-none max-h-[40vh] overflow-y-auto leading-7"
               autoFocus
             />
           </div>

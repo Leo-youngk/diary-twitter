@@ -37,6 +37,7 @@
 html.dark {
   --color-x-dark: #000000;
   --color-x-darker: #16181c;
+  --color-x-fg: #e7e9ea;
   --color-x-border: #2f3336;
   --color-x-hover: #080808;
   --color-x-search: #202327;
@@ -51,6 +52,7 @@ html.dark {
 html.light {
   --color-x-dark: #ffffff;
   --color-x-darker: #f7f9f9;
+  --color-x-fg: #0f1419;
   --color-x-border: #eff3f4;
   --color-x-hover: #f7f9f9;
   --color-x-search: #eff3f4;
@@ -70,6 +72,7 @@ html.light {
 html.zen {
   --color-x-dark: #f5f0e8;         /* 米白主背景 */
   --color-x-darker: #ede8de;       /* 略深一度，卡片/次级背景 */
+  --color-x-fg: #2d2a24;           /* 暖深棕前景 */
   --color-x-border: #d4cdbf;       /* 土色边框 */
   --color-x-hover: #e6e0d4;        /* hover 状态 */
   --color-x-search: #e4ddd2;       /* 搜索框背景 */
@@ -88,12 +91,8 @@ html.zen {
 
 html.zen body {
   background-color: #f5f0e8;
-  color: #2d2a24;  /* 暖深棕，非纯黑 */
+  color: var(--color-x-fg);
 }
-
-/* 深色主题中用 fill-white/text-white 作为前景色，在禅意主题里改为暖棕 */
-html.zen .fill-white   { fill: #2d2a24; }
-html.zen .text-white   { color: #2d2a24; }
 
 /* 遮罩层保持深色（弹窗/抽屉背景） */
 html.zen .bg-black\/40 { background-color: rgba(0, 0, 0, 0.4); }
@@ -189,20 +188,12 @@ html.light {
 
 html.dark body {
   background-color: #000000;
-  color: #e7e9ea;
+  color: var(--color-x-fg);
 }
 
 html.light body {
   background-color: #ffffff;
-  color: #0f1419;
-}
-
-html.light .fill-white {
-  fill: #0f1419;
-}
-
-html.light .text-white {
-  color: #0f1419;
+  color: var(--color-x-fg);
 }
 
 html.light .bg-black\/40 {

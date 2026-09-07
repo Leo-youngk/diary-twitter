@@ -35,10 +35,10 @@ export default function ExplorePage() {
             placeholder="搜索你的记录..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="bg-transparent py-3 px-3 text-white placeholder-x-gray outline-none w-full text-base"
+            className="bg-transparent py-3 px-3 text-x-fg placeholder-x-gray outline-none w-full text-base"
           />
           {query && (
-            <button onClick={() => setQuery('')} className="pr-4 text-x-gray hover:text-white">
+            <button onClick={() => setQuery('')} className="pr-4 text-x-gray hover:text-x-fg">
               <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
                 <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
               </svg>

@@ -32,8 +32,14 @@ export default function CalendarPage() {
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const blanks = Array.from({ length: firstDayOfWeek }, (_, i) => i);
 
-  const prevMonth = () => setCurrentMonth(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentMonth(new Date(year, month + 1, 1));
+  const prevMonth = () => {
+    setCurrentMonth(new Date(year, month - 1, 1));
+    setSelectedDate(null);
+  };
+  const nextMonth = () => {
+    setCurrentMonth(new Date(year, month + 1, 1));
+    setSelectedDate(null);
+  };
   const goToday = () => {
     setCurrentMonth(new Date());
     setSelectedDate(toLocalDateKey(new Date()));
@@ -108,13 +114,13 @@ export default function CalendarPage() {
             {/* Month nav */}
             <div className="flex items-center justify-between mb-4">
               <button onClick={prevMonth} className="p-2 rounded-full hover:bg-x-hover transition-colors">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-x-fg">
                   <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
                 </svg>
               </button>
               <h2 className="text-lg font-bold">{monthLabel}</h2>
               <button onClick={nextMonth} className="p-2 rounded-full hover:bg-x-hover transition-colors">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white rotate-180">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-x-fg rotate-180">
                   <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
                 </svg>
               </button>

@@ -91,7 +91,7 @@ export default function QuickEntry({ onClose, onAdd }: QuickEntryProps) {
               step="0.01"
               min="0"
               autoFocus
-              className="flex-1 bg-transparent text-[42px] font-bold text-white outline-none placeholder:text-x-gray/30 w-0"
+              className="flex-1 bg-transparent text-[42px] font-bold text-x-fg outline-none placeholder:text-x-gray/30 w-0"
             />
           </div>
           {canSubmit && (
@@ -112,7 +112,7 @@ export default function QuickEntry({ onClose, onAdd }: QuickEntryProps) {
                   'flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-medium transition-colors',
                   category === cat.key
                     ? 'bg-x-blue/20 text-x-blue ring-1 ring-x-blue/40'
-                    : 'bg-x-darker text-x-gray hover:text-white',
+                    : 'bg-x-darker text-x-gray hover:text-x-fg',
                 )}
               >
                 <span className="text-xl leading-none">{cat.emoji}</span>
@@ -132,13 +132,13 @@ export default function QuickEntry({ onClose, onAdd }: QuickEntryProps) {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="备注（可选）"
-            className="flex-1 bg-transparent text-base text-white outline-none placeholder:text-x-gray/50"
+            className="flex-1 bg-transparent text-base text-x-fg outline-none placeholder:text-x-gray/50"
           />
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="bg-transparent text-base text-x-gray/70 outline-none text-right [color-scheme:dark]"
+            className="bg-transparent text-base text-x-gray/70 outline-none text-right"
           />
         </div>
 

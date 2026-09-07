@@ -12,6 +12,7 @@ module.exports = {
         'x-blue-hover': 'rgb(var(--color-x-blue-hover) / <alpha-value>)',
         'x-dark': 'var(--color-x-dark)',
         'x-darker': 'var(--color-x-darker)',
+        'x-fg': 'var(--color-x-fg)',
         'x-gray': 'rgb(var(--color-x-gray) / <alpha-value>)',
         'x-gray-light': '#eff3f4',
         'x-border': 'var(--color-x-border)',

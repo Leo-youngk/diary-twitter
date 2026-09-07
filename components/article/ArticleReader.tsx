@@ -27,6 +27,11 @@ function saveScroll(id: number, pos: number) {
   } catch {}
 }
 
+const SKELETON_WIDTHS = [
+  [95, 82, 64], [88, 74], [92, 78, 56], [84, 70],
+  [96, 80, 62], [90, 76], [86, 72, 58], [94, 79],
+];
+
 export default function ArticleReader({ speech, onClose }: ArticleReaderProps) {
   const { addPost, posts, addToast } = useApp();
   const { content, loading, error } = useSpeechContent(speech);
@@ -200,10 +205,10 @@ export default function ArticleReader({ speech, onClose }: ArticleReaderProps) {
             <div className="space-y-5">
               {[...Array(8)].map((_, i) => (
                 <div key={i} className="space-y-2.5">
-                  <div className="h-4 bg-x-border rounded skeleton-pulse" style={{ width: `${85 + Math.random() * 15}%` }} />
-                  <div className="h-4 bg-x-border rounded skeleton-pulse" style={{ width: `${70 + Math.random() * 25}%` }} />
+                  <div className="h-4 bg-x-border rounded skeleton-pulse" style={{ width: `${SKELETON_WIDTHS[i][0]}%` }} />
+                  <div className="h-4 bg-x-border rounded skeleton-pulse" style={{ width: `${SKELETON_WIDTHS[i][1]}%` }} />
                   {i % 2 === 0 && (
-                    <div className="h-4 bg-x-border rounded skeleton-pulse" style={{ width: `${50 + Math.random() * 30}%` }} />
+                    <div className="h-4 bg-x-border rounded skeleton-pulse" style={{ width: `${SKELETON_WIDTHS[i][2]}%` }} />
                   )}
                 </div>
               ))}

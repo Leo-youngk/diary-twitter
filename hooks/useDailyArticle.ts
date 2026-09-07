@@ -66,7 +66,7 @@ export function useSpeechContent(speech: SpeechMeta | null) {
     } else {
       setContent(null);
     }
-  }, [speech?.id, fetchContent]);
+  }, [speech, fetchContent]);
 
   return { content, loading, error };
 }

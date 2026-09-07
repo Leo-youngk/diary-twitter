@@ -1,4 +1,13 @@
-import { Post } from './types';
+import { Post, User } from './types';
+import { Transaction } from './ledger';
+
+export interface DiaryBackup {
+  version: 1;
+  exportedAt: string;
+  posts: Post[];
+  user: User;
+  ledger: Transaction[];
+}
 
 export function formatDateCN(dateString: string): string {
   const date = new Date(dateString);
@@ -97,4 +106,81 @@ export function exportPostsAsMarkdown(posts: Post[], filename?: string) {
 
   const defaultName = `日记本导出_${today}_${posts.length}条.md`;
   downloadMarkdown(md, filename || defaultName);
+}
+
+function downloadJson(value: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function exportBackupAsJson(payload: Omit<DiaryBackup, 'version' | 'exportedAt'>) {
+  const today = new Date().toISOString().slice(0, 10);
+  downloadJson({ version: 1, exportedAt: new Date().toISOString(), ...payload }, `日记本完整备份_${today}.json`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPost(value: unknown): value is Post {
+  if (!isRecord(value)) return false;
+  return typeof value.id === 'string'
+    && (value.entryType === 'thought' || value.entryType === 'diary' || value.entryType === 'article')
+    && typeof value.content === 'string'
+    && Array.isArray(value.images)
+    && value.images.every((image) => typeof image === 'string')
+    && typeof value.createdAt === 'string'
+    && Array.isArray(value.replies)
+    && value.replies.every((reply) => isRecord(reply)
+      && typeof reply.id === 'string'
+      && typeof reply.postId === 'string'
+      && typeof reply.content === 'string'
+      && typeof reply.createdAt === 'string')
+    && typeof value.isLiked === 'boolean';
+}
+
+function isUser(value: unknown): value is User {
+  if (!isRecord(value)) return false;
+  return typeof value.id === 'string'
+    && typeof value.username === 'string'
+    && typeof value.displayName === 'string'
+    && typeof value.avatar === 'string'
+    && typeof value.banner === 'string'
+    && typeof value.bio === 'string'
+    && typeof value.joinedDate === 'string'
+    && (value.birthDate === undefined || typeof value.birthDate === 'string');
+}
+
+function isTransaction(value: unknown): value is Transaction {
+  if (!isRecord(value)) return false;
+  return typeof value.id === 'string'
+    && (value.type === 'income' || value.type === 'expense')
+    && typeof value.amount === 'number'
+    && Number.isFinite(value.amount)
+    && typeof value.category === 'string'
+    && (value.note === undefined || typeof value.note === 'string')
+    && typeof value.date === 'string'
+    && typeof value.createdAt === 'string';
+}
+
+export function parseBackup(value: unknown): DiaryBackup | null {
+  if (!isRecord(value) || value.version !== 1 || !isUser(value.user)
+    || !Array.isArray(value.posts) || !value.posts.every(isPost)
+    || !Array.isArray(value.ledger) || !value.ledger.every(isTransaction)) {
+    return null;
+  }
+  return {
+    version: 1,
+    exportedAt: typeof value.exportedAt === 'string' ? value.exportedAt : new Date().toISOString(),
+    posts: value.posts,
+    user: value.user,
+    ledger: value.ledger,
+  };
 }

@@ -49,7 +49,7 @@ export default function RightPanel() {
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-              className="bg-transparent py-3 px-3 text-white placeholder-x-gray outline-none w-full text-[15px]"
+              className="bg-transparent py-3 px-3 text-x-fg placeholder-x-gray outline-none w-full text-[15px]"
             />
           </div>
 

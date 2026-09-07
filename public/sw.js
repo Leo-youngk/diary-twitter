@@ -1,6 +1,6 @@
 // Bump this on every deploy that changes cached assets — the activate handler
 // deletes every cache that doesn't match, which is what prevents stale bundles.
-const VERSION = 'diary-v13';
+const VERSION = 'diary-v15';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -43,12 +43,17 @@ self.addEventListener('fetch', (event) => {
     // Network-first: a fresh deploy should win, but offline still opens the app.
     event.respondWith(
       fetch(request)
-        .then((res) => {
+        .then(async (res) => {
+          // Never replace a usable offline page with an error document.
+          if (!res.ok) {
+            const cached = await caches.match(request) || await caches.match('/');
+            return cached || res;
+          }
           const copy = res.clone();
-          caches.open(SHELL).then((c) => c.put('/', copy));
+          event.waitUntil(caches.open(SHELL).then((c) => c.put(request, copy)));
           return res;
         })
-        .catch(() => caches.match('/').then((hit) => hit || Response.error()))
+        .catch(() => caches.match(request).then((hit) => hit || caches.match('/')).then((hit) => hit || Response.error()))
     );
     return;
   }
@@ -61,7 +66,7 @@ self.addEventListener('fetch', (event) => {
         .then((res) => {
           if (res.ok) {
             const copy = res.clone();
-            caches.open(ASSETS).then((c) => c.put(request, copy));
+            event.waitUntil(caches.open(ASSETS).then((c) => c.put(request, copy)));
           }
           return res;
         })

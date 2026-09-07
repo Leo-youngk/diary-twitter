@@ -159,7 +159,7 @@ export default function Sidebar() {
               href="/"
               className="p-3 ml-0 xl:ml-1 rounded-full hover:bg-x-hover transition-colors w-fit"
             >
-              <svg viewBox="0 0 24 24" className="w-7 h-7 fill-white">
+              <svg viewBox="0 0 24 24" className="w-7 h-7 fill-x-fg">
                 <path d="M6 2c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6H6zm7 1.5L18.5 9H13V3.5zM6 4h5v7h7v9H6V4zm2 9v2h8v-2H8zm0 4v2h5v-2H8z" />
               </svg>
             </Link>
@@ -177,7 +177,7 @@ export default function Sidebar() {
                     isActive && 'font-bold'
                   )}
                 >
-                  <span className={isActive ? 'text-white' : 'text-x-gray'}>
+                  <span className={isActive ? 'text-x-fg' : 'text-x-gray'}>
                     {item.icon}
                   </span>
                   <span className="hidden xl:block text-xl">{item.label}</span>
@@ -204,7 +204,7 @@ export default function Sidebar() {
           <div className="mb-3 space-y-1">
             <Link
               href="/settings"
-              className="flex items-center gap-4 px-3 py-3 rounded-full transition-colors hover:bg-x-hover w-fit text-x-gray hover:text-white"
+              className="flex items-center gap-4 px-3 py-3 rounded-full transition-colors hover:bg-x-hover w-fit text-x-gray hover:text-x-fg"
             >
               <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
                 <path d="M10.54 1.75h2.92l1.57 2.36c.11.17.32.25.53.21l2.53-.59 2.17 1.26-0.01 2.59c-.01.21.11.39.29.47l2.4 1.07-.68 2.81-2.45.74c-.18.06-.32.21-.34.4l-.26 2.58-2.07 1.44-2.31-.93c-.18-.07-.38-.01-.5.14l-1.63 2.01-2.81.01-1.63-2.01c-.12-.15-.32-.21-.5-.14l-2.31.93-2.07-1.44-.26-2.58c-.02-.19-.16-.34-.34-.4l-2.45-.74-.68-2.81 2.4-1.07c.18-.08.3-.26.29-.47l-.01-2.59 2.17-1.26 2.53.59c.21.04.42-.04.53-.21l1.57-2.36zm1.46 2l-1.3 1.95c-.44.66-1.24 1.03-2.09.85l-2.09-.49-.7.4.01 2.14c.01.83-.44 1.59-1.15 1.9l-1.99.88.22.92 2.02.61c.8.24 1.39.94 1.44 1.78l.21 2.13.67.47 1.91-.77c.76-.31 1.64-.14 2.2.43l1.35 1.66.92-.01 1.35-1.66c.56-.57 1.44-.74 2.2-.43l1.91.77.67-.47.21-2.13c.05-.84.64-1.54 1.44-1.78l2.02-.61.22-.92-1.99-.88c-.71-.31-1.16-1.07-1.15-1.9l.01-2.14-.7-.4-2.09.49c-.85.18-1.65-.19-2.09-.85l-1.3-1.95h-.6zM12 8.5c-1.93 0-3.5 1.57-3.5 3.5s1.57 3.5 3.5 3.5 3.5-1.57 3.5-3.5-1.57-3.5-3.5-3.5zM12 10.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5.67-1.5 1.5-1.5z" />

@@ -47,3 +47,15 @@ export async function idbSet(key: string, value: unknown): Promise<void> {
     tx.onabort = () => reject(tx.error);
   });
 }
+
+export async function idbSetMany(entries: Array<[string, unknown]>): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    entries.forEach(([key, value]) => store.put(value, key));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}

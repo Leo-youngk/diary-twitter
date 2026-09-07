@@ -58,7 +58,7 @@ export default function SpeechList() {
             className={`px-3 py-1 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
               filter === f
                 ? 'bg-amber-500 text-white'
-                : 'bg-x-darker text-x-gray hover:text-white'
+                : 'bg-x-darker text-x-gray hover:text-x-fg'
             }`}
           >
             {filterLabels[f]}

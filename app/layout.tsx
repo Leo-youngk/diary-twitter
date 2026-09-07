@@ -74,7 +74,7 @@ export default function RootLayout({
             theme after hydration, which is a visible black flash on light/zen. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=JSON.parse(localStorage.getItem('diary-theme')||'"zen"');var c=document.documentElement.classList;c.remove('dark','light','zen');c.add(t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',{dark:'#000000',light:'#ffffff',zen:'#f5f0e8'}[t]||'#f5f0e8');}catch(e){}})()`,
+            __html: `(function(){try{var v=JSON.parse(localStorage.getItem('diary-theme')||'"zen"');var t=['dark','light','zen'].indexOf(v)>-1?v:'zen';var c=document.documentElement.classList;c.remove('dark','light','zen');c.add(t);document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute('content',{dark:'#000000',light:'#ffffff',zen:'#f5f0e8'}[t]);});}catch(e){}})()`,
           }}
         />
         {/*

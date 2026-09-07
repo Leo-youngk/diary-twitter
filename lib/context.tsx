@@ -5,15 +5,20 @@ import React, {
   useEffect, useRef, ReactNode,
 } from 'react';
 import { Post, User, ToastMessage, NavItem, FeedTab, EntryType } from '@/lib/types';
-import { currentUser as defaultUser, mockPosts } from '@/lib/mockData';
+import { currentUser as defaultUser } from '@/lib/defaultData';
 import { generateId } from '@/lib/utils';
-import { exportPostAsMarkdown, exportPostsAsMarkdown } from '@/lib/export';
+import {
+  exportPostAsMarkdown, exportPostsAsMarkdown,
+  exportBackupAsJson, parseBackup,
+  type DiaryBackup,
+} from '@/lib/export';
 import { Transaction, loadTransactions, saveTransactions } from '@/lib/ledger';
 import {
   getSyncId, setSyncId, pullSync, pushSync,
   getLocalUpdatedAt, setLocalUpdatedAt, reconcile,
+  hasPendingSync, markPendingSync, clearPendingSync,
 } from '@/lib/sync';
-import { idbGet, idbSet } from '@/lib/idbStore';
+import { idbGet, idbSet, idbSetMany } from '@/lib/idbStore';
 
 export type Theme = 'dark' | 'light' | 'zen';
 export type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
@@ -43,11 +48,11 @@ interface AppContextType {
   lastSyncedAt: string | null;
   setActiveNav: (nav: NavItem) => void;
   setFeedTab: (tab: FeedTab) => void;
-  toggleLike: (postId: string) => void;
-  addPost: (content: string, images: string[], entryType: EntryType, title?: string) => void;
-  updatePost: (postId: string, content: string, images: string[], entryType: EntryType, title?: string) => void;
-  deletePost: (postId: string) => void;
-  addReply: (postId: string, content: string) => void;
+  toggleLike: (postId: string) => Promise<boolean>;
+  addPost: (content: string, images: string[], entryType: EntryType, title?: string) => Promise<boolean>;
+  updatePost: (postId: string, content: string, images: string[], entryType: EntryType, title?: string) => Promise<boolean>;
+  deletePost: (postId: string) => Promise<boolean>;
+  addReply: (postId: string, content: string) => Promise<boolean>;
   openCompose: () => void;
   closeCompose: () => void;
   openEdit: (post: Post) => void;
@@ -60,9 +65,11 @@ interface AppContextType {
   exportAll: (posts: Post[], filename?: string) => void;
   setTheme: (theme: Theme) => void;
   setFontSize: (size: FontSize) => void;
-  updateUser: (updates: Partial<User>) => void;
+  updateUser: (updates: Partial<User>) => Promise<boolean>;
   restoreFromSyncId: (id: string) => Promise<boolean>;
   notifyLedgerChange: () => void;
+  exportBackup: () => void;
+  restoreBackup: (backup: DiaryBackup) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -77,17 +84,29 @@ const THEME_COLOR: Record<Theme, string> = {
   zen: '#f5f0e8',
 };
 
-// Must agree with the pre-paint script in app/layout.tsx: that script has
-// already put the right class on <html>, so starting from a different value
-// here would make the first effect overwrite it — and persist the wrong theme.
+function isTheme(value: unknown): value is Theme {
+  return value === 'dark' || value === 'light' || value === 'zen';
+}
+
 function readStoredTheme(): Theme {
   if (typeof window === 'undefined') return DEFAULT_THEME;
   try {
     const stored = localStorage.getItem('diary-theme');
-    return stored ? JSON.parse(stored) : DEFAULT_THEME;
+    const parsed: unknown = stored ? JSON.parse(stored) : DEFAULT_THEME;
+    return isTheme(parsed) ? parsed : DEFAULT_THEME;
   } catch {
     return DEFAULT_THEME;
   }
+}
+
+function applyTheme(theme: Theme) {
+  const html = document.documentElement;
+  html.classList.remove('dark', 'light', 'zen');
+  html.classList.add(theme);
+  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+    meta.setAttribute('content', THEME_COLOR[theme]);
+  });
+  try { localStorage.setItem('diary-theme', JSON.stringify(theme)); } catch {}
 }
 
 const POSTS_KEY = 'diary-posts';
@@ -136,7 +155,10 @@ function readStoredFontSize(): FontSize {
   if (typeof window === 'undefined') return DEFAULT_FONT_SIZE;
   try {
     const stored = localStorage.getItem('diary-font-size');
-    return stored ? (JSON.parse(stored) as FontSize) : DEFAULT_FONT_SIZE;
+    const parsed: unknown = stored ? JSON.parse(stored) : DEFAULT_FONT_SIZE;
+    return parsed === 'small' || parsed === 'medium' || parsed === 'large' || parsed === 'xlarge'
+      ? parsed
+      : DEFAULT_FONT_SIZE;
   } catch {
     return DEFAULT_FONT_SIZE;
   }
@@ -151,23 +173,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [replyingToPost, setReplyingToPost] = useState<Post | null>(null);
-  const [theme, setThemeState] = useState<Theme>(readStoredTheme);
-  const [fontSize, setFontSizeState] = useState<FontSize>(readStoredFontSize);
+  // Keep the server and first client render identical. The inline head script
+  // has already painted the saved theme; React adopts it after hydration.
+  const [themeState, setThemeState] = useState<Theme | null>(null);
+  const [fontSizeState, setFontSizeState] = useState<FontSize | null>(null);
+  const theme = themeState ?? DEFAULT_THEME;
+  const fontSize = fontSizeState ?? DEFAULT_FONT_SIZE;
   const [dbLoading, setDbLoading] = useState(true);
   const [syncId, setSyncIdState] = useState('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
-  // Counts real user edits. Hydration and adopting a remote copy deliberately
-  // don't bump it — otherwise every boot would look newer than the remote and
-  // last-write-wins would always pick the device that opened the app last.
-  const [revision, setRevision] = useState(0);
-  const persistedRevision = useRef(0);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quotaWarned = useRef(false);
   const pushFailed = useRef(false);
+  const postsRef = useRef(posts);
+  const userRef = useRef(currentUser);
 
-  const bump = useCallback(() => setRevision((r) => r + 1), []);
+  const setPostsSnapshot = useCallback((nextPosts: Post[]) => {
+    postsRef.current = nextPosts;
+    setPosts(nextPosts);
+  }, []);
+  const setUserSnapshot = useCallback((nextUser: User) => {
+    userRef.current = nextUser;
+    setCurrentUser(nextUser);
+  }, []);
 
   // ── Toast ──────────────────────────────────────────────────────────────────
   const addToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
@@ -179,33 +209,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const html = document.documentElement;
-    html.classList.remove('dark', 'light', 'zen');
-    html.classList.add(theme);
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', THEME_COLOR[theme]);
-    try { localStorage.setItem('diary-theme', JSON.stringify(theme)); } catch {}
-  }, [theme]);
+    if (themeState === null) {
+      setThemeState(readStoredTheme());
+      return;
+    }
+    applyTheme(themeState);
+  }, [themeState]);
 
   // ── Font size ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    document.documentElement.style.setProperty('--font-scale', String(FONT_SCALE[fontSize]));
-    try { localStorage.setItem('diary-font-size', JSON.stringify(fontSize)); } catch {}
-  }, [fontSize]);
+    if (fontSizeState === null) {
+      setFontSizeState(readStoredFontSize());
+      return;
+    }
+    document.documentElement.style.setProperty('--font-scale', String(FONT_SCALE[fontSizeState]));
+    try { localStorage.setItem('diary-font-size', JSON.stringify(fontSizeState)); } catch {}
+  }, [fontSizeState]);
 
   // ── Persistence ────────────────────────────────────────────────────────────
-  const writeLocal = useCallback(async (nextPosts: Post[], nextUser: User, updatedAt: string) => {
+  const writeLocal = useCallback(async (
+    nextPosts: Post[],
+    nextUser: User,
+    updatedAt: string,
+    pending = true,
+  ): Promise<boolean> => {
     try {
-      await Promise.all([idbSet(POSTS_KEY, nextPosts), idbSet(USER_KEY, nextUser)]);
+      await idbSetMany([[POSTS_KEY, nextPosts], [USER_KEY, nextUser]]);
       setLocalUpdatedAt(updatedAt);
+      if (pending) markPendingSync();
+      else clearPendingSync();
+      return true;
     } catch {
-      // Almost always QuotaExceededError from base64 images. Swallowing this is
-      // how data silently fails to survive a reload, so say it out loud — once.
+      // A failed local write must be visible to the user instead of being
+      // reported as a successful publish.
       if (!quotaWarned.current) {
         quotaWarned.current = true;
-        addToast('本地存储已满，新内容可能无法保存。请先导出备份，再删除部分带图记录', 'error');
+        addToast('本地保存失败，请先导出备份后重试', 'error');
       }
+      return false;
     }
   }, [addToast]);
 
@@ -219,18 +260,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // its own writer (app/ledger/page.tsx) — read the freshest copy off disk
       // here rather than threading it through every caller of schedulePush.
       const ledger = loadTransactions();
-      const ok = await pushSync(id, { posts: nextPosts, user: nextUser, ledger, updatedAt });
-      setSyncStatus(ok ? 'ok' : 'error');
-      if (ok) {
-        setLastSyncedAt(updatedAt);
+      const result = await pushSync(id, { posts: nextPosts, user: nextUser, ledger, updatedAt });
+      const isCurrentSnapshot = getLocalUpdatedAt() === updatedAt;
+      if (result.ok) {
+        if (isCurrentSnapshot) {
+          clearPendingSync();
+          setSyncStatus('ok');
+          setLastSyncedAt(updatedAt);
+        }
         pushFailed.current = false;
-      } else if (!pushFailed.current) {
+      } else if (result.conflict && isCurrentSnapshot) {
+        // The server rejected an older snapshot. Adopt its newer copy only if
+        // the user has not edited locally since this request was scheduled.
+        const remote = result.conflict;
+        const remotePosts = remote.posts as Post[];
+        const remoteUser = remote.user as User;
+        setPostsSnapshot(remotePosts);
+        setUserSnapshot(remoteUser);
+        if (Array.isArray(remote.ledger)) {
+          saveTransactions(remote.ledger as Transaction[]);
+          window.dispatchEvent(new Event('diary:ledger-changed'));
+        }
+        const saved = await writeLocal(remotePosts, remoteUser, remote.updatedAt, false);
+        if (saved) {
+          setLastSyncedAt(remote.updatedAt);
+          setSyncStatus('ok');
+        }
+        pushFailed.current = false;
+      } else if (isCurrentSnapshot && !pushFailed.current) {
         // Only on the transition into failure — offline shouldn't spam toasts.
         pushFailed.current = true;
+        setSyncStatus('error');
         addToast('云端同步失败，数据已保存在本机', 'error');
       }
     }, 800);
-  }, [addToast]);
+  }, [addToast, setPostsSnapshot, setUserSnapshot, writeLocal]);
+
+  const persistSnapshot = useCallback(async (nextPosts: Post[], nextUser: User): Promise<boolean> => {
+    const updatedAt = new Date().toISOString();
+    const saved = await writeLocal(nextPosts, nextUser, updatedAt);
+    if (saved) schedulePush(nextPosts, nextUser, updatedAt);
+    return saved;
+  }, [schedulePush, writeLocal]);
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -240,30 +311,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     loadLocalData().then(({ posts: localPosts, user: localUser }) => {
       if (!mounted) return;
-      setPosts(localPosts ?? mockPosts);
-      setCurrentUser(localUser ?? defaultUser);
+      const initialPosts = localPosts ?? [];
+      const initialUser = localUser ?? defaultUser;
+      setPostsSnapshot(initialPosts);
+      setUserSnapshot(initialUser);
       // Local data is already in hand — render now and let the network catch up.
       setDbLoading(false);
 
       if (!id) return;
 
       setSyncStatus('syncing');
+      const pullStartedAt = getLocalUpdatedAt();
       pullSync(id)
         .then((remote) => {
           if (!mounted) return;
-          const decision = reconcile(getLocalUpdatedAt(), remote);
+          const localUpdatedAt = getLocalUpdatedAt();
+          if (localUpdatedAt !== pullStartedAt) {
+            // A local edit happened while the network request was in flight.
+            // Keep that edit authoritative and let the server's version check
+            // decide whether another device changed the same sync key.
+            if (localUpdatedAt) schedulePush(postsRef.current, userRef.current, localUpdatedAt);
+            return;
+          }
+          // Data created by an older build may exist without our local
+          // timestamp. Keep that data instead of silently replacing it with a
+          // remote copy; there is no reliable way to prove which copy is newer.
+          const hasUnstampedLocalData = !localUpdatedAt
+            && ((localPosts?.length ?? 0) > 0 || localUser !== null);
+          if (hasUnstampedLocalData) {
+            const updatedAt = new Date().toISOString();
+            void writeLocal(initialPosts, initialUser, updatedAt).then((saved) => {
+              if (saved && mounted) schedulePush(initialPosts, initialUser, updatedAt);
+            });
+            return;
+          }
+          const decision = reconcile(localUpdatedAt, remote);
           if (decision.action === 'adopt-remote') {
             const { posts: rp, user: ru, ledger: rl, updatedAt } = decision.payload;
-            setPosts(rp as Post[]);
-            setCurrentUser(ru as User);
-            if (Array.isArray(rl)) saveTransactions(rl as Transaction[]);
+            const remotePosts = rp as Post[];
+            const remoteUser = ru as User;
+            setPostsSnapshot(remotePosts);
+            setUserSnapshot(remoteUser);
+            if (Array.isArray(rl)) {
+              saveTransactions(rl as Transaction[]);
+              window.dispatchEvent(new Event('diary:ledger-changed'));
+            }
             // Keep the remote timestamp, so the next boot reconciles to 'none'.
-            writeLocal(rp as Post[], ru as User, updatedAt);
+            void writeLocal(remotePosts, remoteUser, updatedAt, false);
             setLastSyncedAt(updatedAt);
             setSyncStatus('ok');
           } else if (decision.action === 'push-local') {
-            const updatedAt = getLocalUpdatedAt() ?? new Date().toISOString();
-            schedulePush(localPosts ?? mockPosts, localUser ?? defaultUser, updatedAt);
+            const pushInitial = async () => {
+              const updatedAt = localUpdatedAt ?? new Date().toISOString();
+              if (!localUpdatedAt) {
+                const saved = await writeLocal(initialPosts, initialUser, updatedAt);
+                if (!saved || !mounted) return;
+              }
+              schedulePush(initialPosts, initialUser, updatedAt);
+            };
+            void pushInitial();
+          } else if (hasPendingSync()) {
+            const updatedAt = localUpdatedAt ?? new Date().toISOString();
+            schedulePush(initialPosts, initialUser, updatedAt);
           } else {
             setLastSyncedAt(getLocalUpdatedAt());
             setSyncStatus('ok');
@@ -275,17 +384,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
     });
 
-    return () => { mounted = false; };
-  }, [writeLocal, schedulePush]);
-
-  // Single place that persists. Runs after render, never inside a state updater.
-  useEffect(() => {
-    if (revision === 0 || revision === persistedRevision.current) return;
-    persistedRevision.current = revision;
-    const updatedAt = new Date().toISOString();
-    writeLocal(posts, currentUser, updatedAt);
-    schedulePush(posts, currentUser, updatedAt);
-  }, [revision, posts, currentUser, writeLocal, schedulePush]);
+    const retryPending = () => {
+      if (hasPendingSync()) {
+        const updatedAt = getLocalUpdatedAt();
+        if (updatedAt) schedulePush(postsRef.current, userRef.current, updatedAt);
+      }
+    };
+    window.addEventListener('online', retryPending);
+    document.addEventListener('visibilitychange', retryPending);
+    return () => {
+      mounted = false;
+      if (pushTimer.current) clearTimeout(pushTimer.current);
+      window.removeEventListener('online', retryPending);
+      document.removeEventListener('visibilitychange', retryPending);
+    };
+  }, [schedulePush, setPostsSnapshot, setUserSnapshot, writeLocal]);
 
   const restoreFromSyncId = useCallback(async (id: string): Promise<boolean> => {
     try {
@@ -293,10 +406,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!remote) return false;
       setSyncId(id);
       setSyncIdState(id);
-      setPosts(remote.posts as Post[]);
-      setCurrentUser(remote.user as User);
-      if (Array.isArray(remote.ledger)) saveTransactions(remote.ledger as Transaction[]);
-      writeLocal(remote.posts as Post[], remote.user as User, remote.updatedAt);
+      const remotePosts = remote.posts as Post[];
+      const remoteUser = remote.user as User;
+      setPostsSnapshot(remotePosts);
+      setUserSnapshot(remoteUser);
+      if (Array.isArray(remote.ledger)) {
+        saveTransactions(remote.ledger as Transaction[]);
+        window.dispatchEvent(new Event('diary:ledger-changed'));
+      }
+      const saved = await writeLocal(remotePosts, remoteUser, remote.updatedAt, false);
+      if (!saved) return false;
       setLastSyncedAt(remote.updatedAt);
       setSyncStatus('ok');
       return true;
@@ -304,33 +423,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSyncStatus('error');
       return false;
     }
-  }, [writeLocal]);
+  }, [setPostsSnapshot, setUserSnapshot, writeLocal]);
 
   // Ledger keeps its own localStorage key and writes itself; this just piggybacks
   // on the same push cycle (and shared updatedAt) so its changes reach the cloud.
   const notifyLedgerChange = useCallback(() => {
-    const updatedAt = new Date().toISOString();
-    setLocalUpdatedAt(updatedAt);
-    schedulePush(posts, currentUser, updatedAt);
-  }, [posts, currentUser, schedulePush]);
+    void persistSnapshot(postsRef.current, userRef.current);
+  }, [persistSnapshot]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
-  const setTheme = useCallback((t: Theme) => setThemeState(t), []);
+  const setTheme = useCallback((t: Theme) => {
+    applyTheme(t);
+    setThemeState(t);
+  }, []);
   const setFontSize = useCallback((s: FontSize) => setFontSizeState(s), []);
 
-  const updateUser = useCallback((updates: Partial<User>) => {
-    setCurrentUser((prev) => ({ ...prev, ...updates }));
-    bump();
-  }, [bump]);
+  const updateUser = useCallback((updates: Partial<User>): Promise<boolean> => {
+    const nextUser = { ...userRef.current, ...updates };
+    setUserSnapshot(nextUser);
+    return persistSnapshot(postsRef.current, nextUser);
+  }, [persistSnapshot, setUserSnapshot]);
 
-  const toggleLike = useCallback((postId: string) => {
-    setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, isLiked: !p.isLiked } : p)));
-    bump();
-  }, [bump]);
+  const toggleLike = useCallback((postId: string): Promise<boolean> => {
+    const nextPosts = postsRef.current.map((p) => (
+      p.id === postId ? { ...p, isLiked: !p.isLiked } : p
+    ));
+    setPostsSnapshot(nextPosts);
+    return persistSnapshot(nextPosts, userRef.current);
+  }, [persistSnapshot, setPostsSnapshot]);
 
   const addPost = useCallback((
     content: string, images: string[], entryType: EntryType, title?: string
-  ) => {
+  ): Promise<boolean> => {
     const newPost: Post = {
       id: generateId(), entryType,
       title: title?.trim() || undefined,
@@ -338,31 +462,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
       replies: [], isLiked: false,
     };
-    setPosts((prev) => [newPost, ...prev]);
-    bump();
-  }, [bump]);
+    const nextPosts = [newPost, ...postsRef.current];
+    setPostsSnapshot(nextPosts);
+    return persistSnapshot(nextPosts, userRef.current);
+  }, [persistSnapshot, setPostsSnapshot]);
 
   const updatePost = useCallback((
     postId: string, content: string, images: string[], entryType: EntryType, title?: string
-  ) => {
-    setPosts((prev) => prev.map((p) => (
+  ): Promise<boolean> => {
+    const nextPosts = postsRef.current.map((p) => (
       p.id === postId ? { ...p, content, images, entryType, title: title?.trim() || undefined } : p
-    )));
-    bump();
-  }, [bump]);
+    ));
+    setPostsSnapshot(nextPosts);
+    return persistSnapshot(nextPosts, userRef.current);
+  }, [persistSnapshot, setPostsSnapshot]);
 
-  const deletePost = useCallback((postId: string) => {
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
-    bump();
-  }, [bump]);
+  const deletePost = useCallback((postId: string): Promise<boolean> => {
+    const nextPosts = postsRef.current.filter((p) => p.id !== postId);
+    setPostsSnapshot(nextPosts);
+    return persistSnapshot(nextPosts, userRef.current);
+  }, [persistSnapshot, setPostsSnapshot]);
 
-  const addReply = useCallback((postId: string, content: string) => {
+  const addReply = useCallback((postId: string, content: string): Promise<boolean> => {
     const newReply = { id: generateId(), postId, content, createdAt: new Date().toISOString() };
-    setPosts((prev) => prev.map((p) => (
+    const nextPosts = postsRef.current.map((p) => (
       p.id === postId ? { ...p, replies: [...p.replies, newReply] } : p
-    )));
-    bump();
-  }, [bump]);
+    ));
+    setPostsSnapshot(nextPosts);
+    return persistSnapshot(nextPosts, userRef.current);
+  }, [persistSnapshot, setPostsSnapshot]);
 
   // ── Search / Export ────────────────────────────────────────────────────────
   const searchPosts = useCallback((query: string) => {
@@ -376,6 +504,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [posts]);
   const exportPost = useCallback((post: Post) => exportPostAsMarkdown(post), []);
   const exportAll = useCallback((postsToExport: Post[], filename?: string) => exportPostsAsMarkdown(postsToExport, filename), []);
+  const exportBackup = useCallback(() => {
+    exportBackupAsJson({
+      posts: postsRef.current,
+      user: userRef.current,
+      ledger: loadTransactions(),
+    });
+  }, []);
+  const restoreBackup = useCallback(async (backup: DiaryBackup): Promise<boolean> => {
+    setPostsSnapshot(backup.posts);
+    setUserSnapshot(backup.user);
+    saveTransactions(backup.ledger);
+    window.dispatchEvent(new Event('diary:ledger-changed'));
+    return persistSnapshot(backup.posts, backup.user);
+  }, [persistSnapshot, setPostsSnapshot, setUserSnapshot]);
 
   // ── Compose / Reply ────────────────────────────────────────────────────────
   const openCompose = useCallback(() => setIsComposeOpen(true), []);
@@ -393,6 +535,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addReply, openCompose, closeCompose, openEdit, openReply, closeReply,
       addToast, removeToast, searchPosts, exportPost, exportAll,
       setTheme, setFontSize, updateUser, restoreFromSyncId, notifyLedgerChange,
+      exportBackup, restoreBackup,
     }}>
       {children}
     </AppContext.Provider>

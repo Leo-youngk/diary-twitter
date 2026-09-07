@@ -26,7 +26,11 @@ yarn-error.log*
 
 # cloudflare / opennext
 .open-next/
+.open-next.previous-deploy/
 .wrangler/
+.wrangler-xdg/
+.wrangler-xdg-cache/
+.npm-cache/
 env.d.ts
 
 # ide

@@ -1,7 +1,8 @@
 name = "diary-app"
 main = ".open-next/worker.js"
-compatibility_date = "2024-12-30"
-compatibility_flags = ["nodejs_compat"]
+# Next.js App Router requires the modern Workers AsyncLocalStorage runtime.
+compatibility_date = "2026-08-04"
+compatibility_flags = ["nodejs_compat", "nodejs_als"]
 
 [assets]
 directory = ".open-next/assets"

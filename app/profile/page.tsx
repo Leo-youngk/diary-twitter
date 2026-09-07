@@ -109,7 +109,7 @@ export default function ProfilePage() {
       <div className="sticky top-0 z-10 bg-x-dark border-b border-x-border">
         <div className="flex items-center gap-4 px-4 py-3">
           <button onClick={() => router.back()} className="p-1.5 rounded-full hover:bg-x-hover transition-colors">
-            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-x-fg">
               <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
             </svg>
           </button>
@@ -162,20 +162,20 @@ export default function ProfilePage() {
               </Button>
               {showExportMenu && (
                 <div className="absolute right-0 top-full mt-1 bg-x-dark border border-x-border rounded-xl shadow-xl overflow-hidden z-50 min-w-[180px]">
-                  <button onClick={() => handleExport('all')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-white transition-colors">
+                  <button onClick={() => handleExport('all')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-x-fg transition-colors">
                     导出全部
                   </button>
-                  <button onClick={() => handleExport('diary')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-white transition-colors">
+                  <button onClick={() => handleExport('diary')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-x-fg transition-colors">
                     只导出日记
                   </button>
-                  <button onClick={() => handleExport('thought')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-white transition-colors">
+                  <button onClick={() => handleExport('thought')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-x-fg transition-colors">
                     只导出随想
                   </button>
                   <div className="border-t border-x-border" />
-                  <button onClick={() => handleExport('month')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-white transition-colors">
+                  <button onClick={() => handleExport('month')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-x-fg transition-colors">
                     导出本月
                   </button>
-                  <button onClick={() => handleExport('year')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-white transition-colors">
+                  <button onClick={() => handleExport('year')} className="w-full text-left px-4 py-2.5 hover:bg-x-hover text-sm text-x-fg transition-colors">
                     导出本年
                   </button>
                 </div>
@@ -207,7 +207,7 @@ export default function ProfilePage() {
             onClick={() => setActiveTab(tab.key)}
             className={cn(
               'flex-1 py-4 text-center hover:bg-white/[0.03] transition-colors relative font-medium text-sm',
-              activeTab === tab.key ? 'text-white' : 'text-x-gray'
+              activeTab === tab.key ? 'text-x-fg' : 'text-x-gray'
             )}
           >
             {tab.label}

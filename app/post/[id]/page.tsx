@@ -72,7 +72,7 @@ export default function PostDetailPage() {
       <div className="sticky top-0 z-10 bg-x-dark border-b border-x-border">
         <div className="flex items-center gap-4 px-4 py-3">
           <button onClick={() => router.back()} className="p-1.5 rounded-full hover:bg-x-hover transition-colors">
-            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-x-fg">
               <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
             </svg>
           </button>
@@ -241,7 +241,7 @@ export default function PostDetailPage() {
               }}
               placeholder="追加想法..."
               minRows={1}
-              className="w-full bg-transparent text-base text-white placeholder-x-gray outline-none resize-none overflow-y-auto max-h-[40vh] leading-6 border-b border-x-border focus:border-x-blue transition-colors"
+              className="w-full bg-transparent text-base text-x-fg placeholder-x-gray outline-none resize-none overflow-y-auto max-h-[40vh] leading-6 border-b border-x-border focus:border-x-blue transition-colors"
             />
             <div className="flex justify-end mt-2">
               <button
