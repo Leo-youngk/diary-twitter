@@ -8,16 +8,20 @@ import SpeechList from '@/components/article/DailyArticleCard';
 import Avatar from '@/components/ui/Avatar';
 import type { FeedTab } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { getCategoryNameFromTab, getCategoryTabKey, getCustomCategoryNames } from '@/lib/categories';
 import ProfileDrawer from '@/components/layout/ProfileDrawer';
 
 export default function HomePage() {
-  const { posts, feedTab, setFeedTab, currentUser } = useApp();
+  const { posts, feedTab, setFeedTab, currentUser, openCompose } = useApp();
   const [showDrawer, setShowDrawer] = useState(false);
   const headerHidden = useScrollDirection();
+  const customCategories = useMemo(() => getCustomCategoryNames(posts), [posts]);
 
   const filteredPosts = useMemo(() => {
     if (feedTab === 'thought') return posts.filter((p) => p.entryType === 'thought');
     if (feedTab === 'diary') return posts.filter((p) => p.entryType === 'diary');
+    const categoryName = getCategoryNameFromTab(feedTab);
+    if (categoryName) return posts.filter((p) => p.category?.trim() === categoryName);
     return posts;
   }, [posts, feedTab]);
 
@@ -26,6 +30,7 @@ export default function HomePage() {
     { key: 'thought', label: '随想' },
     { key: 'diary', label: '日记' },
     { key: 'article', label: '英文' },
+    ...customCategories.map((name) => ({ key: getCategoryTabKey(name), label: name })),
   ];
 
   return (
@@ -55,7 +60,7 @@ export default function HomePage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex" role="tablist">
+          <div className="flex overflow-x-auto scrollbar-hide touch-auto" role="tablist">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
@@ -63,7 +68,7 @@ export default function HomePage() {
                 role="tab"
                 aria-selected={feedTab === tab.key}
                 className={cn(
-                  'flex-1 py-3 flex items-center justify-center text-[15px] transition-colors relative',
+                  'flex-1 min-w-[78px] px-4 py-3 flex items-center justify-center text-[15px] transition-colors relative whitespace-nowrap',
                   feedTab === tab.key ? 'text-x-blue font-bold' : 'text-x-gray font-normal hover:text-x-blue/70'
                 )}
               >
@@ -73,6 +78,13 @@ export default function HomePage() {
                 )}
               </button>
             ))}
+            <button
+              onClick={openCompose}
+              aria-label="新建自定义分类"
+              className="flex-none px-4 py-3 text-[15px] text-x-blue whitespace-nowrap hover:bg-x-blue/10 transition-colors"
+            >
+              ＋分类
+            </button>
           </div>
         </div>
 

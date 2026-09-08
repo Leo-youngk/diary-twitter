@@ -7,6 +7,7 @@ import { Post } from '@/lib/types';
 import { useApp } from '@/lib/context';
 import { formatRelativeTime, cn } from '@/lib/utils';
 import { formatDateCN } from '@/lib/export';
+import { getPostCategoryColor, getPostCategoryLabel } from '@/lib/categories';
 import Avatar from '@/components/ui/Avatar';
 import PostContent from '@/components/feed/PostContent';
 import ImageLightbox from '@/components/common/ImageLightbox';
@@ -62,12 +63,8 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
       ? 'grid-cols-2'
       : 'grid-cols-3';
 
-  const typeLabel = post.entryType === 'diary' ? '日记' : post.entryType === 'article' ? '英文' : '随想';
-  const typeColor = post.entryType === 'diary'
-    ? 'bg-x-green/20 text-x-green'
-    : post.entryType === 'article'
-    ? 'bg-amber-500/20 text-amber-500'
-    : 'bg-x-blue/20 text-x-blue';
+  const typeLabel = getPostCategoryLabel(post);
+  const typeColor = getPostCategoryColor(post);
 
   const navigateToPost = () => {
     // The whole card is clickable, so dragging to select a passage would
@@ -92,7 +89,7 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
           {/* Header — tag + time + more menu */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="shrink-0 text-xs px-2.5 py-1 rounded-full font-medium bg-x-blue/15 text-x-blue">
+              <span className={cn('shrink-0 text-xs px-2.5 py-1 rounded-full font-medium', typeColor)}>
                 {typeLabel}
               </span>
               <span className="text-x-gray/60 text-[13px]">·</span>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useApp } from '@/lib/context';
+import { getPostCategoryLabel } from '@/lib/categories';
 
 export default function RightPanel() {
   const { searchPosts, posts } = useApp();
@@ -63,7 +64,7 @@ export default function RightPanel() {
                     className="px-4 py-3 hover:bg-x-hover transition-colors border-b border-x-border last:border-b-0"
                   >
                     <p className="text-xs text-x-gray mb-1">
-                      {post.entryType === 'diary' ? '日记' : '随想'}
+                      {getPostCategoryLabel(post)}
                       {post.title && ` · ${post.title}`}
                     </p>
                     <p className="text-sm line-clamp-2">{post.content}</p>

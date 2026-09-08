@@ -1,4 +1,5 @@
 import { Post, User } from './types';
+import { getPostCategoryLabel } from './categories';
 import { Transaction } from './ledger';
 
 export interface DiaryBackup {
@@ -19,8 +20,8 @@ export function formatDateCN(dateString: string): string {
   return `${year}年${month}月${day}日 ${hours}:${minutes}`;
 }
 
-function getEntryTypeLabel(type: string): string {
-  return type === 'diary' ? '日记' : '随想';
+function getEntryTypeLabel(post: Pick<Post, 'entryType' | 'category'>): string {
+  return getPostCategoryLabel(post);
 }
 
 function downloadMarkdown(content: string, filename: string) {
@@ -36,7 +37,7 @@ function downloadMarkdown(content: string, filename: string) {
 }
 
 export function exportPostAsMarkdown(post: Post) {
-  const typeLabel = getEntryTypeLabel(post.entryType);
+  const typeLabel = getEntryTypeLabel(post);
   const date = formatDateCN(post.createdAt);
 
   let md = '';
@@ -84,7 +85,7 @@ export function exportPostsAsMarkdown(posts: Post[], filename?: string) {
   md += `---\n\n`;
 
   posts.forEach((post, index) => {
-    const typeLabel = getEntryTypeLabel(post.entryType);
+    const typeLabel = getEntryTypeLabel(post);
     const date = formatDateCN(post.createdAt);
 
     md += `## ${index + 1}. ${post.title || typeLabel}\n\n`;
@@ -133,6 +134,7 @@ function isPost(value: unknown): value is Post {
   if (!isRecord(value)) return false;
   return typeof value.id === 'string'
     && (value.entryType === 'thought' || value.entryType === 'diary' || value.entryType === 'article')
+    && (value.category === undefined || typeof value.category === 'string')
     && typeof value.content === 'string'
     && Array.isArray(value.images)
     && value.images.every((image) => typeof image === 'string')

@@ -7,6 +7,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import { useApp } from '@/lib/context';
 import { formatRelativeTime, cn } from '@/lib/utils';
 import { formatDateCN } from '@/lib/export';
+import { getPostCategoryColor, getPostCategoryLabel } from '@/lib/categories';
 import Avatar from '@/components/ui/Avatar';
 import ImageLightbox from '@/components/common/ImageLightbox';
 
@@ -29,12 +30,8 @@ export default function PostDetailPage() {
     );
   }
 
-  const typeLabel = post.entryType === 'diary' ? '日记' : post.entryType === 'article' ? '英文' : '随想';
-  const typeColor = post.entryType === 'diary'
-    ? 'bg-x-green/20 text-x-green'
-    : post.entryType === 'article'
-    ? 'bg-amber-500/20 text-amber-500'
-    : 'bg-x-blue/20 text-x-blue';
+  const typeLabel = getPostCategoryLabel(post);
+  const typeColor = getPostCategoryColor(post);
 
   const handleLike = () => {
     setLikeAnimating(true);

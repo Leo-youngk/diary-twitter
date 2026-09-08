@@ -5,6 +5,7 @@ import Image from 'next/image';
 import TextareaAutosize from 'react-textarea-autosize';
 import { useApp } from '@/lib/context';
 import { EntryType } from '@/lib/types';
+import { getCustomCategoryNames, MAX_CUSTOM_CATEGORY_LENGTH, RESERVED_CATEGORY_NAMES } from '@/lib/categories';
 import { compressImage, POST_IMAGE_OPTS } from '@/lib/image';
 import Avatar from '@/components/ui/Avatar';
 
@@ -13,12 +14,13 @@ const MAX_CHARS_DIARY = 2000;
 const MAX_IMAGES = 4; // PostCard only renders the first 4
 const DRAFT_KEY = 'diary-compose-draft';
 
-const EMPTY_DRAFT: Draft = { content: '', title: '', entryType: 'thought' };
+const EMPTY_DRAFT: Draft = { content: '', title: '', entryType: 'thought', category: '' };
 
 interface Draft {
   content: string;
   title: string;
   entryType: EntryType;
+  category: string;
 }
 
 function loadDraft(): Draft {
@@ -33,22 +35,30 @@ function loadDraft(): Draft {
       content: typeof draft.content === 'string' ? draft.content : '',
       title: typeof draft.title === 'string' ? draft.title : '',
       entryType: draft.entryType === 'diary' ? 'diary' : 'thought',
+      category: typeof draft.category === 'string' ? draft.category : '',
     };
   } catch { return EMPTY_DRAFT; }
 }
 
 export default function ComposeModal() {
-  const { isComposeOpen, editingPost, closeCompose, currentUser, addPost, updatePost, addToast } = useApp();
+  const { isComposeOpen, editingPost, closeCompose, currentUser, posts, addPost, updatePost, addToast } = useApp();
   const isEditing = editingPost !== null;
+  const customCategories = getCustomCategoryNames(posts);
   const [content, setContent] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [entryType, setEntryType] = useState<EntryType>('thought');
+  const [category, setCategory] = useState('');
+  const [showCategoryInput, setShowCategoryInput] = useState(false);
+  const [categoryInput, setCategoryInput] = useState('');
   const [title, setTitle] = useState('');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftLoaded = useRef(false);
   const postRef = useRef<() => void | Promise<void>>(() => {});
+  const categoryOptions = category && !customCategories.includes(category)
+    ? [category, ...customCategories]
+    : customCategories;
 
   // Load the post being edited, or the saved draft, when the modal opens.
   useEffect(() => {
@@ -57,12 +67,14 @@ export default function ComposeModal() {
         setContent(editingPost.content);
         setTitle(editingPost.title ?? '');
         setEntryType(editingPost.entryType);
+        setCategory(editingPost.category ?? '');
         setImages(editingPost.images);
       } else {
         const draft = loadDraft();
         setContent(draft.content);
         setTitle(draft.title);
         setEntryType(draft.entryType);
+        setCategory(draft.category);
         setImages([]);
       }
       draftLoaded.current = true;
@@ -78,10 +90,10 @@ export default function ComposeModal() {
   useEffect(() => {
     if (!isComposeOpen || isEditing) return;
     const timer = setTimeout(() => {
-      try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ content, title, entryType })); } catch {}
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ content, title, entryType, category })); } catch {}
     }, 500);
     return () => clearTimeout(timer);
-  }, [content, title, entryType, isComposeOpen, isEditing]);
+  }, [content, title, entryType, category, isComposeOpen, isEditing]);
 
   // Esc closes, Cmd/Ctrl+Enter publishes — bound at the window so it works
   // regardless of which field has focus.
@@ -104,14 +116,41 @@ export default function ComposeModal() {
   const isOverLimit = charCount > maxChars;
   const canPost = content.trim().length > 0 && !isOverLimit;
 
+  const selectCategory = (name: string) => {
+    setCategory((current) => current === name ? '' : name);
+    setShowCategoryInput(false);
+  };
+
+  const handleAddCategory = () => {
+    const name = categoryInput.trim();
+    if (!name) {
+      addToast('请输入分类名称', 'info');
+      return;
+    }
+    if (name.length > MAX_CUSTOM_CATEGORY_LENGTH) {
+      addToast(`分类名称不能超过 ${MAX_CUSTOM_CATEGORY_LENGTH} 个字`, 'error');
+      return;
+    }
+    if (RESERVED_CATEGORY_NAMES.has(name)) {
+      addToast('这个名称已被系统分类使用，请换一个', 'info');
+      return;
+    }
+
+    const existing = customCategories.find((item) => item.toLocaleLowerCase() === name.toLocaleLowerCase());
+    setCategory(existing ?? name);
+    setCategoryInput('');
+    setShowCategoryInput(false);
+  };
+
   const handlePost = useCallback(async () => {
     if (!canPost || saving) return;
     setSaving(true);
     const finalTitle = entryType === 'diary' ? title : undefined;
+    const finalCategory = category.trim() || undefined;
     try {
       const saved = editingPost
-        ? await updatePost(editingPost.id, content.trim(), images, entryType, finalTitle)
-        : await addPost(content.trim(), images, entryType, finalTitle);
+        ? await updatePost(editingPost.id, content.trim(), images, entryType, finalTitle, finalCategory)
+        : await addPost(content.trim(), images, entryType, finalTitle, finalCategory);
       if (!saved) {
         addToast('本机保存失败，内容已保留，请重试', 'error');
         return;
@@ -119,18 +158,21 @@ export default function ComposeModal() {
       if (editingPost) {
         addToast('已更新');
       } else {
-        addToast(entryType === 'diary' ? '日记发布成功！' : '随想发布成功！');
+        addToast(finalCategory ? `已归入「${finalCategory}」` : entryType === 'diary' ? '日记发布成功！' : '随想发布成功！');
         try { localStorage.removeItem(DRAFT_KEY); } catch {}
       }
       setContent('');
       setImages([]);
       setTitle('');
       setEntryType('thought');
+      setCategory('');
+      setCategoryInput('');
+      setShowCategoryInput(false);
       closeCompose();
     } finally {
       setSaving(false);
     }
-  }, [addPost, addToast, canPost, closeCompose, content, editingPost, entryType, images, saving, title, updatePost]);
+  }, [addPost, addToast, canPost, category, closeCompose, content, editingPost, entryType, images, saving, title, updatePost]);
 
   // Keep the latest handler reachable from the window-level key listener.
   useEffect(() => {
@@ -189,30 +231,93 @@ export default function ComposeModal() {
           {isEditing && <span className="font-bold">编辑</span>}
         </div>
 
-        {/* Entry Type Selector */}
-        <div className="px-4 pb-2">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setEntryType('thought')}
-              className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
-                entryType === 'thought'
-                  ? 'bg-x-blue text-white'
-                  : 'bg-x-darker text-x-gray hover:text-x-fg'
-              }`}
-            >
-              随想
-            </button>
-            <button
-              onClick={() => setEntryType('diary')}
-              className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
-                entryType === 'diary'
-                  ? 'bg-x-green text-white'
-                  : 'bg-x-darker text-x-gray hover:text-x-fg'
-              }`}
-            >
-              日记
-            </button>
+        {/* Entry Type and Custom Category Selector */}
+        <div className="px-4 pb-3 space-y-2">
+          <div className="flex items-center gap-3">
+            <span className="w-10 shrink-0 text-xs font-medium text-x-gray">形式</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEntryType('thought')}
+                className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
+                  entryType === 'thought'
+                    ? 'bg-x-blue text-white'
+                    : 'bg-x-darker text-x-gray hover:text-x-fg'
+                }`}
+              >
+                随想
+              </button>
+              <button
+                onClick={() => setEntryType('diary')}
+                className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
+                  entryType === 'diary'
+                    ? 'bg-x-green text-white'
+                    : 'bg-x-darker text-x-gray hover:text-x-fg'
+                }`}
+              >
+                日记
+              </button>
+            </div>
           </div>
+
+          <div className="flex items-start gap-3">
+            <span className="w-10 shrink-0 pt-2 text-xs font-medium text-x-gray">分类</span>
+            <div className="flex flex-1 flex-wrap gap-2 min-w-0">
+              <button
+                onClick={() => selectCategory('')}
+                className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+                  !category ? 'bg-x-blue/15 text-x-blue font-bold' : 'bg-x-darker text-x-gray hover:text-x-fg'
+                }`}
+              >
+                默认
+              </button>
+              {categoryOptions.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => selectCategory(name)}
+                  className={`max-w-full truncate px-3 py-1.5 rounded-full text-sm transition-colors ${
+                    category === name ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400 font-bold' : 'bg-x-darker text-x-gray hover:text-x-fg'
+                  }`}
+                  title={name}
+                >
+                  {name}
+                </button>
+              ))}
+              <button
+                onClick={() => { setCategoryInput(''); setShowCategoryInput(true); }}
+                aria-expanded={showCategoryInput}
+                className="px-3 py-1.5 rounded-full text-sm text-x-blue bg-x-blue/10 hover:bg-x-blue/20 transition-colors"
+              >
+                ＋自定义
+              </button>
+            </div>
+          </div>
+
+          {showCategoryInput && (
+            <div className="ml-[52px] flex items-center gap-2 rounded-xl bg-x-darker p-2">
+              <input
+                type="text"
+                value={categoryInput}
+                maxLength={MAX_CUSTOM_CATEGORY_LENGTH}
+                onChange={(e) => setCategoryInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddCategory();
+                  }
+                }}
+                placeholder="输入分类名称"
+                aria-label="自定义分类名称"
+                autoFocus
+                className="min-w-0 flex-1 bg-transparent px-2 py-1 text-sm text-x-fg placeholder-x-gray outline-none"
+              />
+              <button
+                onClick={handleAddCategory}
+                className="shrink-0 rounded-full bg-x-blue px-3 py-1 text-sm font-bold text-white hover:bg-x-blue-hover transition-colors"
+              >
+                添加
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Content */}

@@ -49,8 +49,8 @@ interface AppContextType {
   setActiveNav: (nav: NavItem) => void;
   setFeedTab: (tab: FeedTab) => void;
   toggleLike: (postId: string) => Promise<boolean>;
-  addPost: (content: string, images: string[], entryType: EntryType, title?: string) => Promise<boolean>;
-  updatePost: (postId: string, content: string, images: string[], entryType: EntryType, title?: string) => Promise<boolean>;
+  addPost: (content: string, images: string[], entryType: EntryType, title?: string, category?: string) => Promise<boolean>;
+  updatePost: (postId: string, content: string, images: string[], entryType: EntryType, title?: string, category?: string) => Promise<boolean>;
   deletePost: (postId: string) => Promise<boolean>;
   addReply: (postId: string, content: string) => Promise<boolean>;
   openCompose: () => void;
@@ -453,10 +453,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [persistSnapshot, setPostsSnapshot]);
 
   const addPost = useCallback((
-    content: string, images: string[], entryType: EntryType, title?: string
+    content: string, images: string[], entryType: EntryType, title?: string, category?: string
   ): Promise<boolean> => {
     const newPost: Post = {
       id: generateId(), entryType,
+      category: category?.trim() || undefined,
       title: title?.trim() || undefined,
       content, images,
       createdAt: new Date().toISOString(),
@@ -468,10 +469,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [persistSnapshot, setPostsSnapshot]);
 
   const updatePost = useCallback((
-    postId: string, content: string, images: string[], entryType: EntryType, title?: string
+    postId: string, content: string, images: string[], entryType: EntryType, title?: string, category?: string
   ): Promise<boolean> => {
     const nextPosts = postsRef.current.map((p) => (
-      p.id === postId ? { ...p, content, images, entryType, title: title?.trim() || undefined } : p
+      p.id === postId
+        ? { ...p, content, images, entryType, title: title?.trim() || undefined, category: category?.trim() || undefined }
+        : p
     ));
     setPostsSnapshot(nextPosts);
     return persistSnapshot(nextPosts, userRef.current);
@@ -499,6 +502,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return posts.filter((p) =>
       p.content.toLowerCase().includes(lower) ||
       p.title?.toLowerCase().includes(lower) ||
+      p.category?.toLowerCase().includes(lower) ||
       p.tags?.some((t) => t.toLowerCase().includes(lower))
     );
   }, [posts]);

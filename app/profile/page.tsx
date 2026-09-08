@@ -10,6 +10,7 @@ import Avatar from '@/components/ui/Avatar';
 import FeedList from '@/components/feed/FeedList';
 import Button from '@/components/ui/Button';
 import { ProfileTab } from '@/lib/types';
+import { getCategoryNameFromTab, getCategoryTabKey, getCustomCategoryNames } from '@/lib/categories';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function ProfilePage() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const customCategories = useMemo(() => getCustomCategoryNames(posts), [posts]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -49,6 +51,7 @@ export default function ProfilePage() {
     { key: 'all', label: '全部' },
     { key: 'thought', label: '随想' },
     { key: 'diary', label: '日记' },
+    ...customCategories.map((name) => ({ key: getCategoryTabKey(name), label: name })),
   ];
 
   const filteredPosts = useMemo(() => {
@@ -58,7 +61,9 @@ export default function ProfilePage() {
       case 'diary':
         return posts.filter((p) => p.entryType === 'diary');
       default:
-        return posts;
+        return getCategoryNameFromTab(activeTab)
+          ? posts.filter((p) => p.category?.trim() === getCategoryNameFromTab(activeTab))
+          : posts;
     }
   }, [activeTab, posts]);
 
@@ -200,13 +205,13 @@ export default function ProfilePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-x-border">
+      <div className="flex overflow-x-auto scrollbar-hide touch-auto border-b border-x-border">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex-1 py-4 text-center hover:bg-white/[0.03] transition-colors relative font-medium text-sm',
+              'flex-1 min-w-[88px] py-4 px-3 text-center whitespace-nowrap hover:bg-white/[0.03] transition-colors relative font-medium text-sm',
               activeTab === tab.key ? 'text-x-fg' : 'text-x-gray'
             )}
           >

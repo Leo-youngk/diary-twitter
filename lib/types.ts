@@ -22,6 +22,8 @@ export interface Reply {
 export interface Post {
   id: string;
   entryType: EntryType;
+  /** Optional user-created category shown instead of the built-in type label. */
+  category?: string;
   title?: string;
   content: string;
   images: string[];
@@ -38,8 +40,8 @@ export interface ToastMessage {
   type: 'success' | 'error' | 'info';
 }
 
-export type FeedTab = 'all' | 'thought' | 'diary' | 'article';
+export type FeedTab = 'all' | EntryType | `custom:${string}`;
 
-export type ProfileTab = 'all' | 'thought' | 'diary';
+export type ProfileTab = 'all' | 'thought' | 'diary' | `custom:${string}`;
 
 export type NavItem = 'home' | 'explore' | 'calendar' | 'profile' | 'ledger';
