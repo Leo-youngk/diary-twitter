@@ -121,6 +121,12 @@ export default function ComposeModal() {
     setShowCategoryInput(false);
   };
 
+  const selectBuiltInType = (type: 'thought' | 'diary') => {
+    setEntryType(type);
+    setCategory('');
+    setShowCategoryInput(false);
+  };
+
   const handleAddCategory = () => {
     const name = categoryInput.trim();
     if (!name) {
@@ -231,69 +237,52 @@ export default function ComposeModal() {
           {isEditing && <span className="font-bold">编辑</span>}
         </div>
 
-        {/* Entry Type and Custom Category Selector */}
+        {/* Peer-level built-in and custom category selector */}
         <div className="px-4 pb-3 space-y-2">
-          <div className="flex items-center gap-3">
-            <span className="w-10 shrink-0 text-xs font-medium text-x-gray">形式</span>
-            <div className="flex gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2">
+            <button
+              onClick={() => selectBuiltInType('thought')}
+              className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
+                !category && entryType === 'thought'
+                  ? 'bg-x-blue text-white'
+                  : 'bg-x-darker text-x-gray hover:text-x-fg'
+              }`}
+            >
+              随想
+            </button>
+            <button
+              onClick={() => selectBuiltInType('diary')}
+              className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
+                !category && entryType === 'diary'
+                  ? 'bg-x-green text-white'
+                  : 'bg-x-darker text-x-gray hover:text-x-fg'
+              }`}
+            >
+              日记
+            </button>
+            {categoryOptions.map((name) => (
               <button
-                onClick={() => setEntryType('thought')}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
-                  entryType === 'thought'
-                    ? 'bg-x-blue text-white'
-                    : 'bg-x-darker text-x-gray hover:text-x-fg'
+                key={name}
+                onClick={() => selectCategory(name)}
+                className={`max-w-full truncate px-3 py-1.5 rounded-full text-sm transition-colors ${
+                  category === name ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400 font-bold' : 'bg-x-darker text-x-gray hover:text-x-fg'
                 }`}
+                title={name}
               >
-                随想
+                {name}
               </button>
-              <button
-                onClick={() => setEntryType('diary')}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
-                  entryType === 'diary'
-                    ? 'bg-x-green text-white'
-                    : 'bg-x-darker text-x-gray hover:text-x-fg'
-                }`}
-              >
-                日记
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <span className="w-10 shrink-0 pt-2 text-xs font-medium text-x-gray">分类</span>
-            <div className="flex flex-1 flex-wrap gap-2 min-w-0">
-              <button
-                onClick={() => selectCategory('')}
-                className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
-                  !category ? 'bg-x-blue/15 text-x-blue font-bold' : 'bg-x-darker text-x-gray hover:text-x-fg'
-                }`}
-              >
-                默认
-              </button>
-              {categoryOptions.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => selectCategory(name)}
-                  className={`max-w-full truncate px-3 py-1.5 rounded-full text-sm transition-colors ${
-                    category === name ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400 font-bold' : 'bg-x-darker text-x-gray hover:text-x-fg'
-                  }`}
-                  title={name}
-                >
-                  {name}
-                </button>
-              ))}
-              <button
-                onClick={() => { setCategoryInput(''); setShowCategoryInput(true); }}
-                aria-expanded={showCategoryInput}
-                className="px-3 py-1.5 rounded-full text-sm text-x-blue bg-x-blue/10 hover:bg-x-blue/20 transition-colors"
-              >
-                ＋自定义
-              </button>
-            </div>
+            ))}
+            <button
+              onClick={() => { setCategoryInput(''); setShowCategoryInput(true); }}
+              aria-expanded={showCategoryInput}
+              className="px-3 py-1.5 rounded-full text-sm text-x-blue bg-x-blue/10 hover:bg-x-blue/20 transition-colors"
+            >
+              ＋添加分类
+            </button>
           </div>
 
           {showCategoryInput && (
-            <div className="ml-[52px] flex items-center gap-2 rounded-xl bg-x-darker p-2">
+            <div className="flex items-center gap-2 rounded-xl bg-x-darker p-2">
               <input
                 type="text"
                 value={categoryInput}
