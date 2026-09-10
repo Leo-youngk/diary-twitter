@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
+import {
+  buildIntegrationEvents,
+  enqueueIntegrationEvents,
+  flushIntegrationOutbox,
+  integrationEnabled,
+  type ObsidianSyncEnv,
+} from '@/lib/obsidianIntegration';
 
 const MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB — KV value limit is 25 MB
 const ID_PATTERN = /^[a-z0-9]{16,64}$/i;
@@ -18,6 +25,7 @@ function isSyncData(value: unknown): value is Record<string, unknown> {
     && Array.isArray(value.posts)
     && isRecord(value.user)
     && (value.ledger === undefined || Array.isArray(value.ledger))
+    && (value.dailyGoals === undefined || Array.isArray(value.dailyGoals))
     && getUpdatedAt(value) !== null;
 }
 
@@ -72,20 +80,44 @@ export async function POST(request: Request) {
   }
   const incomingUpdatedAt = data.updatedAt as string;
 
-  const { env } = await getCloudflareContext({ async: true });
+  const { env, ctx } = await getCloudflareContext({ async: true });
+  const syncEnv = env as CloudflareEnv & ObsidianSyncEnv;
   const existingRaw = await env.DIARY_KV.get(`diary:${id}`);
+  const integrationOn = integrationEnabled(syncEnv);
   if (existingRaw) {
     try {
       const existing: unknown = JSON.parse(existingRaw);
       const existingUpdatedAt = getUpdatedAt(existing);
       if (existingUpdatedAt && Date.parse(existingUpdatedAt) > Date.parse(incomingUpdatedAt)) {
+        if (integrationOn) ctx.waitUntil(flushIntegrationOutbox(syncEnv, id));
         return NextResponse.json({ data: existing }, { status: 409 });
       }
     } catch {
       // An invalid old value is replaced by the validated incoming payload.
     }
   }
-  await env.DIARY_KV.put(`diary:${id}`, JSON.stringify(data));
 
-  return NextResponse.json({ ok: true });
+  const previousValue = existingRaw
+    ? (() => {
+        try { return JSON.parse(existingRaw) as unknown; } catch { return null; }
+      })()
+    : null;
+  const integrationEvents = integrationOn
+    ? await buildIntegrationEvents(previousValue, data, incomingUpdatedAt)
+    : [];
+
+  // Queue the exact delta before replacing the snapshot. If the outbox write
+  // fails, the request fails and the client can retry without losing the event.
+  if (integrationOn && integrationEvents.length > 0) {
+    await enqueueIntegrationEvents(syncEnv, id, incomingUpdatedAt, integrationEvents);
+  }
+  await env.DIARY_KV.put(`diary:${id}`, JSON.stringify(data));
+  if (integrationOn) ctx.waitUntil(flushIntegrationOutbox(syncEnv, id));
+
+  return NextResponse.json({
+    ok: true,
+    integration: integrationOn
+      ? { queued: integrationEvents.length, status: integrationEvents.length > 0 ? 'pending' : 'idle' }
+      : { status: 'disabled' },
+  });
 }

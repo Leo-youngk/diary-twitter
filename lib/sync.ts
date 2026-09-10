@@ -46,6 +46,7 @@ export interface SyncPayload {
   posts: unknown;
   user: unknown;
   ledger?: unknown;
+  dailyGoals?: unknown;
   updatedAt: string;
 }
 
@@ -58,6 +59,7 @@ function isSyncPayload(value: unknown): value is SyncPayload {
     && Array.isArray(value.posts)
     && isRecord(value.user)
     && (value.ledger === undefined || Array.isArray(value.ledger))
+    && (value.dailyGoals === undefined || Array.isArray(value.dailyGoals))
     && typeof value.updatedAt === 'string'
     && Number.isFinite(Date.parse(value.updatedAt));
 }
