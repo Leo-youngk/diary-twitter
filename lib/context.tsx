@@ -17,6 +17,7 @@ import {
   getSyncId, setSyncId, pullSync, pushSync,
   getLocalUpdatedAt, setLocalUpdatedAt, reconcile,
   hasPendingSync, markPendingSync, clearPendingSync,
+  hasPendingIntegration, markPendingIntegration, clearPendingIntegration,
 } from '@/lib/sync';
 import { idbGet, idbSet, idbSetMany } from '@/lib/idbStore';
 
@@ -111,6 +112,7 @@ function applyTheme(theme: Theme) {
 
 const POSTS_KEY = 'diary-posts';
 const USER_KEY = 'diary-user';
+const INTEGRATION_RETRY_DELAY_MS = 15_000;
 
 // Posts (with their base64 images) live in IndexedDB, whose quota is a share
 // of free disk space rather than localStorage's small fixed cap — that's the
@@ -185,6 +187,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const integrationRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePushRef = useRef<((nextPosts: Post[], nextUser: User, updatedAt: string) => void) | null>(null);
   const quotaWarned = useRef(false);
   const pushFailed = useRef(false);
   const postsRef = useRef(posts);
@@ -268,6 +272,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSyncStatus('ok');
           setLastSyncedAt(updatedAt);
         }
+        if (result.integrationQueued && result.integrationQueued > 0) {
+          markPendingIntegration();
+          if (integrationRetryTimer.current) clearTimeout(integrationRetryTimer.current);
+          integrationRetryTimer.current = setTimeout(() => {
+            const currentUpdatedAt = getLocalUpdatedAt();
+            if (currentUpdatedAt) schedulePushRef.current?.(postsRef.current, userRef.current, currentUpdatedAt);
+          }, INTEGRATION_RETRY_DELAY_MS);
+        } else {
+          clearPendingIntegration();
+        }
         pushFailed.current = false;
       } else if (result.conflict && isCurrentSnapshot) {
         // The server rejected an older snapshot. Adopt its newer copy only if
@@ -295,6 +309,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, 800);
   }, [addToast, setPostsSnapshot, setUserSnapshot, writeLocal]);
+
+  useEffect(() => {
+    schedulePushRef.current = schedulePush;
+    return () => { schedulePushRef.current = null; };
+  }, [schedulePush]);
 
   const persistSnapshot = useCallback(async (nextPosts: Post[], nextUser: User): Promise<boolean> => {
     const updatedAt = new Date().toISOString();
@@ -385,7 +404,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     const retryPending = () => {
-      if (hasPendingSync()) {
+      if (hasPendingSync() || hasPendingIntegration()) {
         const updatedAt = getLocalUpdatedAt();
         if (updatedAt) schedulePush(postsRef.current, userRef.current, updatedAt);
       }
@@ -395,6 +414,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
       if (pushTimer.current) clearTimeout(pushTimer.current);
+      if (integrationRetryTimer.current) clearTimeout(integrationRetryTimer.current);
       window.removeEventListener('online', retryPending);
       document.removeEventListener('visibilitychange', retryPending);
     };

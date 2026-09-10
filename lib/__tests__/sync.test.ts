@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { reconcile, type SyncPayload } from '../sync';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { pushSync, reconcile, type SyncPayload } from '../sync';
 
 const payload = (updatedAt: string): SyncPayload => ({ posts: [], user: {}, updatedAt });
 
@@ -30,5 +30,25 @@ describe('reconcile', () => {
   it('does nothing when both sides are at the same revision', () => {
     expect(reconcile('2026-02-01T00:00:00Z', payload('2026-02-01T00:00:00Z')))
       .toEqual({ action: 'none' });
+  });
+});
+
+describe('pushSync', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('surfaces queued Obsidian events so the client can retry them', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, integration: { queued: 3 } }), { status: 200 }),
+    ));
+    await expect(pushSync('sync-1234567890123456', payload('2026-02-01T00:00:00Z')))
+      .resolves.toEqual({ ok: true, integrationQueued: 3 });
+  });
+
+  it('keeps a successful sync compatible with responses without integration metadata', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    ));
+    await expect(pushSync('sync-1234567890123456', payload('2026-02-01T00:00:00Z')))
+      .resolves.toEqual({ ok: true, integrationQueued: 0 });
   });
 });

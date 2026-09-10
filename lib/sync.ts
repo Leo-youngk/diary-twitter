@@ -1,6 +1,7 @@
 const SYNC_ID_KEY = 'diary-sync-id';
 const UPDATED_AT_KEY = 'diary-updated-at';
 const PENDING_KEY = 'diary-sync-pending';
+const INTEGRATION_PENDING_KEY = 'diary-obsidian-sync-pending';
 
 // A random device/sync id, generated once and persisted in localStorage.
 // Anyone with this id can read/write the same data — treat it like a share link.
@@ -40,6 +41,18 @@ export function markPendingSync() {
 
 export function clearPendingSync() {
   try { localStorage.removeItem(PENDING_KEY); } catch {}
+}
+
+export function hasPendingIntegration(): boolean {
+  try { return localStorage.getItem(INTEGRATION_PENDING_KEY) === '1'; } catch { return false; }
+}
+
+export function markPendingIntegration() {
+  try { localStorage.setItem(INTEGRATION_PENDING_KEY, '1'); } catch {}
+}
+
+export function clearPendingIntegration() {
+  try { localStorage.removeItem(INTEGRATION_PENDING_KEY); } catch {}
 }
 
 export interface SyncPayload {
@@ -97,7 +110,7 @@ export async function pullSync(id: string): Promise<SyncPayload | null> {
 }
 
 export type PushResult =
-  | { ok: true }
+  | { ok: true; integrationQueued?: number }
   | { ok: false; conflict?: SyncPayload };
 
 export async function pushSync(id: string, payload: SyncPayload): Promise<PushResult> {
@@ -107,13 +120,16 @@ export async function pushSync(id: string, payload: SyncPayload): Promise<PushRe
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, data: payload }),
     });
-    if (res.ok) return { ok: true };
-    if (res.status === 409) {
-      const body: unknown = await res.json();
-      if (isRecord(body) && isSyncPayload(body.data)) {
-        return { ok: false, conflict: body.data };
-      }
-      return { ok: false };
+    const body: unknown = await res.json().catch(() => null);
+    if (res.ok) {
+      const integration = isRecord(body) && isRecord(body.integration) ? body.integration : null;
+      const queued = integration && typeof integration.queued === 'number' && integration.queued > 0
+        ? Math.floor(integration.queued)
+        : 0;
+      return { ok: true, integrationQueued: queued };
+    }
+    if (res.status === 409 && isRecord(body) && isSyncPayload(body.data)) {
+      return { ok: false, conflict: body.data };
     }
     return { ok: false };
   } catch {
