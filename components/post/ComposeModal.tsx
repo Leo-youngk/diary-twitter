@@ -158,7 +158,6 @@ export default function ComposeModal() {
         ? await updatePost(editingPost.id, content.trim(), images, entryType, finalTitle, finalCategory)
         : await addPost(content.trim(), images, entryType, finalTitle, finalCategory);
       if (!saved) {
-        addToast('本机保存失败，内容已保留，请重试', 'error');
         return;
       }
       if (editingPost) {

@@ -189,10 +189,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const integrationRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const schedulePushRef = useRef<((nextPosts: Post[], nextUser: User, updatedAt: string) => void) | null>(null);
-  const quotaWarned = useRef(false);
   const pushFailed = useRef(false);
   const postsRef = useRef(posts);
   const userRef = useRef(currentUser);
+  const lastSavedSnapshot = useRef({ posts: [] as Post[], user: defaultUser });
+  const localWriteQueue = useRef<Promise<void>>(Promise.resolve());
 
   const setPostsSnapshot = useCallback((nextPosts: Post[]) => {
     postsRef.current = nextPosts;
@@ -206,7 +207,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Toast ──────────────────────────────────────────────────────────────────
   const addToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
     const id = generateId();
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => prev.some((toast) => toast.message === message && toast.type === type)
+      ? prev
+      : [...prev, { id, message, type }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   }, []);
   const removeToast = useCallback((id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
@@ -244,12 +247,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       else clearPendingSync();
       return true;
     } catch {
-      // A failed local write must be visible to the user instead of being
-      // reported as a successful publish.
-      if (!quotaWarned.current) {
-        quotaWarned.current = true;
-        addToast('本地保存失败，请先导出备份后重试', 'error');
-      }
+      // Keep repeated failures visible without stacking identical toasts.
+      addToast('本地保存失败，操作已撤销，请重试', 'error');
       return false;
     }
   }, [addToast]);
@@ -291,14 +290,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const remoteUser = remote.user as User;
         setPostsSnapshot(remotePosts);
         setUserSnapshot(remoteUser);
-        if (Array.isArray(remote.ledger)) {
-          saveTransactions(remote.ledger as Transaction[]);
-          window.dispatchEvent(new Event('diary:ledger-changed'));
-        }
         const saved = await writeLocal(remotePosts, remoteUser, remote.updatedAt, false);
         if (saved) {
+          lastSavedSnapshot.current = { posts: remotePosts, user: remoteUser };
+          if (Array.isArray(remote.ledger)) {
+            saveTransactions(remote.ledger as Transaction[]);
+            window.dispatchEvent(new Event('diary:ledger-changed'));
+          }
           setLastSyncedAt(remote.updatedAt);
           setSyncStatus('ok');
+        } else if (postsRef.current === remotePosts && userRef.current === remoteUser) {
+          setPostsSnapshot(lastSavedSnapshot.current.posts);
+          setUserSnapshot(lastSavedSnapshot.current.user);
+          setSyncStatus('error');
         }
         pushFailed.current = false;
       } else if (isCurrentSnapshot && !pushFailed.current) {
@@ -315,12 +319,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => { schedulePushRef.current = null; };
   }, [schedulePush]);
 
-  const persistSnapshot = useCallback(async (nextPosts: Post[], nextUser: User): Promise<boolean> => {
+  const persistSnapshot = useCallback((nextPosts: Post[], nextUser: User): Promise<boolean> => {
     const updatedAt = new Date().toISOString();
-    const saved = await writeLocal(nextPosts, nextUser, updatedAt);
-    if (saved) schedulePush(nextPosts, nextUser, updatedAt);
-    return saved;
-  }, [schedulePush, writeLocal]);
+    // Serialize writes so a slower, older IndexedDB transaction cannot replace
+    // a newer snapshot. All mutations still update the screen immediately.
+    const write = localWriteQueue.current.then(async () => {
+      const saved = await writeLocal(nextPosts, nextUser, updatedAt);
+      if (saved) {
+        lastSavedSnapshot.current = { posts: nextPosts, user: nextUser };
+        schedulePush(nextPosts, nextUser, updatedAt);
+      } else if (postsRef.current === nextPosts && userRef.current === nextUser) {
+        // Roll back only the latest optimistic state. If another edit is queued,
+        // its write will either save both edits or perform this rollback.
+        setPostsSnapshot(lastSavedSnapshot.current.posts);
+        setUserSnapshot(lastSavedSnapshot.current.user);
+      }
+      return saved;
+    });
+    localWriteQueue.current = write.then(() => undefined, () => undefined);
+    return write;
+  }, [schedulePush, setPostsSnapshot, setUserSnapshot, writeLocal]);
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -332,6 +350,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       const initialPosts = localPosts ?? [];
       const initialUser = localUser ?? defaultUser;
+      lastSavedSnapshot.current = { posts: initialPosts, user: initialUser };
       setPostsSnapshot(initialPosts);
       setUserSnapshot(initialUser);
       // Local data is already in hand — render now and let the network catch up.
@@ -371,14 +390,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const remoteUser = ru as User;
             setPostsSnapshot(remotePosts);
             setUserSnapshot(remoteUser);
-            if (Array.isArray(rl)) {
-              saveTransactions(rl as Transaction[]);
-              window.dispatchEvent(new Event('diary:ledger-changed'));
-            }
             // Keep the remote timestamp, so the next boot reconciles to 'none'.
-            void writeLocal(remotePosts, remoteUser, updatedAt, false);
-            setLastSyncedAt(updatedAt);
-            setSyncStatus('ok');
+            void writeLocal(remotePosts, remoteUser, updatedAt, false).then((saved) => {
+              if (saved) {
+                lastSavedSnapshot.current = { posts: remotePosts, user: remoteUser };
+                if (Array.isArray(rl)) {
+                  saveTransactions(rl as Transaction[]);
+                  window.dispatchEvent(new Event('diary:ledger-changed'));
+                }
+                setLastSyncedAt(updatedAt);
+                setSyncStatus('ok');
+              } else if (postsRef.current === remotePosts && userRef.current === remoteUser) {
+                setPostsSnapshot(lastSavedSnapshot.current.posts);
+                setUserSnapshot(lastSavedSnapshot.current.user);
+                setSyncStatus('error');
+              }
+            });
           } else if (decision.action === 'push-local') {
             const pushInitial = async () => {
               const updatedAt = localUpdatedAt ?? new Date().toISOString();
@@ -424,18 +451,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const remote = await pullSync(id);
       if (!remote) return false;
-      setSyncId(id);
-      setSyncIdState(id);
       const remotePosts = remote.posts as Post[];
       const remoteUser = remote.user as User;
+      const saved = await writeLocal(remotePosts, remoteUser, remote.updatedAt, false);
+      if (!saved) return false;
+      lastSavedSnapshot.current = { posts: remotePosts, user: remoteUser };
+      setSyncId(id);
+      setSyncIdState(id);
       setPostsSnapshot(remotePosts);
       setUserSnapshot(remoteUser);
       if (Array.isArray(remote.ledger)) {
         saveTransactions(remote.ledger as Transaction[]);
         window.dispatchEvent(new Event('diary:ledger-changed'));
       }
-      const saved = await writeLocal(remotePosts, remoteUser, remote.updatedAt, false);
-      if (!saved) return false;
       setLastSyncedAt(remote.updatedAt);
       setSyncStatus('ok');
       return true;
@@ -538,9 +566,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const restoreBackup = useCallback(async (backup: DiaryBackup): Promise<boolean> => {
     setPostsSnapshot(backup.posts);
     setUserSnapshot(backup.user);
+    const saved = await persistSnapshot(backup.posts, backup.user);
+    if (!saved) return false;
     saveTransactions(backup.ledger);
     window.dispatchEvent(new Event('diary:ledger-changed'));
-    return persistSnapshot(backup.posts, backup.user);
+    return true;
   }, [persistSnapshot, setPostsSnapshot, setUserSnapshot]);
 
   // ── Compose / Reply ────────────────────────────────────────────────────────

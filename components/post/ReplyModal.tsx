@@ -8,28 +8,34 @@ import Avatar from '@/components/ui/Avatar';
 
 export default function ReplyModal() {
   const { replyingToPost, closeReply, currentUser, addReply, addToast } = useApp();
-  const [content, setContent] = useState('');
+  const [draft, setDraft] = useState({ postId: '', content: '' });
 
   if (!replyingToPost) return null;
 
+  const content = draft.postId === replyingToPost.id ? draft.content : '';
   const canReply = content.trim().length > 0;
 
-  const handleReply = () => {
-    if (!canReply) return;
-    addReply(replyingToPost.id, content.trim());
-    addToast('回复成功！');
-    setContent('');
+  const handleClose = () => {
+    setDraft({ postId: '', content: '' });
     closeReply();
+  };
+
+  const handleReply = async () => {
+    if (!canReply) return;
+    const saved = await addReply(replyingToPost.id, content.trim());
+    if (!saved) return;
+    addToast('回复成功！');
+    handleClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={closeReply} />
+      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
 
       <div className="relative bg-x-dark rounded-2xl w-full max-w-[600px] mt-12 mx-4 shadow-2xl border border-x-border">
         {/* Header */}
         <div className="flex items-center px-4 py-3">
-          <button onClick={closeReply} className="p-2 rounded-full hover:bg-x-hover transition-colors">
+          <button onClick={handleClose} className="p-2 rounded-full hover:bg-x-hover transition-colors">
             <svg viewBox="0 0 24 24" className="w-5 h-5 fill-x-fg">
               <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
             </svg>
@@ -66,7 +72,7 @@ export default function ReplyModal() {
               value={content}
               onChange={(e) => {
                 const el = e.target;
-                setContent(el.value);
+                setDraft({ postId: replyingToPost.id, content: el.value });
                 // Voice-input IMEs insert whole sentences programmatically, which
                 // doesn't trigger the browser's native "scroll caret into view" —
                 // so when the caret is at the end, force it visible ourselves.

@@ -39,9 +39,10 @@ export default function PostDetailPage() {
     setTimeout(() => setLikeAnimating(false), 300);
   };
 
-  const handleReply = () => {
+  const handleReply = async () => {
     if (!replyContent.trim()) return;
-    addReply(post.id, replyContent.trim());
+    const saved = await addReply(post.id, replyContent.trim());
+    if (!saved) return;
     setReplyContent('');
     addToast('回复成功！');
   };
@@ -203,7 +204,12 @@ export default function PostDetailPage() {
             <div className="flex items-center gap-2">
               <span className="text-sm text-x-gray mr-1">确认删除？</span>
               <button
-                onClick={() => { deletePost(post.id); addToast('已删除'); router.back(); }}
+                onClick={async () => {
+                  const saved = await deletePost(post.id);
+                  if (!saved) return;
+                  addToast('已删除');
+                  router.back();
+                }}
                 className="px-4 py-1.5 text-sm font-bold text-white bg-x-danger hover:bg-x-danger/80 rounded-full transition-colors"
               >
                 删除

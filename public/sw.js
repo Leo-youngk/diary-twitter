@@ -1,8 +1,10 @@
 // Bump this on every deploy that changes cached assets — the activate handler
 // deletes every cache that doesn't match, which is what prevents stale bundles.
-const VERSION = 'diary-v15';
+const VERSION = 'diary-v16';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
+const NAVIGATION_TIMEOUT_MS = 1200;
+const BACKGROUND_FETCH_TIMEOUT_MS = 10000;
 
 const PRECACHE = ['/', '/manifest.json', '/icon-192.png', '/apple-touch-icon.png'];
 
@@ -40,21 +42,36 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.includes('hot-update') || url.pathname.includes('webpack-hmr')) return;
 
   if (request.mode === 'navigate') {
-    // Network-first: a fresh deploy should win, but offline still opens the app.
-    event.respondWith(
-      fetch(request)
-        .then(async (res) => {
-          // Never replace a usable offline page with an error document.
-          if (!res.ok) {
-            const cached = await caches.match(request) || await caches.match('/');
-            return cached || res;
+    // Prefer a fresh page, but a stalled connection must not hold a previously
+    // installed PWA on a blank screen. Keep the fetch alive briefly so the
+    // cached page can still be refreshed for the next launch.
+    event.respondWith((async () => {
+      const cached = await caches.match(request) || await caches.match('/');
+      const controller = cached ? new AbortController() : null;
+      const abortTimer = controller
+        ? setTimeout(() => controller.abort(), BACKGROUND_FETCH_TIMEOUT_MS)
+        : null;
+      const network = fetch(request, controller ? { signal: controller.signal } : undefined)
+        .then((res) => {
+          if (res.ok) {
+            event.waitUntil(caches.open(SHELL).then((cache) => cache.put(request, res.clone())));
+            return res;
           }
-          const copy = res.clone();
-          event.waitUntil(caches.open(SHELL).then((c) => c.put(request, copy)));
-          return res;
+          return cached || res;
         })
-        .catch(() => caches.match(request).then((hit) => hit || caches.match('/')).then((hit) => hit || Response.error()))
-    );
+        .catch(() => cached || Response.error())
+        .finally(() => { if (abortTimer !== null) clearTimeout(abortTimer); });
+
+      if (!cached) return network;
+      event.waitUntil(network.then(() => undefined));
+      let timeout;
+      const fallback = new Promise((resolve) => {
+        timeout = setTimeout(() => resolve(cached), NAVIGATION_TIMEOUT_MS);
+      });
+      const response = await Promise.race([network, fallback]);
+      clearTimeout(timeout);
+      return response;
+    })());
     return;
   }
 

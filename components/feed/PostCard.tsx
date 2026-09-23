@@ -32,7 +32,11 @@ export default function PostCard({ post, compact = false }: PostCardProps) {
     setExiting(true);
     // Let the card fade out before it leaves the list, otherwise everything
     // below it snaps upward.
-    setTimeout(() => { deletePost(post.id); addToast('已删除'); }, 200);
+    setTimeout(async () => {
+      const saved = await deletePost(post.id);
+      if (saved) addToast('已删除');
+      else setExiting(false);
+    }, 200);
   };
 
   const handleCopy = async () => {

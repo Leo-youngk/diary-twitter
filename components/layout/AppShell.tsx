@@ -21,7 +21,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // touch handling. The only web-side mitigation is to claim touches that
   // start within the gesture's activation zone at the screen edge before the
   // system recognizer does, via preventDefault on touchstart.
-  const EDGE_GUARD_PX = 24;
+  // Keep the guard inside the page gutter. The old 24px zone covered the
+  // timeline cards (which begin 12px from each edge) and swallowed their taps.
+  const EDGE_GUARD_PX = 12;
 
   useEffect(() => {
     let scroller: HTMLElement | null = null;

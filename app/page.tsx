@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useLayoutEffect } from 'react';
 import { useApp } from '@/lib/context';
 import { useScrollDirection } from '@/hooks/useScrollDirection';
 import FeedList from '@/components/feed/FeedList';
@@ -10,12 +10,38 @@ import type { FeedTab } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { getCategoryNameFromTab, getCategoryTabKey, getCustomCategoryNames } from '@/lib/categories';
 import ProfileDrawer from '@/components/layout/ProfileDrawer';
+import { getFeedScrollTop, setFeedScrollTop } from '@/hooks/useFeed';
 
 export default function HomePage() {
   const { posts, feedTab, setFeedTab, currentUser, openCompose } = useApp();
   const [showDrawer, setShowDrawer] = useState(false);
   const headerHidden = useScrollDirection();
   const customCategories = useMemo(() => getCustomCategoryNames(posts), [posts]);
+
+  useLayoutEffect(() => {
+    const root = document.querySelector<HTMLElement>('[data-scroll-root]');
+    if (!root) return;
+
+    const restore = () => { root.scrollTop = getFeedScrollTop(feedTab); };
+    restore();
+    // Next can reset the shared <main> after the route commits. Restore once
+    // more after that work, before the user can interact with the new frame.
+    const frame = requestAnimationFrame(restore);
+    const remember = () => {
+      if (window.location.pathname === '/') setFeedScrollTop(feedTab, root.scrollTop);
+    };
+    root.addEventListener('scroll', remember, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      root.removeEventListener('scroll', remember);
+    };
+  }, [feedTab]);
+
+  const selectTab = (tab: FeedTab) => {
+    const root = document.querySelector<HTMLElement>('[data-scroll-root]');
+    if (root) setFeedScrollTop(feedTab, root.scrollTop);
+    setFeedTab(tab);
+  };
 
   const filteredPosts = useMemo(() => {
     if (feedTab === 'thought') return posts.filter((p) => p.entryType === 'thought');
@@ -64,7 +90,7 @@ export default function HomePage() {
             {tabs.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => setFeedTab(tab.key)}
+                onClick={() => selectTab(tab.key)}
                 role="tab"
                 aria-selected={feedTab === tab.key}
                 className={cn(
@@ -91,7 +117,7 @@ export default function HomePage() {
         {feedTab === 'article' ? (
           <SpeechList />
         ) : (
-          <FeedList posts={filteredPosts} resetKey={feedTab} />
+          <FeedList key={feedTab} posts={filteredPosts} resetKey={feedTab} />
         )}
       </div>
     </>

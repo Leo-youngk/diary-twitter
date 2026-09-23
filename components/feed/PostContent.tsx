@@ -17,10 +17,26 @@ export default function PostContent({ post, compact = false }: PostContentProps)
 
   useEffect(() => {
     setExpanded(false);
+  }, [post.id]);
+
+  useEffect(() => {
+    if (expanded) return;
     const el = textRef.current;
     if (!el) return;
-    setIsTruncated(el.scrollHeight - el.clientHeight > 1);
-  }, [post.id, post.content, post.entryType]);
+    // ResizeObserver runs after layout. Reading here avoids forcing a full
+    // timeline layout for every newly mounted card during pagination.
+    let active = true;
+    const measure = () => {
+      if (active) setIsTruncated(el.scrollHeight - el.clientHeight > 1);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    void document.fonts?.ready.then(measure);
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [expanded, post.id, post.content, post.entryType]);
 
   return (
     <div>

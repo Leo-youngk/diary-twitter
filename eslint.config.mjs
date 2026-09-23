@@ -8,6 +8,7 @@ export default defineConfig([
     '.next/**',
     '.open-next/**',
     '.open-next.previous-deploy/**',
+    '.wrangler/**',
     'out/**',
     'build/**',
     'next-env.d.ts',
