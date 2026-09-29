@@ -11,12 +11,11 @@ import {
 import { useGoal, useGoalIds, useGoalProgress, useToday, type Goal } from '@/data/hooks';
 import { store } from '@/data/store';
 import { isComplete, lastUnfinishedDay, perfectStreak, type DayProgress } from '@/lib/goals';
-import { addDays, cn, formatDayCN, parseDateKey, relativeDayName } from '@/lib/utils';
+import { cn, formatDayCN, relativeDayName } from '@/lib/utils';
 
-const WEEKS = 18;
 const HISTORY_PAGE = 60;
 // iOS zooms into text fields under 16px; goal text follows the font-size setting above that.
-const GOAL_FONT = { fontSize: 'max(16px, calc(16px * var(--font-scale)))' };
+const GOAL_FONT = { fontSize: 'max(16px, calc(17px * var(--font-scale)))' };
 
 /** Return confirms, except while an input method is still composing (拼音 uses Return to commit). */
 function isEnter(e: React.KeyboardEvent): boolean {
@@ -99,8 +98,8 @@ function GoalItem({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   if (!goal) return null;
   return (
-    <li className="flex items-start gap-3 py-2">
-      <CheckButton goal={goal} />
+    <li className="flex items-start gap-3.5 py-2.5">
+      <span className="pt-[2px]"><CheckButton goal={goal} /></span>
       {editing ? (
         <GoalEditor goal={goal} onDone={() => setEditing(false)} />
       ) : (
@@ -123,8 +122,8 @@ function AddGoal({ day, placeholder }: { day: string; placeholder: string }) {
   const [text, setText] = useState('');
   const commit = () => { if (addGoal(day, text)) setText(''); };
   return (
-    <div className="flex items-start gap-3 py-2">
-      <span className="-m-2 shrink-0 p-2 text-x-gray" aria-hidden="true">
+    <div className="flex items-start gap-3.5 py-2.5">
+      <span className="-m-2 mt-[-6px] shrink-0 p-2 text-x-gray" aria-hidden="true">
         <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-dashed border-x-gray/50">
           <Icon name="plus" size={12} strokeWidth={2.8} />
         </span>
@@ -173,25 +172,32 @@ function CarryOver({ today, progress }: { today: string; progress: ReadonlyMap<s
   );
 }
 
-/** Today's list, the one place goals are written. */
-function TodayCard({ today, progress }: { today: string; progress: ReadonlyMap<string, DayProgress> }) {
+/** Today: the page is about this list. */
+function Today({ today, progress }: { today: string; progress: ReadonlyMap<string, DayProgress> }) {
   const ids = useGoalIds(today);
   const entry = progress.get(today);
+  const streak = perfectStreak(progress, today);
+  const complete = isComplete(entry);
   return (
-    <section className="rounded-2xl bg-x-darker px-4 pb-2 pt-3">
-      <div className="flex h-7 items-center justify-between">
-        <p className="text-[15px]">
-          <span className="font-semibold">今天</span>
-          <span className="ml-2 text-x-gray">{formatDayCN(today)}</span>
-        </p>
+    <section className="px-5 pt-7">
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[14px] text-x-gray">
+            {formatDayCN(today)}
+            {streak >= 2 && <span> · 连续 {streak} 天全部完成</span>}
+          </p>
+          <h1 className="mt-0.5 text-[30px] font-bold leading-tight tracking-tight">今天</h1>
+        </div>
         {entry && entry.total > 0 && (
-          <span className={cn('flex items-center gap-1.5 text-[13px] tabular-nums', isComplete(entry) ? 'font-semibold text-x-blue' : 'text-x-gray')}>
-            <ProgressRing total={entry.total} done={entry.done} size={18} stroke={2.5} />
-            {entry.done}/{entry.total}
-          </span>
+          <div className="relative mb-1 flex h-11 w-11 shrink-0 items-center justify-center" aria-label={`完成 ${entry.done}/${entry.total}`}>
+            <ProgressRing total={entry.total} done={entry.done} size={44} stroke={3.5} className="absolute inset-0" />
+            {complete
+              ? <Icon name="check" size={20} strokeWidth={2.8} className="text-x-blue" />
+              : <span className="text-[13px] font-semibold tabular-nums">{entry.done}/{entry.total}</span>}
+          </div>
         )}
       </div>
-      <ul className="mt-1">
+      <ul className="mt-5">
         {ids.map((id) => <GoalItem key={id} id={id} />)}
       </ul>
       <AddGoal key={today} day={today} placeholder={ids.length === 0 ? '写下今天想完成的事' : '添加目标'} />
@@ -200,61 +206,12 @@ function TodayCard({ today, progress }: { today: string; progress: ReadonlyMap<s
   );
 }
 
-function cellClass(entry: DayProgress | undefined): string {
-  if (!entry || entry.total === 0) return 'bg-x-search';
-  if (entry.done === 0) return 'bg-x-gray/30';
-  const ratio = entry.done / entry.total;
-  if (ratio >= 1) return 'bg-x-blue';
-  return ratio >= 0.5 ? 'bg-x-blue/60' : 'bg-x-blue/30';
-}
-
-/** The last few months at a glance, one square per day, like GitHub's contribution graph. */
-function Heatmap({ today, progress, onPick }: { today: string; progress: ReadonlyMap<string, DayProgress>; onPick: (day: string) => void }) {
-  const lastSunday = addDays(today, -parseDateKey(today).getDay());
-  const start = addDays(lastSunday, -(WEEKS - 1) * 7);
-  const days = Array.from({ length: WEEKS * 7 }, (_, i) => addDays(start, i));
-  const streak = perfectStreak(progress, today);
-  return (
-    <section className="px-4 pt-5">
-      <div className="mb-2 flex items-baseline justify-between text-[13px] text-x-gray">
-        <span>最近 {WEEKS} 周</span>
-        {streak > 0 && <span>已连续 <span className="font-semibold text-x-fg">{streak}</span> 天全部完成</span>}
-      </div>
-      <div
-        className="grid grid-flow-col gap-[3px]"
-        style={{ gridTemplateRows: 'repeat(7, minmax(0, 1fr))', gridTemplateColumns: `repeat(${WEEKS}, minmax(0, 1fr))` }}
-        role="img"
-        aria-label={`最近 ${WEEKS} 周每天的目标完成情况`}
-      >
-        {days.map((day) => {
-          const entry = progress.get(day);
-          const future = day > today;
-          return (
-            <button
-              key={day}
-              type="button"
-              disabled={future || !entry}
-              onClick={() => onPick(day)}
-              aria-label={`${formatDayCN(day)}${entry ? ` 完成 ${entry.done}/${entry.total}` : ''}`}
-              className={cn(
-                'aspect-square rounded-[3px]',
-                future ? 'invisible' : cellClass(entry),
-                day === today && 'ring-1 ring-x-gray ring-offset-1 ring-offset-[var(--color-x-dark)]',
-              )}
-            />
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 const HistoryGoal = memo(function HistoryGoal({ id }: { id: string }) {
   const goal = useGoal(id);
   if (!goal) return null;
   return (
-    <li className="flex items-start gap-2.5 py-1">
-      <span className="pt-[3px]"><CheckButton goal={goal} small /></span>
+    <li className="flex items-start gap-3 py-1.5">
+      <span className="pt-[2px]"><CheckButton goal={goal} small /></span>
       <p className={cn('min-w-0 flex-1 whitespace-pre-wrap break-words text-[15px] leading-[1.55]', goal.done && 'text-x-gray line-through decoration-x-gray/70')}>
         {goal.text}
       </p>
@@ -262,29 +219,35 @@ const HistoryGoal = memo(function HistoryGoal({ id }: { id: string }) {
   );
 });
 
-/** One past day. Its goals can still be ticked off, e.g. when yesterday's check-in was forgotten. */
+/** One past day on a single quiet line; tap it to see (and still tick off) its goals. */
 const HistoryDay = memo(function HistoryDay({ day, today, entry }: { day: string; today: string; entry: DayProgress }) {
+  const [open, setOpen] = useState(false);
   const ids = useGoalIds(day);
   const name = relativeDayName(day, today);
   return (
-    <article data-day={day} className="scroll-mt-4 border-t border-x-border px-4 py-3">
-      <div className="flex items-baseline justify-between">
-        <p className="text-[14px]">
-          <span className="font-semibold">{name === '昨天' ? '昨天' : formatDayCN(day)}</span>
-          {name === '昨天' && <span className="ml-2 text-x-gray">{formatDayCN(day)}</span>}
-        </p>
-        <span className={cn('text-[13px] tabular-nums', isComplete(entry) ? 'font-semibold text-x-blue' : 'text-x-gray')}>
-          {isComplete(entry) ? '全部完成' : `${entry.done}/${entry.total}`}
+    <li>
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-3 px-5 py-3 text-left active:bg-x-hover">
+        <span className="shrink-0 text-[15px]">{name === '昨天' ? '昨天' : formatDayCN(day)}</span>
+        <span className="ml-auto flex items-center gap-1" aria-hidden="true">
+          {entry.total <= 6 && Array.from({ length: entry.total }, (_, i) => (
+            <span key={i} className={cn('h-1.5 w-1.5 rounded-full', i < entry.done ? 'bg-x-blue' : 'bg-x-gray/30')} />
+          ))}
         </span>
-      </div>
-      <ul className="mt-1.5">
-        {ids.map((id) => <HistoryGoal key={id} id={id} />)}
-      </ul>
-    </article>
+        <span className={cn('w-9 shrink-0 text-right text-[13px] tabular-nums', isComplete(entry) ? 'text-x-blue' : 'text-x-gray')}>
+          {entry.done}/{entry.total}
+        </span>
+        <Icon name="chevronRight" size={14} className={cn('shrink-0 text-x-gray transition-transform', open && 'rotate-90')} />
+      </button>
+      {open && (
+        <ul className="px-5 pb-3 pl-[1.35rem]">
+          {ids.map((id) => <HistoryGoal key={id} id={id} />)}
+        </ul>
+      )}
+    </li>
   );
 });
 
-/** 每日目标: today's list on top, the record of past days below. */
+/** 每日目标: today's list, with the past days kept quietly underneath. */
 export default function GoalsPane() {
   const today = useToday();
   const progress = useGoalProgress();
@@ -293,29 +256,21 @@ export default function GoalsPane() {
   const [shown, setShown] = useState(HISTORY_PAGE);
   const past = [...progress.keys()].filter((day) => day < today && progress.get(day)!.total > 0).sort().reverse();
 
-  const pick = (day: string) => {
-    const scroller = scrollRef.current;
-    if (!scroller) return;
-    if (day === today) { scroller.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    const index = past.indexOf(day);
-    if (index >= shown) setShown(index + HISTORY_PAGE);
-    requestAnimationFrame(() => scroller.querySelector(`[data-day="${day}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  };
-
   return (
     <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28">
-      <div className="px-4 pt-3">
-        <TodayCard today={today} progress={progress} />
-      </div>
-      <Heatmap today={today} progress={progress} onPick={pick} />
-      <div className="mt-5">
-        {past.slice(0, shown).map((day) => <HistoryDay key={day} day={day} today={today} entry={progress.get(day)!} />)}
-        {past.length > shown && (
-          <button type="button" onClick={() => setShown(shown + HISTORY_PAGE)} className="w-full border-t border-x-border py-3 text-[14px] text-x-blue">
-            显示更早的 {Math.min(HISTORY_PAGE, past.length - shown)} 天
-          </button>
-        )}
-      </div>
+      <Today today={today} progress={progress} />
+      {past.length > 0 && (
+        <ul className="mt-10 border-t border-x-border">
+          {past.slice(0, shown).map((day) => <HistoryDay key={day} day={day} today={today} entry={progress.get(day)!} />)}
+          {past.length > shown && (
+            <li>
+              <button type="button" onClick={() => setShown(shown + HISTORY_PAGE)} className="w-full py-3 text-[14px] text-x-gray">
+                更早的 {past.length - shown} 天
+              </button>
+            </li>
+          )}
+        </ul>
+      )}
     </div>
   );
 }
