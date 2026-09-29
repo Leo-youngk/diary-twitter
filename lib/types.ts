@@ -32,6 +32,8 @@ export interface Post {
   isLiked: boolean;
   mood?: string;
   tags?: string[];
+  /** Set at creation to also publish this 随想 to X (via Buffer). Never changed by edits. */
+  xSync?: boolean;
 }
 
 export interface ToastMessage {

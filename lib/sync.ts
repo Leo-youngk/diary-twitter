@@ -110,7 +110,7 @@ export async function pullSync(id: string): Promise<SyncPayload | null> {
 }
 
 export type PushResult =
-  | { ok: true; integrationQueued?: number }
+  | { ok: true; integrationQueued?: number; xQueued?: number }
   | { ok: false; conflict?: SyncPayload };
 
 export async function pushSync(id: string, payload: SyncPayload): Promise<PushResult> {
@@ -126,7 +126,9 @@ export async function pushSync(id: string, payload: SyncPayload): Promise<PushRe
       const queued = integration && typeof integration.queued === 'number' && integration.queued > 0
         ? Math.floor(integration.queued)
         : 0;
-      return { ok: true, integrationQueued: queued };
+      const x = isRecord(body) && isRecord(body.x) ? body.x : null;
+      const xQueued = x && typeof x.queued === 'number' && x.queued > 0 ? Math.floor(x.queued) : 0;
+      return { ok: true, integrationQueued: queued, xQueued };
     }
     if (res.status === 409 && isRecord(body) && isSyncPayload(body.data)) {
       return { ok: false, conflict: body.data };

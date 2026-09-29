@@ -7,6 +7,12 @@ import {
   integrationEnabled,
   type ObsidianSyncEnv,
 } from '@/lib/obsidianIntegration';
+import {
+  buildXPostEvents,
+  enqueueXPosts,
+  flushXOutbox,
+  type BufferSyncEnv,
+} from '@/lib/bufferIntegration';
 
 const MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB — KV value limit is 25 MB
 const ID_PATTERN = /^[a-z0-9]{16,64}$/i;
@@ -81,7 +87,7 @@ export async function POST(request: Request) {
   const incomingUpdatedAt = data.updatedAt as string;
 
   const { env, ctx } = await getCloudflareContext({ async: true });
-  const syncEnv = env as CloudflareEnv & ObsidianSyncEnv;
+  const syncEnv = env as CloudflareEnv & ObsidianSyncEnv & BufferSyncEnv;
   const existingRaw = await env.DIARY_KV.get(`diary:${id}`);
   const integrationOn = integrationEnabled(syncEnv);
   if (existingRaw) {
@@ -90,6 +96,7 @@ export async function POST(request: Request) {
       const existingUpdatedAt = getUpdatedAt(existing);
       if (existingUpdatedAt && Date.parse(existingUpdatedAt) > Date.parse(incomingUpdatedAt)) {
         if (integrationOn) ctx.waitUntil(flushIntegrationOutbox(syncEnv, id));
+        ctx.waitUntil(flushXOutbox(syncEnv, id));
         return NextResponse.json({ data: existing }, { status: 409 });
       }
     } catch {
@@ -111,11 +118,16 @@ export async function POST(request: Request) {
   if (integrationOn && integrationEvents.length > 0) {
     await enqueueIntegrationEvents(syncEnv, id, incomingUpdatedAt, integrationEvents);
   }
+  // Same rule for X: the post is recorded before the snapshot, so a failed
+  // outbox write fails the request and the client retries the whole push.
+  const xQueued = await enqueueXPosts(syncEnv, id, buildXPostEvents(previousValue, data));
   await env.DIARY_KV.put(`diary:${id}`, JSON.stringify(data));
   if (integrationOn) ctx.waitUntil(flushIntegrationOutbox(syncEnv, id));
+  ctx.waitUntil(flushXOutbox(syncEnv, id));
 
   return NextResponse.json({
     ok: true,
+    x: { queued: xQueued },
     integration: integrationOn
       ? { queued: integrationEvents.length, status: integrationEvents.length > 0 ? 'pending' : 'idle' }
       : { status: 'disabled' },

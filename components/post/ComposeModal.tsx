@@ -7,6 +7,8 @@ import { useApp } from '@/lib/context';
 import { EntryType } from '@/lib/types';
 import { getCustomCategoryNames, MAX_CUSTOM_CATEGORY_LENGTH, RESERVED_CATEGORY_NAMES } from '@/lib/categories';
 import { compressImage, POST_IMAGE_OPTS } from '@/lib/image';
+import { X_MAX_WEIGHT, xWeightedLength } from '@/lib/xText';
+import { readXSyncPreference, writeXSyncPreference } from '@/lib/xSync';
 import Avatar from '@/components/ui/Avatar';
 
 const MAX_CHARS_THOUGHT = 280;
@@ -53,6 +55,7 @@ export default function ComposeModal() {
   const [title, setTitle] = useState('');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [xSync, setXSync] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftLoaded = useRef(false);
   const postRef = useRef<() => void | Promise<void>>(() => {});
@@ -76,6 +79,7 @@ export default function ComposeModal() {
         setEntryType(draft.entryType);
         setCategory(draft.category);
         setImages([]);
+        setXSync(readXSyncPreference());
       }
       draftLoaded.current = true;
     }
@@ -111,8 +115,13 @@ export default function ComposeModal() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isComposeOpen, closeCompose]);
 
-  const maxChars = entryType === 'diary' ? MAX_CHARS_DIARY : MAX_CHARS_THOUGHT;
-  const charCount = content.length;
+  // Only a brand-new plain 随想 can go to X: edits never reach X, and diaries
+  // and custom categories stay private.
+  const canSyncToX = !isEditing && entryType === 'thought' && !category;
+  const willSyncToX = canSyncToX && xSync;
+  // X weighs a Chinese character as 2, so the ring counts X's units while syncing.
+  const maxChars = willSyncToX ? X_MAX_WEIGHT : entryType === 'diary' ? MAX_CHARS_DIARY : MAX_CHARS_THOUGHT;
+  const charCount = willSyncToX ? xWeightedLength(content) : content.length;
   const isOverLimit = charCount > maxChars;
   const canPost = content.trim().length > 0 && !isOverLimit;
 
@@ -156,14 +165,14 @@ export default function ComposeModal() {
     try {
       const saved = editingPost
         ? await updatePost(editingPost.id, content.trim(), images, entryType, finalTitle, finalCategory)
-        : await addPost(content.trim(), images, entryType, finalTitle, finalCategory);
+        : await addPost(content.trim(), images, entryType, finalTitle, finalCategory, willSyncToX);
       if (!saved) {
         return;
       }
       if (editingPost) {
         addToast('已更新');
       } else {
-        addToast(finalCategory ? `已归入「${finalCategory}」` : entryType === 'diary' ? '日记发布成功！' : '随想发布成功！');
+        addToast(finalCategory ? `已归入「${finalCategory}」` : entryType === 'diary' ? '日记发布成功！' : willSyncToX ? '随想已保存，正在同步到 X…' : '随想发布成功！');
         try { localStorage.removeItem(DRAFT_KEY); } catch {}
       }
       setContent('');
@@ -177,7 +186,7 @@ export default function ComposeModal() {
     } finally {
       setSaving(false);
     }
-  }, [addPost, addToast, canPost, category, closeCompose, content, editingPost, entryType, images, saving, title, updatePost]);
+  }, [addPost, addToast, canPost, category, closeCompose, content, editingPost, entryType, images, saving, title, updatePost, willSyncToX]);
 
   // Keep the latest handler reachable from the window-level key listener.
   useEffect(() => {
@@ -381,6 +390,24 @@ export default function ComposeModal() {
                 </svg>
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
+              {canSyncToX && (
+                <button
+                  onClick={() => {
+                    setXSync(!xSync);
+                    writeXSyncPreference(!xSync);
+                  }}
+                  aria-pressed={xSync}
+                  title="同步到 X（仅文字，发布后不随编辑或删除变化）"
+                  className={`ml-1 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold transition-colors ${
+                    xSync ? 'bg-x-blue text-white' : 'border border-x-border text-x-gray hover:text-x-fg'
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" aria-hidden="true">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                  同步到 X
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -398,6 +425,9 @@ export default function ComposeModal() {
                     </svg>
                   </div>
                   {isOverLimit && <span className="text-x-danger text-sm font-bold">{maxChars - charCount}</span>}
+                  {isOverLimit && willSyncToX && (
+                    <span className="text-x-danger text-xs">超出 X 上限（中文每字算 2）</span>
+                  )}
                 </div>
               )}
               <button

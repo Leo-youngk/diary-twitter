@@ -15,3 +15,5 @@ id = "11eb7cdef6914b4f8af8f2a21b251ded"
 [vars]
 # 只放公开的目标接口地址；签名密钥用 wrangler secret put OBSIDIAN_SYNC_SECRET 注入。
 OBSIDIAN_SYNC_URL = "https://obsidian-ios-pwa.if5v.workers.dev/api/integrations/twitter"
+# Buffer 里已连接的 X 频道 ID（公开信息）；API key 用 wrangler secret 注入 BUFFER_API_KEY。
+BUFFER_CHANNEL_ID = "6abb7219ea19ca0bde20241e"

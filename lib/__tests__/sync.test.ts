@@ -41,7 +41,15 @@ describe('pushSync', () => {
       new Response(JSON.stringify({ ok: true, integration: { queued: 3 } }), { status: 200 }),
     ));
     await expect(pushSync('sync-1234567890123456', payload('2026-02-01T00:00:00Z')))
-      .resolves.toEqual({ ok: true, integrationQueued: 3 });
+      .resolves.toEqual({ ok: true, integrationQueued: 3, xQueued: 0 });
+  });
+
+  it('surfaces posts queued for X so the client can watch them', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, x: { queued: 1 } }), { status: 200 }),
+    ));
+    await expect(pushSync('sync-1234567890123456', payload('2026-02-01T00:00:00Z')))
+      .resolves.toEqual({ ok: true, integrationQueued: 0, xQueued: 1 });
   });
 
   it('keeps a successful sync compatible with responses without integration metadata', async () => {
@@ -49,6 +57,6 @@ describe('pushSync', () => {
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
     ));
     await expect(pushSync('sync-1234567890123456', payload('2026-02-01T00:00:00Z')))
-      .resolves.toEqual({ ok: true, integrationQueued: 0 });
+      .resolves.toEqual({ ok: true, integrationQueued: 0, xQueued: 0 });
   });
 });

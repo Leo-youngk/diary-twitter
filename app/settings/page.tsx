@@ -7,6 +7,7 @@ import { Theme, FontSize } from '@/lib/context';
 import Avatar from '@/components/ui/Avatar';
 import { compressImage, AVATAR_OPTS, BANNER_OPTS } from '@/lib/image';
 import { parseBackup } from '@/lib/export';
+import XSyncCard from '@/components/settings/XSyncCard';
 
 const FONT_SIZE_OPTIONS: { value: FontSize; label: string; preview: string }[] = [
   { value: 'small', label: '小', preview: 'text-sm' },
@@ -341,6 +342,8 @@ export default function SettingsPage() {
             }`}
           />
         </div>
+
+        <XSyncCard syncId={syncId} />
 
         <div className="border border-x-border rounded-lg p-3 mb-3">
           <p className="text-xs text-x-gray mb-1">本设备同步码</p>

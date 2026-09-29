@@ -20,6 +20,7 @@ import {
   hasPendingIntegration, markPendingIntegration, clearPendingIntegration,
 } from '@/lib/sync';
 import { idbGet, idbSet, idbSetMany } from '@/lib/idbStore';
+import { watchXSync } from '@/lib/xSync';
 
 export type Theme = 'dark' | 'light' | 'zen';
 export type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
@@ -50,7 +51,7 @@ interface AppContextType {
   setActiveNav: (nav: NavItem) => void;
   setFeedTab: (tab: FeedTab) => void;
   toggleLike: (postId: string) => Promise<boolean>;
-  addPost: (content: string, images: string[], entryType: EntryType, title?: string, category?: string) => Promise<boolean>;
+  addPost: (content: string, images: string[], entryType: EntryType, title?: string, category?: string, xSync?: boolean) => Promise<boolean>;
   updatePost: (postId: string, content: string, images: string[], entryType: EntryType, title?: string, category?: string) => Promise<boolean>;
   deletePost: (postId: string) => Promise<boolean>;
   addReply: (postId: string, content: string) => Promise<boolean>;
@@ -281,6 +282,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } else {
           clearPendingIntegration();
         }
+        if (result.xQueued && result.xQueued > 0) void watchXSync(id, addToast);
         pushFailed.current = false;
       } else if (result.conflict && isCurrentSnapshot) {
         // The server rejected an older snapshot. Adopt its newer copy only if
@@ -501,12 +503,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [persistSnapshot, setPostsSnapshot]);
 
   const addPost = useCallback((
-    content: string, images: string[], entryType: EntryType, title?: string, category?: string
+    content: string, images: string[], entryType: EntryType, title?: string, category?: string, xSync?: boolean
   ): Promise<boolean> => {
     const newPost: Post = {
       id: generateId(), entryType,
       category: category?.trim() || undefined,
       title: title?.trim() || undefined,
+      xSync: xSync || undefined,
       content, images,
       createdAt: new Date().toISOString(),
       replies: [], isLiked: false,
