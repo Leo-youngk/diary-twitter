@@ -363,7 +363,7 @@ describe('replies', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).variables.input).toMatchObject({
       text: '追加的想法',
       mode: 'shareNow',
-      metadata: { twitter: { retweet: { id: '1234567890' } } },
+      metadata: { twitter: { retweet: { id: '1234567890', comment: '追加的想法' } } },
     });
     expect(outboxOf(kv, 'reply-1')).toBeNull();
     expect(JSON.parse(kv.store.get(`diary:x-posted:${SYNC_ID}:reply-1`)!.value))
@@ -401,8 +401,44 @@ describe('replies', () => {
     fetchMock.mockResolvedValueOnce(success());
     await flushXOutbox(env, SYNC_ID);
     expect(JSON.parse(fetchMock.mock.calls[2][1].body).variables.input.metadata)
-      .toEqual({ twitter: { retweet: { id: '1234567890' } } });
+      .toEqual({ twitter: { retweet: { id: '1234567890', comment: '追加的想法' } } });
     expect(outboxOf(kv, 'reply-1')).toBeNull();
+  });
+
+  it('flags a reply that X received as a plain retweet of the original', async () => {
+    const { kv, env } = makeEnv();
+    await postedParent(kv);
+    await kv.put(
+      `diary:x-posted:${SYNC_ID}:reply-1`,
+      JSON.stringify({ bufferPostId: 'buf-reply', postedAt: FRESH, text: '追加的想法', replyTo: 'thought-1' }),
+      { metadata: { status: 'sending', at: FRESH } },
+    );
+    fetchMock.mockResolvedValue(bufferResponse({
+      data: { post: { id: 'buf-reply', status: 'sent', externalLink: LINK, error: null } },
+    }));
+
+    const status = await getXSyncStatus(env, SYNC_ID);
+    expect(status.failed).toEqual([
+      { postId: 'reply-1', preview: '回复：追加的想法', message: expect.stringContaining('纯转推') },
+    ]);
+    expect(kv.store.has(`diary:x-posted:${SYNC_ID}:reply-1`)).toBe(false);
+  });
+
+  it('accepts a reply whose tweet is its own', async () => {
+    const { kv, env } = makeEnv();
+    await postedParent(kv);
+    await kv.put(
+      `diary:x-posted:${SYNC_ID}:reply-1`,
+      JSON.stringify({ bufferPostId: 'buf-reply', postedAt: FRESH, text: '追加的想法', replyTo: 'thought-1' }),
+      { metadata: { status: 'sending', at: FRESH } },
+    );
+    fetchMock.mockResolvedValue(bufferResponse({
+      data: { post: { id: 'buf-reply', status: 'sent', externalLink: 'https://x.com/someone/status/999', error: null } },
+    }));
+    await expect(getXSyncStatus(env, SYNC_ID)).resolves.toMatchObject({ failed: [] });
+    expect(JSON.parse(kv.store.get(`diary:x-posted:${SYNC_ID}:reply-1`)!.value).link)
+      .toBe('https://x.com/someone/status/999');
+    expect(kv.store.get(`diary:x-posted:${SYNC_ID}:reply-1`)!.metadata).toMatchObject({ status: 'sent' });
   });
 
   it('fails loudly when the original never reached X', async () => {

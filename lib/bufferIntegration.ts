@@ -294,7 +294,8 @@ async function createBufferPost(env: BufferSyncEnv, text: string, quoteTweetId?:
         mode: 'shareNow',
         assets: [],
         needsApproval: false,
-        ...(quoteTweetId ? { metadata: { twitter: { retweet: { id: quoteTweetId } } } } : {}),
+        // Without `comment` Buffer publishes a plain retweet and drops `text`.
+        ...(quoteTweetId ? { metadata: { twitter: { retweet: { id: quoteTweetId, comment: text } } } } : {}),
       },
     }));
   } catch (error) {
@@ -366,6 +367,10 @@ async function fetchBufferPost(env: BufferSyncEnv, bufferPostId: string): Promis
   }
 }
 
+function tweetIdOf(link: string | undefined): string | undefined {
+  return link ? TWEET_ID_PATTERN.exec(link)?.[1] : undefined;
+}
+
 type ParentState =
   | { kind: 'ready'; tweetId: string }
   // The original is still on its way to X; try again on the next flush.
@@ -401,7 +406,7 @@ async function resolveParent(env: BufferSyncEnv, syncId: string, parentId: strin
     const metadata: PostedMetadata = { status: 'sent', at: marker.postedAt };
     await env.DIARY_KV.put(key, JSON.stringify({ ...marker, link }), { metadata });
   }
-  const tweetId = TWEET_ID_PATTERN.exec(link)?.[1];
+  const tweetId = tweetIdOf(link);
   return tweetId
     ? { kind: 'ready', tweetId }
     : { kind: 'failed', message: `无法从 Buffer 返回的链接里读出原帖 ID（${link}）` };
@@ -489,6 +494,25 @@ async function refreshPublishing(env: BufferSyncEnv, syncId: string): Promise<vo
 
     const postId = name.slice(`${POSTED_PREFIX}${syncId}:`.length);
     const link = typeof post.externalLink === 'string' ? post.externalLink : marker.link;
+    if (post.status === 'sent' && marker.replyTo) {
+      // A quote has a tweet of its own. If the link is the original's, X only got a retweet.
+      const parentRaw = await env.DIARY_KV.get(postedKey(syncId, marker.replyTo));
+      let parentLink: string | undefined;
+      try { parentLink = parentRaw ? (JSON.parse(parentRaw) as PostedMarker).link : undefined; } catch { parentLink = undefined; }
+      const sentId = tweetIdOf(link);
+      if (sentId && sentId === tweetIdOf(parentLink)) {
+        await writeOutbox(env, syncId, {
+          postId,
+          text: marker.text ?? '',
+          createdAt: marker.postedAt,
+          replyTo: marker.replyTo,
+          state: 'failed',
+          error: 'X 上只发出了纯转推，没有带上文字；请到 X 撤销这条转推，再决定是否重试',
+        });
+        await env.DIARY_KV.delete(name);
+        continue;
+      }
+    }
     if (post.status === 'sent' || post.status === 'scheduled' || post.status === 'sending') {
       const metadata: PostedMetadata = { status: post.status, at: marker.postedAt };
       await env.DIARY_KV.put(name, JSON.stringify({ ...marker, link }), { metadata });
