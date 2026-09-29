@@ -1,4 +1,6 @@
 name = "diary-app"
+# Pinned so a token for another account fails instead of deploying there.
+account_id = "8f92f605a9c8c7e4872d8869c72e1a59"
 main = ".open-next/worker.js"
 # Next.js App Router requires the modern Workers AsyncLocalStorage runtime.
 compatibility_date = "2026-08-04"

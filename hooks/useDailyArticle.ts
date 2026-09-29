@@ -38,7 +38,7 @@ export function useSpeechContent(speech: SpeechMeta | null) {
 
     try {
       const res = await fetch(
-        `/api/daily-article?id=${s.id}&url=${encodeURIComponent(s.sourceUrl)}`
+        `/api/daily-article?id=${s.id}`
       );
       const data: { content?: string; error?: string } = await res.json();
 

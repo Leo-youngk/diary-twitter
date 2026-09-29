@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { speeches } from '@/data/speeches';
 
 // Strip HTML tags, decode entities, clean up
 function stripHtml(html: string): string {
@@ -279,19 +280,18 @@ function extractArticleContent(html: string, url: string): string {
 const cache = new Map<number, { content: string; fetchedAt: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+// Only the transcripts listed in data/speeches.ts can be fetched, so this route
+// cannot be used as an open proxy and the per-id cache cannot be poisoned.
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const idParam = searchParams.get('id');
-  const urlParam = searchParams.get('url');
-
-  if (!urlParam) {
-    return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
+  const id = Number(new URL(request.url).searchParams.get('id'));
+  const speech = speeches.find((s) => s.id === id);
+  if (!speech) {
+    return NextResponse.json({ error: 'Unknown speech' }, { status: 404 });
   }
-
-  const id = idParam ? parseInt(idParam) : 0;
+  const urlParam = speech.sourceUrl;
 
   // Check cache
-  if (id && cache.has(id)) {
+  if (cache.has(id)) {
     const cached = cache.get(id)!;
     if (Date.now() - cached.fetchedAt < CACHE_TTL) {
       return NextResponse.json({ content: cached.content, cached: true });
@@ -319,9 +319,7 @@ export async function GET(request: Request) {
     const content = extractArticleContent(html, urlParam);
 
     if (content && content.length > 200) {
-      if (id) {
-        cache.set(id, { content, fetchedAt: Date.now() });
-      }
+      cache.set(id, { content, fetchedAt: Date.now() });
       return NextResponse.json({ content });
     }
 
