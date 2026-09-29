@@ -2,6 +2,8 @@
 // asks how it went and reports it to the user.
 
 import type { XSyncStatus } from './bufferIntegration';
+import type { Post } from './types';
+import { X_MAX_WEIGHT, xWeightedLength } from './xText';
 
 export type { XSyncFailure, XSyncStatus } from './bufferIntegration';
 
@@ -91,3 +93,16 @@ export function readXSyncPreference(): boolean {
 export function writeXSyncPreference(on: boolean) {
   try { localStorage.setItem(TOGGLE_KEY, on ? '1' : '0'); } catch {}
 }
+
+/**
+ * What happens to a reply added to `post`: it goes to X only when the post is
+ * on X and the switch is on, and only if it fits. 'too-long' is saved locally
+ * and the user is told; 'none' has nothing to say.
+ */
+export function replyXPlan(post: Pick<Post, 'xSync'>, text: string): 'sync' | 'too-long' | 'none' {
+  if (post.xSync !== true || !readXSyncPreference()) return 'none';
+  return xWeightedLength(text) > X_MAX_WEIGHT ? 'too-long' : 'sync';
+}
+
+export const REPLY_TOO_LONG_HINT = '超出 X 的长度上限（中文每字算 2，最多 140 字），这条回复只保存在本地，不会同步到 X。';
+export const REPLY_SYNC_HINT = '将同步到 X（以引用原帖的形式发布）';

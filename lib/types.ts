@@ -17,6 +17,8 @@ export interface Reply {
   postId: string;
   content: string;
   createdAt: string;
+  /** Set at creation to also send this reply to X (as a quote of its post). */
+  xSync?: boolean;
 }
 
 export interface Post {

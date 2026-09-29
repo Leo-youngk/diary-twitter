@@ -68,7 +68,7 @@ export default function XSyncCard({ syncId }: { syncId: string }) {
         <div className="min-w-0">
           <p className="text-sm font-bold">发随想时同步到 X</p>
           <p className="text-xs text-x-gray mt-0.5">
-            只同步新发的文字，之后的编辑和删除不会改动 X 上的帖子。超过 140 个汉字的只保存在本地。
+            只同步新发的文字；已同步帖子下追加的回复，会以引用原帖的形式发到 X。之后的编辑和删除不会改动 X 上的内容。超过 140 个汉字的只保存在本地。
           </p>
         </div>
         <button

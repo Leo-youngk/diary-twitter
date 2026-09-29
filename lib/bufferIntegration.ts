@@ -6,6 +6,11 @@ import { X_MAX_WEIGHT, xWeightedLength } from './xText';
  * produces events, events land in a KV outbox before the snapshot is stored,
  * and a flush delivers them.
  *
+ * A reply added in the PWA to a post that is on X goes out as a quote of that
+ * post: Buffer cannot reply to an existing tweet, only quote one, so the reply
+ * text is posted with the original attached. It waits until X has published
+ * the original and Buffer knows its link.
+ *
  * Unlike the Obsidian sync, a duplicate here is public and cannot be undone, so
  * delivery is deliberately at-most-once: only a definite "not posted" answer
  * may be retried, and only by the user. Anything with an unknown outcome
@@ -19,9 +24,12 @@ export interface BufferSyncEnv {
 }
 
 export interface XPostEvent {
+  /** Id of the thing being sent. For a reply this is the reply's own id. */
   postId: string;
   text: string;
   createdAt: string;
+  /** Set for a reply: the id of the post it was added to. */
+  replyTo?: string;
 }
 
 type OutboxState = 'queued' | 'sending' | 'failed';
@@ -39,6 +47,9 @@ interface PostedMarker {
   bufferPostId: string;
   postedAt: string;
   link?: string;
+  // Kept so a post X later rejects can be shown and retried.
+  text?: string;
+  replyTo?: string;
 }
 
 interface PostedMetadata {
@@ -76,6 +87,7 @@ const MAX_LIST = 1000;
 const MAX_VERIFY = 10;
 const PREVIEW_LENGTH = 40;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const TWEET_ID_PATTERN = /\/status\/(\d+)/;
 
 // Serialises delivery of one post inside an isolate. KV is eventually
 // consistent, so this backs up the 'sending' state written to KV.
@@ -104,30 +116,55 @@ function preview(text: string): string {
 
 // ── Snapshot diff ────────────────────────────────────────────────────────────
 
-function xFlagged(value: unknown): Map<string, boolean> {
+interface PreviousPost {
+  xSync: boolean;
+  replyIds: Set<string>;
+}
+
+function previousPosts(value: unknown): Map<string, PreviousPost> {
   const posts = isRecord(value) && Array.isArray(value.posts) ? value.posts : [];
-  const map = new Map<string, boolean>();
+  const map = new Map<string, PreviousPost>();
   for (const post of posts) {
-    if (isRecord(post) && typeof post.id === 'string') map.set(post.id, post.xSync === true);
+    if (!isRecord(post) || typeof post.id !== 'string') continue;
+    const replyIds = new Set<string>();
+    if (Array.isArray(post.replies)) {
+      for (const reply of post.replies) {
+        if (isRecord(reply) && typeof reply.id === 'string') replyIds.add(reply.id);
+      }
+    }
+    map.set(post.id, { xSync: post.xSync === true, replyIds });
   }
   return map;
 }
 
+function validIso(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
 /**
  * A post is published when it appears with xSync on, or when xSync flips on.
+ * A reply is published when it appears, flagged, under a post that is on X.
  * Edits and deletions never reach X.
  */
 export function buildXPostEvents(previousValue: unknown, incomingValue: unknown): XPostEvent[] {
-  const previous = xFlagged(previousValue);
+  const previous = previousPosts(previousValue);
   const posts = isRecord(incomingValue) && Array.isArray(incomingValue.posts) ? incomingValue.posts : [];
   const events: XPostEvent[] = [];
   for (const post of posts) {
     if (!isRecord(post) || post.entryType !== 'thought' || post.xSync !== true) continue;
-    if (typeof post.id !== 'string' || !ID_PATTERN.test(post.id)) continue;
-    if (typeof post.createdAt !== 'string' || !Number.isFinite(Date.parse(post.createdAt))) continue;
-    if (typeof post.content !== 'string' || !post.content.trim()) continue;
-    if (previous.get(post.id) === true) continue;
-    events.push({ postId: post.id, text: post.content.trim(), createdAt: post.createdAt });
+    if (typeof post.id !== 'string' || !ID_PATTERN.test(post.id) || !validIso(post.createdAt)) continue;
+    const before = previous.get(post.id);
+    if (before?.xSync !== true && typeof post.content === 'string' && post.content.trim()) {
+      events.push({ postId: post.id, text: post.content.trim(), createdAt: post.createdAt });
+    }
+    if (!Array.isArray(post.replies)) continue;
+    for (const reply of post.replies) {
+      if (!isRecord(reply) || reply.xSync !== true) continue;
+      if (typeof reply.id !== 'string' || !ID_PATTERN.test(reply.id) || !validIso(reply.createdAt)) continue;
+      if (before?.replyIds.has(reply.id)) continue;
+      if (typeof reply.content !== 'string' || !reply.content.trim()) continue;
+      events.push({ postId: reply.id, text: reply.content.trim(), createdAt: reply.createdAt, replyTo: post.id });
+    }
   }
   return events;
 }
@@ -146,6 +183,7 @@ async function readOutbox(env: BufferSyncEnv, key: string): Promise<OutboxRecord
       text: value.text,
       createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date(0).toISOString(),
       state,
+      replyTo: typeof value.replyTo === 'string' ? value.replyTo : undefined,
       sendingAt: typeof value.sendingAt === 'number' ? value.sendingAt : undefined,
       error: typeof value.error === 'string' ? value.error : undefined,
     };
@@ -244,7 +282,7 @@ function isBufferStatus(value: unknown): value is BufferPostStatus {
     || value === 'scheduled' || value === 'sending' || value === 'sent';
 }
 
-async function createBufferPost(env: BufferSyncEnv, text: string): Promise<CreateResult> {
+async function createBufferPost(env: BufferSyncEnv, text: string, quoteTweetId?: string): Promise<CreateResult> {
   let status: number;
   let body: unknown;
   try {
@@ -256,6 +294,7 @@ async function createBufferPost(env: BufferSyncEnv, text: string): Promise<Creat
         mode: 'shareNow',
         assets: [],
         needsApproval: false,
+        ...(quoteTweetId ? { metadata: { twitter: { retweet: { id: quoteTweetId } } } } : {}),
       },
     }));
   } catch (error) {
@@ -302,14 +341,70 @@ async function createBufferPost(env: BufferSyncEnv, text: string): Promise<Creat
 async function markPosted(
   env: BufferSyncEnv,
   syncId: string,
-  postId: string,
+  record: OutboxRecord,
   result: Extract<CreateResult, { kind: 'ok' }>,
 ): Promise<void> {
   const now = new Date().toISOString();
-  const marker: PostedMarker = { bufferPostId: result.bufferPostId, postedAt: now, link: result.link };
+  const marker: PostedMarker = {
+    bufferPostId: result.bufferPostId,
+    postedAt: now,
+    link: result.link,
+    text: record.text,
+    replyTo: record.replyTo,
+  };
   const metadata: PostedMetadata = { status: result.status, at: now };
-  await env.DIARY_KV.put(postedKey(syncId, postId), JSON.stringify(marker), { metadata });
-  await env.DIARY_KV.delete(outboxKey(syncId, postId));
+  await env.DIARY_KV.put(postedKey(syncId, record.postId), JSON.stringify(marker), { metadata });
+  await env.DIARY_KV.delete(outboxKey(syncId, record.postId));
+}
+
+async function fetchBufferPost(env: BufferSyncEnv, bufferPostId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const { body } = await bufferRequest(env, GET_POST, { id: bufferPostId });
+    return isRecord(body) && isRecord(body.data) && isRecord(body.data.post) ? body.data.post : null;
+  } catch {
+    return null;
+  }
+}
+
+type ParentState =
+  | { kind: 'ready'; tweetId: string }
+  // The original is still on its way to X; try again on the next flush.
+  | { kind: 'wait' }
+  | { kind: 'failed'; message: string };
+
+/** Find the tweet a reply should quote. Buffer knows its link only once X has published it. */
+async function resolveParent(env: BufferSyncEnv, syncId: string, parentId: string): Promise<ParentState> {
+  const key = postedKey(syncId, parentId);
+  const raw = await env.DIARY_KV.get(key);
+  if (!raw) {
+    const parent = await readOutbox(env, outboxKey(syncId, parentId));
+    if (!parent) return { kind: 'failed', message: '原帖没有同步到 X，这条回复无法发出' };
+    if (parent.state === 'failed') {
+      return { kind: 'failed', message: '原帖还没有发到 X（见上面的失败记录），处理好后再重试这条回复' };
+    }
+    return { kind: 'wait' };
+  }
+
+  let marker: PostedMarker;
+  try { marker = JSON.parse(raw) as PostedMarker; } catch {
+    return { kind: 'failed', message: '原帖的发布记录已损坏，这条回复无法发出' };
+  }
+  let link = marker.link;
+  if (!link || !TWEET_ID_PATTERN.test(link)) {
+    const post = await fetchBufferPost(env, marker.bufferPostId);
+    if (!post || post.status === 'sending' || post.status === 'scheduled') return { kind: 'wait' };
+    if (post.status !== 'sent') {
+      return { kind: 'failed', message: '原帖没有在 X 上发布成功，这条回复无法发出' };
+    }
+    link = typeof post.externalLink === 'string' ? post.externalLink : undefined;
+    if (!link) return { kind: 'failed', message: 'Buffer 没有返回原帖在 X 上的链接，这条回复无法发出' };
+    const metadata: PostedMetadata = { status: 'sent', at: marker.postedAt };
+    await env.DIARY_KV.put(key, JSON.stringify({ ...marker, link }), { metadata });
+  }
+  const tweetId = TWEET_ID_PATTERN.exec(link)?.[1];
+  return tweetId
+    ? { kind: 'ready', tweetId }
+    : { kind: 'failed', message: `无法从 Buffer 返回的链接里读出原帖 ID（${link}）` };
 }
 
 async function deliverOne(env: BufferSyncEnv, syncId: string, key: string): Promise<void> {
@@ -330,10 +425,21 @@ async function deliverOne(env: BufferSyncEnv, syncId: string, key: string): Prom
   }
   if (fresh.state !== 'queued') return;
 
+  let quoteTweetId: string | undefined;
+  if (fresh.replyTo) {
+    const parent = await resolveParent(env, syncId, fresh.replyTo);
+    if (parent.kind === 'wait') return;
+    if (parent.kind === 'failed') {
+      await writeOutbox(env, syncId, { ...fresh, state: 'failed', error: parent.message });
+      return;
+    }
+    quoteTweetId = parent.tweetId;
+  }
+
   await writeOutbox(env, syncId, { ...fresh, state: 'sending', sendingAt: now, error: undefined });
-  const result = await createBufferPost(env, fresh.text);
+  const result = await createBufferPost(env, fresh.text, quoteTweetId);
   if (result.kind === 'ok') {
-    await markPosted(env, syncId, fresh.postId, result);
+    await markPosted(env, syncId, fresh, result);
     return;
   }
   console.warn('[x-sync] delivery failed', { syncId, postId: fresh.postId, kind: result.kind, message: result.message });
@@ -378,13 +484,7 @@ async function refreshPublishing(env: BufferSyncEnv, syncId: string): Promise<vo
     if (!raw) continue;
     let marker: PostedMarker;
     try { marker = JSON.parse(raw) as PostedMarker; } catch { continue; }
-    let post: Record<string, unknown> | null = null;
-    try {
-      const { body } = await bufferRequest(env, GET_POST, { id: marker.bufferPostId });
-      post = isRecord(body) && isRecord(body.data) && isRecord(body.data.post) ? body.data.post : null;
-    } catch {
-      continue;
-    }
+    const post = await fetchBufferPost(env, marker.bufferPostId);
     if (!post || !isBufferStatus(post.status)) continue;
 
     const postId = name.slice(`${POSTED_PREFIX}${syncId}:`.length);
@@ -395,11 +495,11 @@ async function refreshPublishing(env: BufferSyncEnv, syncId: string): Promise<vo
       continue;
     }
     const detail = isRecord(post.error) && typeof post.error.message === 'string' ? post.error.message : post.status;
-    const record = await readOutbox(env, outboxKey(syncId, postId));
     await writeOutbox(env, syncId, {
       postId,
-      text: record?.text ?? '',
-      createdAt: record?.createdAt ?? marker.postedAt,
+      text: marker.text ?? '',
+      createdAt: marker.postedAt,
+      replyTo: marker.replyTo,
       state: 'failed',
       error: `X 没有发布成功：${detail}`,
     });
@@ -409,6 +509,8 @@ async function refreshPublishing(env: BufferSyncEnv, syncId: string): Promise<vo
 
 export async function getXSyncStatus(env: BufferSyncEnv, syncId: string): Promise<XSyncStatus> {
   await refreshPublishing(env, syncId);
+  // A reply may have been waiting for its original to reach X.
+  await flushXOutbox(env, syncId);
 
   const outbox = await env.DIARY_KV.list({ prefix: `${OUTBOX_PREFIX}${syncId}:`, limit: MAX_LIST });
   let inProgress = 0;
@@ -417,7 +519,11 @@ export async function getXSyncStatus(env: BufferSyncEnv, syncId: string): Promis
     const record = await readOutbox(env, name);
     if (!record) continue;
     if (record.state === 'failed') {
-      failed.push({ postId: record.postId, preview: preview(record.text), message: record.error ?? '发布失败' });
+      failed.push({
+        postId: record.postId,
+        preview: (record.replyTo ? '回复：' : '') + preview(record.text),
+        message: record.error ?? '发布失败',
+      });
     } else {
       inProgress += 1;
     }

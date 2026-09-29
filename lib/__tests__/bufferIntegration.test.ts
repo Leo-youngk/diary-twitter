@@ -291,3 +291,147 @@ describe('getXSyncStatus', () => {
     await expect(getXSyncStatus(env, SYNC_ID)).resolves.toMatchObject({ publishing: 1, failed: [] });
   });
 });
+
+describe('replies', () => {
+  const fetchMock = vi.fn();
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const reply = (overrides: Record<string, unknown> = {}) => ({
+    id: 'reply-1',
+    postId: 'thought-1',
+    content: '追加的想法',
+    createdAt: FRESH,
+    xSync: true,
+    ...overrides,
+  });
+
+  const LINK = 'https://x.com/someone/status/1234567890';
+
+  const postedParent = (kv: FakeKV, link: string | null = LINK, status = 'sent') => kv.put(
+    `diary:x-posted:${SYNC_ID}:thought-1`,
+    JSON.stringify({ bufferPostId: 'buf-parent', postedAt: FRESH, link: link ?? undefined, text: '原帖' }),
+    { metadata: { status, at: FRESH } },
+  );
+
+  const enqueueReply = (env: BufferSyncEnv) => enqueueXPosts(env, SYNC_ID, [
+    { postId: 'reply-1', replyTo: 'thought-1', text: '追加的想法', createdAt: FRESH },
+  ], NOW);
+
+  describe('buildXPostEvents', () => {
+    it('emits a flagged new reply under a post that is on X', () => {
+      const before = snapshot([thought()]);
+      const after = snapshot([thought({ replies: [reply()] })]);
+      expect(buildXPostEvents(before, after)).toEqual([
+        { postId: 'reply-1', replyTo: 'thought-1', text: '追加的想法', createdAt: FRESH },
+      ]);
+    });
+
+    it('ignores unflagged replies, replies already seen, and replies under posts not on X', () => {
+      const withReply = snapshot([thought({ replies: [reply()] })]);
+      expect(buildXPostEvents(withReply, withReply)).toEqual([]);
+      expect(buildXPostEvents(snapshot([thought()]), snapshot([thought({ replies: [reply({ xSync: undefined })] })]))).toEqual([]);
+      expect(buildXPostEvents(
+        snapshot([thought({ xSync: false })]),
+        snapshot([thought({ xSync: false, replies: [reply()] })]),
+      )).toEqual([]);
+    });
+
+    it('does not resend earlier replies when a post is first flagged', () => {
+      const before = snapshot([thought({ xSync: false, replies: [reply({ id: 'old' })] })]);
+      const after = snapshot([thought({ replies: [reply({ id: 'old' })] })]);
+      expect(buildXPostEvents(before, after).map((event) => event.postId)).toEqual(['thought-1']);
+    });
+  });
+
+  it('quotes the original tweet once its link is known', async () => {
+    const { kv, env } = makeEnv();
+    await postedParent(kv);
+    await enqueueReply(env);
+    fetchMock.mockResolvedValue(success());
+
+    await flushXOutbox(env, SYNC_ID);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).variables.input).toMatchObject({
+      text: '追加的想法',
+      mode: 'shareNow',
+      metadata: { twitter: { retweet: { id: '1234567890' } } },
+    });
+    expect(outboxOf(kv, 'reply-1')).toBeNull();
+    expect(JSON.parse(kv.store.get(`diary:x-posted:${SYNC_ID}:reply-1`)!.value))
+      .toMatchObject({ replyTo: 'thought-1', text: '追加的想法' });
+  });
+
+  it('waits, without failing, while the original is still being delivered', async () => {
+    const { kv, env } = makeEnv();
+    await enqueueXPosts(env, SYNC_ID, [{ postId: 'thought-1', text: '原帖', createdAt: FRESH }], NOW);
+    await enqueueReply(env);
+    // Original still queued: neither is sent by a flush that cannot deliver the original.
+    const record = outboxOf(kv, 'thought-1')!;
+    await kv.put(`diary:x-outbox:${SYNC_ID}:thought-1`, JSON.stringify({ ...record, state: 'sending', sendingAt: Date.now() }));
+
+    await flushXOutbox(env, SYNC_ID);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(outboxOf(kv, 'reply-1')).toMatchObject({ state: 'queued' });
+  });
+
+  it('waits while Buffer has not published the original, then sends when it has', async () => {
+    const { kv, env } = makeEnv();
+    await postedParent(kv, null, 'sending');
+    await enqueueReply(env);
+
+    fetchMock.mockResolvedValueOnce(bufferResponse({
+      data: { post: { id: 'buf-parent', status: 'sending', externalLink: null, error: null } },
+    }));
+    await flushXOutbox(env, SYNC_ID);
+    expect(outboxOf(kv, 'reply-1')).toMatchObject({ state: 'queued' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockResolvedValueOnce(bufferResponse({
+      data: { post: { id: 'buf-parent', status: 'sent', externalLink: LINK, error: null } },
+    }));
+    fetchMock.mockResolvedValueOnce(success());
+    await flushXOutbox(env, SYNC_ID);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).variables.input.metadata)
+      .toEqual({ twitter: { retweet: { id: '1234567890' } } });
+    expect(outboxOf(kv, 'reply-1')).toBeNull();
+  });
+
+  it('fails loudly when the original never reached X', async () => {
+    const { kv, env } = makeEnv();
+    await enqueueReply(env);
+    await flushXOutbox(env, SYNC_ID);
+    expect(outboxOf(kv, 'reply-1')).toMatchObject({ state: 'failed', error: expect.stringContaining('没有同步到 X') });
+
+    await enqueueXPosts(env, SYNC_ID, [{ postId: 'thought-1', text: '原帖', createdAt: '2026-09-01T00:00:00.000Z' }], NOW);
+    expect(outboxOf(kv, 'thought-1')).toMatchObject({ state: 'failed' });
+    await retryXFailures(env, SYNC_ID, 'reply-1');
+    expect(outboxOf(kv, 'reply-1')).toMatchObject({ state: 'failed', error: expect.stringContaining('原帖还没有发到 X') });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the text of a reply X rejected so it can be shown and retried', async () => {
+    const { kv, env } = makeEnv();
+    await postedParent(kv);
+    await enqueueReply(env);
+    fetchMock.mockResolvedValueOnce(success());
+    await flushXOutbox(env, SYNC_ID);
+
+    fetchMock.mockResolvedValueOnce(bufferResponse({
+      data: { post: { id: 'buf-1', status: 'error', externalLink: null, error: { message: 'Duplicate content' } } },
+    }));
+    const status = await getXSyncStatus(env, SYNC_ID);
+    expect(status.failed).toEqual([
+      { postId: 'reply-1', preview: '回复：追加的想法', message: 'X 没有发布成功：Duplicate content' },
+    ]);
+    expect(outboxOf(kv, 'reply-1')).toMatchObject({ replyTo: 'thought-1', text: '追加的想法', state: 'failed' });
+  });
+});

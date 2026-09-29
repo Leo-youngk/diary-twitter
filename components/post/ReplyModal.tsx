@@ -5,6 +5,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import { useApp } from '@/lib/context';
 import { formatRelativeTime } from '@/lib/utils';
 import Avatar from '@/components/ui/Avatar';
+import { REPLY_SYNC_HINT, REPLY_TOO_LONG_HINT, replyXPlan } from '@/lib/xSync';
 
 export default function ReplyModal() {
   const { replyingToPost, closeReply, currentUser, addReply, addToast } = useApp();
@@ -14,6 +15,7 @@ export default function ReplyModal() {
 
   const content = draft.postId === replyingToPost.id ? draft.content : '';
   const canReply = content.trim().length > 0;
+  const xPlan = content.trim() ? replyXPlan(replyingToPost, content.trim()) : 'none';
 
   const handleClose = () => {
     setDraft({ postId: '', content: '' });
@@ -25,6 +27,7 @@ export default function ReplyModal() {
     const saved = await addReply(replyingToPost.id, content.trim());
     if (!saved) return;
     addToast('回复成功！');
+    if (xPlan === 'too-long') addToast('这条回复超出 X 的长度上限，只保存在本地，没有同步到 X', 'info');
     handleClose();
   };
 
@@ -85,6 +88,11 @@ export default function ReplyModal() {
               className="w-full bg-transparent text-xl text-x-fg placeholder-x-gray outline-none resize-none max-h-[40vh] overflow-y-auto leading-7"
               autoFocus
             />
+            {xPlan !== 'none' && (
+              <p className="mt-1 text-xs text-x-gray">
+                {xPlan === 'sync' ? REPLY_SYNC_HINT : REPLY_TOO_LONG_HINT}
+              </p>
+            )}
           </div>
         </div>
 

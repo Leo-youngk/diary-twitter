@@ -20,7 +20,7 @@ import {
   hasPendingIntegration, markPendingIntegration, clearPendingIntegration,
 } from '@/lib/sync';
 import { idbGet, idbSet, idbSetMany } from '@/lib/idbStore';
-import { watchXSync } from '@/lib/xSync';
+import { replyXPlan, watchXSync } from '@/lib/xSync';
 
 export type Theme = 'dark' | 'light' | 'zen';
 export type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
@@ -538,7 +538,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [persistSnapshot, setPostsSnapshot]);
 
   const addReply = useCallback((postId: string, content: string): Promise<boolean> => {
-    const newReply = { id: generateId(), postId, content, createdAt: new Date().toISOString() };
+    const parent = postsRef.current.find((p) => p.id === postId);
+    const toX = parent !== undefined && replyXPlan(parent, content) === 'sync';
+    const newReply = {
+      id: generateId(), postId, content, createdAt: new Date().toISOString(),
+      xSync: toX || undefined,
+    };
     const nextPosts = postsRef.current.map((p) => (
       p.id === postId ? { ...p, replies: [...p.replies, newReply] } : p
     ));

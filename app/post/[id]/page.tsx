@@ -10,6 +10,7 @@ import { formatDateCN } from '@/lib/export';
 import { getPostCategoryColor, getPostCategoryLabel } from '@/lib/categories';
 import Avatar from '@/components/ui/Avatar';
 import ImageLightbox from '@/components/common/ImageLightbox';
+import { REPLY_SYNC_HINT, REPLY_TOO_LONG_HINT, replyXPlan } from '@/lib/xSync';
 
 export default function PostDetailPage() {
   const params = useParams();
@@ -39,12 +40,15 @@ export default function PostDetailPage() {
     setTimeout(() => setLikeAnimating(false), 300);
   };
 
+  const xPlan = replyContent.trim() ? replyXPlan(post, replyContent.trim()) : 'none';
+
   const handleReply = async () => {
     if (!replyContent.trim()) return;
     const saved = await addReply(post.id, replyContent.trim());
     if (!saved) return;
     setReplyContent('');
     addToast('回复成功！');
+    if (xPlan === 'too-long') addToast('这条回复超出 X 的长度上限，只保存在本地，没有同步到 X', 'info');
   };
 
   const handleCopy = async () => {
@@ -246,6 +250,11 @@ export default function PostDetailPage() {
               minRows={1}
               className="w-full bg-transparent text-base text-x-fg placeholder-x-gray outline-none resize-none overflow-y-auto max-h-[40vh] leading-6 border-b border-x-border focus:border-x-blue transition-colors"
             />
+            {xPlan !== 'none' && (
+              <p className="mt-1 text-xs text-x-gray">
+                {xPlan === 'sync' ? REPLY_SYNC_HINT : REPLY_TOO_LONG_HINT}
+              </p>
+            )}
             <div className="flex justify-end mt-2">
               <button
                 onClick={handleReply}
