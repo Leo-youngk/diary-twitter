@@ -1,5 +1,4 @@
-import { useLayoutEffect, useRef, type RefObject } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import PostRow from './PostRow';
 
 interface TimelineProps {
@@ -10,63 +9,67 @@ interface TimelineProps {
   renderRow?: (id: string) => React.ReactNode;
 }
 
+const PAGE = 40;
+// Start rendering the next page this far before the end comes into view.
+const PRELOAD_PX = 1500;
+
 const renderPost = (id: string) => <PostRow id={id} />;
 
 /**
- * A virtualised list (posts unless told otherwise): only the rows near the
- * screen exist in the DOM, so a thousand entries scroll like fifty.
+ * A list of posts (unless told otherwise) that renders in pages: the first 40
+ * rows right away, the next 40 whenever the end is getting close.
  *
- * Rows measure themselves; when a row above the screen changes height the
- * virtualiser moves the scroll position with it. New posts arriving from
- * another device are inserted above without moving what is being read.
+ * Scrolling is left entirely to the browser. A virtualised list had to move
+ * the scroll position whenever a row above the screen turned out taller or
+ * shorter than estimated, and on iOS every such correction interrupts the
+ * momentum of a flick — the stutter when scrolling fast right after launch.
+ * Appending below the screen never moves anything.
+ *
+ * New posts arriving from another device are inserted above; the scroll
+ * position shifts by exactly their height so what is being read stays put.
  */
 export default function Timeline({ ids, scrollRef, empty, renderRow = renderPost }: TimelineProps) {
+  const [limit, setLimit] = useState(PAGE);
   const listRef = useRef<HTMLDivElement>(null);
-  const virtualizer = useVirtualizer({
-    count: ids.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 150,
-    overscan: 6,
-    getItemKey: (index) => ids[index],
-    scrollMargin: listRef.current?.offsetTop ?? 0,
-    // Rows render from the first frame even if the list mounts before its
-    // scroller has been measured (e.g. inside a panel that is sliding in).
-    initialRect: { width: window.innerWidth, height: window.innerHeight },
-  });
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const shown = ids.length > limit ? ids.slice(0, limit) : ids;
+  const hasMore = ids.length > shown.length;
 
-  // Keep the row being read in place when rows are added or removed above it.
-  const anchor = useRef<{ key: string; offset: number } | null>(null);
-  const previousIds = useRef(ids);
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    const root = scrollRef.current;
+    if (!hasMore || !sentinel || !root) return;
+    // Re-created after every page, so it fires again if the end is still near.
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0]?.isIntersecting) setLimit((current) => current + PAGE); },
+      { root, rootMargin: `0px 0px ${PRELOAD_PX}px 0px` },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [scrollRef, hasMore, limit]);
+
+  const previousFirst = useRef(ids[0]);
   useLayoutEffect(() => {
+    const before = previousFirst.current;
+    previousFirst.current = ids[0];
     const scroller = scrollRef.current;
-    if (previousIds.current !== ids && scroller && anchor.current) {
-      const item = virtualizer.getVirtualItems().find((v) => v.key === anchor.current!.key)
-        ?? virtualizer.measurementsCache.find((m) => m.key === anchor.current!.key);
-      if (item && scroller.scrollTop > 0) {
-        const target = item.start - anchor.current.offset;
-        if (Math.abs(target - scroller.scrollTop) > 1) scroller.scrollTop = target;
-      }
-    }
-    previousIds.current = ids;
-    const first = virtualizer.getVirtualItems().find((v) => v.end > (scroller?.scrollTop ?? 0));
-    anchor.current = first && scroller ? { key: String(first.key), offset: first.start - scroller.scrollTop } : null;
-  });
+    const list = listRef.current;
+    if (!before || before === ids[0] || !scroller || !list || scroller.scrollTop <= 0) return;
+    const inserted = ids.indexOf(before);
+    if (inserted <= 0) return;
+    let height = 0;
+    for (let i = 0; i < inserted && i < list.children.length; i++) height += (list.children[i] as HTMLElement).offsetHeight;
+    scroller.scrollTop += height;
+  }, [ids, scrollRef]);
 
   if (ids.length === 0) return <>{empty}</>;
 
-  const items = virtualizer.getVirtualItems();
   return (
-    <div ref={listRef} style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-      {items.map((item) => (
-        <div
-          key={item.key}
-          data-index={item.index}
-          ref={virtualizer.measureElement}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)` }}
-        >
-          {renderRow(ids[item.index])}
-        </div>
-      ))}
-    </div>
+    <>
+      <div ref={listRef}>
+        {shown.map((id) => <div key={id}>{renderRow(id)}</div>)}
+      </div>
+      {hasMore && <div ref={sentinelRef} className="h-px" aria-hidden="true" />}
+    </>
   );
 }

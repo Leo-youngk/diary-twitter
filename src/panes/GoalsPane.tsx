@@ -2,7 +2,7 @@ import { memo, useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import { useMainTab } from '@/app/mainTab';
 import { toast } from '@/app/toast';
-import { useHideOnScroll } from '@/app/useHideOnScroll';
+import { useScrollChrome } from '@/app/scrollChrome';
 import Icon from '@/components/Icon';
 import ProgressRing from '@/components/ProgressRing';
 import {
@@ -252,7 +252,7 @@ export default function GoalsPane() {
   const today = useToday();
   const progress = useGoalProgress();
   const scrollRef = useRef<HTMLDivElement>(null);
-  useHideOnScroll(scrollRef, useMainTab() === 'goals');
+  useScrollChrome(scrollRef, null, useMainTab() === 'goals');
   const [shown, setShown] = useState(HISTORY_PAGE);
   const past = [...progress.keys()].filter((day) => day < today && progress.get(day)!.total > 0).sort().reverse();
 

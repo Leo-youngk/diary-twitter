@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { setProfileOpen } from '@/app/profilePanel';
 import { useNav } from '@/app/nav';
 import { useMainTab } from '@/app/mainTab';
-import { useHideOnScroll } from '@/app/useHideOnScroll';
+import { useScrollChrome } from '@/app/scrollChrome';
 import Avatar from '@/components/Avatar';
 import FeedSkeleton from '@/components/FeedSkeleton';
 import Icon, { XLogo } from '@/components/Icon';
@@ -37,7 +37,8 @@ export default function HomePane() {
   const awaitingFirstSync = useAwaitingFirstSync();
   const offline = useConnectionState() === 'offline';
   const scrollRef = useRef<HTMLDivElement>(null);
-  const headerHidden = useHideOnScroll(scrollRef, useMainTab() === 'home');
+  const headerRef = useRef<HTMLElement>(null);
+  useScrollChrome(scrollRef, headerRef, useMainTab() === 'home');
 
   let empty: React.ReactNode;
   if (awaitingFirstSync) {
@@ -64,7 +65,7 @@ export default function HomePane() {
         title={<XLogo size={24} />}
         left={<ProfileButton />}
         right={<OfflineBadge />}
-        hidden={headerHidden}
+        ref={headerRef}
       />
       <Timeline ids={ids} scrollRef={scrollRef} empty={empty} />
     </div>
