@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import type { ActivityComponentType } from '@stackflow/react';
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import { AppScreen } from '@stackflow/plugin-basic-ui';
 import { toast } from '@/app/toast';
+import { useKeyboardViewport } from '@/app/useKeyboardViewport';
 import Avatar from '@/components/Avatar';
 import Icon, { XLogo } from '@/components/Icon';
 import { addPost, addReply, fitsOnX, postWillSyncToX, replyWillSyncToX, updatePost } from '@/data/actions';
@@ -28,7 +29,7 @@ function readDraft(): string {
 }
 
 const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
-  const { pop } = useFlow();
+  const { pop } = useNav();
   const profile = useProfile();
   const editing = usePost(params.editId ?? '');
   const replyingTo = usePost(params.replyTo ?? '');
@@ -46,6 +47,8 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
   const [toX, setToX] = useState(xEnabled);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  useKeyboardViewport(hostRef);
 
   // Keep an unfinished new post across closes and reloads.
   useEffect(() => {
@@ -123,33 +126,27 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
   return (
     <AppScreen CUPERTINO_ONLY_modalPresentationStyle="fullScreen" preventSwipeBack>
       <div
+        ref={hostRef}
         className="flex h-full flex-col"
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); publish(); }
           if (e.key === 'Escape') close();
         }}
       >
-        <header className="flex h-12 shrink-0 items-center justify-between px-4">
-          <button type="button" onClick={close} className="text-[16px]">取消</button>
+        <header className="grid h-11 shrink-0 grid-cols-[1fr_auto_1fr] items-center px-4">
+          <button type="button" onClick={close} className="justify-self-start text-[16px]">取消</button>
           <h1 className="text-[16px] font-semibold">{heading}</h1>
-          <button
-            type="button"
-            onClick={publish}
-            disabled={!canPublish}
-            className="pressable rounded-full bg-x-blue px-4 py-1.5 text-[15px] font-semibold text-white disabled:opacity-40"
-          >
-            {mode === 'edit' ? '保存' : '发布'}
-          </button>
+          <span />
         </header>
 
         {missing ? (
-          <p className="px-8 py-20 text-center text-x-gray">这条记录不存在，或已经删除。</p>
+          <p className="flex-1 px-8 py-20 text-center text-x-gray">这条记录不存在，或已经删除。</p>
         ) : (
-          <div data-scroll-root className="relative flex-1 overflow-y-auto px-4 pb-10">
+          <div data-scroll-root className="relative flex-1 overflow-y-auto px-4 pb-6">
             {mode === 'reply' && replyingTo && (
               <div className="flex gap-3">
-                <div className="flex w-10 flex-col items-center">
-                  <Avatar src={profile.avatar} name={profile.displayName} size={40} />
+                <div className="flex w-9 flex-col items-center">
+                  <Avatar src={profile.avatar} name={profile.displayName} size={36} />
                   <div className="my-1 w-0.5 flex-1 rounded-full bg-x-border" />
                 </div>
                 <div className="min-w-0 flex-1 pb-4">
@@ -160,14 +157,15 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
             )}
 
             <div className="flex gap-3 pt-1">
-              <Avatar src={profile.avatar} name={profile.displayName} size={40} />
+              <Avatar src={profile.avatar} name={profile.displayName} size={36} />
               <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-semibold leading-5">{profile.displayName}</p>
                 {initial.title && (
                   <input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="标题"
-                    className="mb-1 w-full bg-transparent text-[18px] font-semibold outline-none placeholder:text-x-gray"
+                    className="mt-1 w-full bg-transparent text-[18px] font-semibold outline-none placeholder:text-x-gray"
                   />
                 )}
                 <TextareaAutosize
@@ -178,9 +176,9 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
                     const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'));
                     if (files.length > 0 && mode !== 'reply') { e.preventDefault(); void addImages(files); }
                   }}
-                  minRows={4}
+                  minRows={3}
                   placeholder={mode === 'reply' ? '接着写…' : '有什么新鲜事？'}
-                  className="w-full resize-none bg-transparent pt-1.5 text-[calc(17px*var(--font-scale))] leading-[1.65] outline-none placeholder:text-x-gray"
+                  className="w-full resize-none bg-transparent pt-0.5 text-[calc(17px*var(--font-scale))] leading-[1.65] outline-none placeholder:text-x-gray"
                 />
 
                 {images.length > 0 && (
@@ -201,58 +199,74 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
                   </div>
                 )}
 
-                <div className="mt-3 flex min-h-[32px] items-center gap-3 border-t border-x-border pt-2.5">
-                  {mode !== 'reply' && (
-                    <button
-                      type="button"
-                      onClick={() => fileRef.current?.click()}
-                      disabled={uploading || images.length >= MAX_IMAGES}
-                      className="pressable text-x-blue disabled:opacity-40"
-                      aria-label="添加图片"
-                    >
-                      <Icon name="image" size={22} />
-                    </button>
-                  )}
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files ?? []);
-                      e.target.value = '';
-                      if (files.length > 0) void addImages(files);
-                    }}
-                  />
-                  {mode === 'new' && (
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={toX}
-                      onClick={() => setToX((value) => !value)}
-                      className={cn(
-                        'pressable flex items-center gap-1 rounded-full border px-2.5 py-1 text-[13px]',
-                        toX ? 'border-x-fg bg-x-fg font-semibold text-x-dark' : 'border-x-border text-x-gray',
-                      )}
-                    >
-                      <XLogo size={11} />
-                      {toX ? '同步' : '不同步'}
-                    </button>
-                  )}
-                  {counter && (
-                    <span className={cn('ml-auto shrink-0 text-[12px] tabular-nums', counter.over ? 'font-semibold text-x-danger' : 'text-x-gray')}>
-                      {counter.used}/{counter.max}
-                    </span>
-                  )}
-                </div>
                 {xNote && (
-                  <p className={cn('mt-2 flex items-start gap-1 text-[12px] leading-snug', xNote.warn ? 'text-x-danger' : 'text-x-gray')}>
+                  <p className={cn('mt-3 flex items-start gap-1 text-[12px] leading-snug', xNote.warn ? 'text-x-danger' : 'text-x-gray')}>
                     <XLogo size={11} className="mt-px shrink-0" />
                     <span>{xNote.text}</span>
                   </p>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Rides on top of the keyboard, as in Threads. */}
+        {!missing && (
+          <div className="dock flex shrink-0 items-center gap-3 bg-x-dark px-4 pt-2">
+            {mode !== 'reply' && (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading || images.length >= MAX_IMAGES}
+                className="pressable -m-1 p-1 text-x-gray disabled:opacity-40"
+                aria-label="添加图片"
+              >
+                <Icon name="image" size={23} />
+              </button>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                e.target.value = '';
+                if (files.length > 0) void addImages(files);
+              }}
+            />
+            {mode === 'new' && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={toX}
+                onClick={() => setToX((value) => !value)}
+                className={cn(
+                  'pressable flex items-center gap-1 rounded-full border px-2.5 py-1 text-[13px]',
+                  toX ? 'border-x-fg bg-x-fg font-semibold text-x-dark' : 'border-x-border text-x-gray',
+                )}
+              >
+                <XLogo size={11} />
+                {toX ? '同步' : '不同步'}
+              </button>
+            )}
+            <div className="ml-auto flex items-center gap-3">
+              {counter && (
+                <span className={cn('text-[12px] tabular-nums', counter.over ? 'font-semibold text-x-danger' : 'text-x-gray')}>
+                  {counter.used}/{counter.max}
+                </span>
+              )}
+              <button
+                type="button"
+                // Keep the keyboard up: the tap must not blur the text field first.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={publish}
+                disabled={!canPublish}
+                className="pressable rounded-full bg-x-fg px-5 py-2 text-[15px] font-semibold text-x-dark disabled:opacity-30"
+              >
+                {mode === 'edit' ? '保存' : '发布'}
+              </button>
             </div>
           </div>
         )}

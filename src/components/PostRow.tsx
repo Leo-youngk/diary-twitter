@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import { sharePost } from '@/app/postOps';
 import { toggleLike } from '@/data/actions';
 import { useMinute, usePost, useProfile, useReplyIds, useXPost } from '@/data/hooks';
@@ -31,7 +31,7 @@ function PostRow({ id }: { id: string }) {
   const profile = useProfile();
   const replyIds = useReplyIds(id);
   const x = useXPost(id);
-  const { push } = useFlow();
+  const { push } = useNav();
   const [menuOpen, setMenuOpen] = useState(false);
   useMinute();
   if (!post) return null;

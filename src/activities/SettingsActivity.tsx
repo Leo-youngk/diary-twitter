@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { ActivityComponentType } from '@stackflow/react';
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import { AppScreen } from '@stackflow/plugin-basic-ui';
 import { setPreference, usePreferences, type FontFamily, type FontSize, type Theme } from '@/app/preferences';
 import { toast } from '@/app/toast';
@@ -119,7 +119,7 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
   const prefs = usePreferences();
   const profile = useProfile();
   const connection = useConnection();
-  const { push } = useFlow();
+  const { push } = useNav();
   const avatarRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
   const backupRef = useRef<HTMLInputElement>(null);

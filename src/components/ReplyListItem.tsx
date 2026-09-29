@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import { useMinute, usePost, useProfile, useReply, useXPost } from '@/data/hooks';
 import { formatCompactTime } from '@/lib/utils';
 import Avatar from './Avatar';
@@ -11,7 +11,7 @@ function ReplyListItem({ id }: { id: string }) {
   const post = usePost(reply?.postId ?? '');
   const profile = useProfile();
   const x = useXPost(id);
-  const { push } = useFlow();
+  const { push } = useNav();
   useMinute();
   if (!reply) return null;
   return (

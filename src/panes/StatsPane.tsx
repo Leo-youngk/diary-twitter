@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
 import { useGoalProgress, usePosts, useToday, useXPosts } from '@/data/hooks';
@@ -96,7 +96,7 @@ export default function StatsPane() {
   const xposts = useXPosts();
   const progress = useGoalProgress();
   const today = useToday();
-  const { push } = useFlow();
+  const { push } = useNav();
   const [period, setPeriod] = useState<Period>(30);
 
   const perDay = useMemo(() => {

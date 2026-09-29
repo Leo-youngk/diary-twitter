@@ -1,4 +1,4 @@
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import { copyPost, exportPost, removePost } from '@/app/postOps';
 import type { Post } from '@/data/hooks';
 import ActionSheet, { type SheetAction } from './ActionSheet';
@@ -12,7 +12,7 @@ interface PostMenuProps {
 }
 
 export default function PostMenu({ post, open, onClose, onDeleted }: PostMenuProps) {
-  const { push } = useFlow();
+  const { push } = useNav();
   const actions: SheetAction[] = [
     { label: '编辑', onSelect: () => push('Compose', { editId: post.id }) },
     { label: '复制文本', onSelect: () => void copyPost(post) },

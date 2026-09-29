@@ -1,4 +1,4 @@
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import { scrollPaneToTop, setMainTab, useMainTab, type MainTab } from '@/app/mainTab';
 import { cn } from '@/lib/utils';
 import Icon, { type IconName } from './Icon';
@@ -13,7 +13,7 @@ export const MAIN_TABS: Array<{ tab: MainTab; label: string; icon: IconName }> =
 /** Floating tab bar; the post button sits in the middle. */
 export default function BottomNav() {
   const current = useMainTab();
-  const { push } = useFlow();
+  const { push } = useNav();
 
   const item = ({ tab, label, icon }: (typeof MAIN_TABS)[number]) => {
     const active = current === tab;

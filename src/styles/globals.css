@@ -158,6 +158,24 @@ select {
   font-size: max(1rem, 16px);
 }
 
+/* Stackflow sets display:none (inline) on screens covered by a finished
+ * transition. That destroys their scroll boxes: the timeline lost its place
+ * and re-rendered ("refreshed") when 发帖 opened, and a burst of navigation
+ * could leave the home screen hidden — a blank app. Screens above are opaque,
+ * so keeping the ones below displayed costs nothing visible. */
+[data-stackflow-component-name="AppScreen"] {
+  display: block !important;
+}
+
+/* A toolbar docked at the bottom of a page: clear of the home indicator,
+ * and snug on top of the keyboard when it is open (useKeyboardViewport). */
+.dock {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+[data-keyboard="open"] .dock {
+  padding-bottom: 0.375rem;
+}
+
 /* Sticky headers: the page shows through, softened. */
 .frosted {
   background: color-mix(in srgb, var(--color-x-dark) 86%, transparent);

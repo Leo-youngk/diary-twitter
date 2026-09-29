@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import Icon from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
 import PostRow from '@/components/PostRow';
@@ -15,7 +15,7 @@ export default function CalendarPane() {
   const profile = useProfile();
   const goals = useGoalProgress();
   const today = useToday();
-  const { push } = useFlow();
+  const { push } = useNav();
   const [view, setView] = useState<'month' | 'life'>('month');
   const [month, setMonth] = useState(() => new Date());
   const [selected, setSelected] = useState<string | null>(today);

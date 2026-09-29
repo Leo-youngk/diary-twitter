@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import type { ActivityComponentType } from '@stackflow/react';
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import { AppScreen } from '@stackflow/plugin-basic-ui';
 import { sharePost } from '@/app/postOps';
 import { useBack } from '@/app/useBack';
+import { useKeyboardViewport } from '@/app/useKeyboardViewport';
 import { toast } from '@/app/toast';
 import Avatar from '@/components/Avatar';
 import Icon, { XLogo } from '@/components/Icon';
@@ -47,11 +48,13 @@ const PostActivity: ActivityComponentType<'Post'> = ({ params }) => {
   const replyIds = useReplyIds(params.postId);
   const x = useXPost(params.postId);
   const xEnabled = useXSyncEnabled();
-  const { push } = useFlow();
+  const { push } = useNav();
   const back = useBack();
   const [draft, setDraft] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  useKeyboardViewport(hostRef);
 
   // Opened from a reply (我的 → 追加): bring that reply into view.
   useEffect(() => {
@@ -82,7 +85,7 @@ const PostActivity: ActivityComponentType<'Post'> = ({ params }) => {
 
   return (
     <AppScreen>
-      <div className="flex h-full flex-col">
+      <div ref={hostRef} className="flex h-full flex-col">
         <ScreenHeader
           title="帖子"
           right={(
@@ -154,7 +157,7 @@ const PostActivity: ActivityComponentType<'Post'> = ({ params }) => {
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-x-border bg-x-dark px-3 pt-2" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
+        <div className="dock shrink-0 border-t border-x-border bg-x-dark px-3 pt-2">
           {replyToX && (
             <p className={cn('mb-1 flex items-center gap-1 px-1 text-[12px]', tooLongForX ? 'text-x-danger' : 'text-x-gray')}>
               <XLogo size={11} /> {tooLongForX ? '超出 X 的长度上限（中文每字算 2，最多 140 字），只保存在本地' : '将以引用原帖的形式同步到 X'}
@@ -171,6 +174,7 @@ const PostActivity: ActivityComponentType<'Post'> = ({ params }) => {
             />
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={send}
               disabled={!text}
               className="pressable mb-0.5 shrink-0 rounded-full bg-x-blue px-4 py-2 text-[15px] font-semibold text-white disabled:opacity-40"

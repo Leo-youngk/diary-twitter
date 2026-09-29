@@ -1,6 +1,7 @@
 import { Provider } from 'tinybase/ui-react';
 import { Stack } from '@/app/stack';
 import DesktopRail from '@/components/DesktopRail';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import Toasts from '@/components/Toasts';
 import { indexes, store } from '@/data/store';
 
@@ -14,7 +15,9 @@ export default function App() {
       <div className="flex h-full justify-center">
         <DesktopRail />
         <main className="relative h-full w-full min-w-0 md:max-w-[600px] md:border-x md:border-x-border">
-          <Stack />
+          <ErrorBoundary>
+            <Stack />
+          </ErrorBoundary>
         </main>
       </div>
       <Toasts />

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { ActivityComponentType } from '@stackflow/react';
-import { useFlow } from '@stackflow/react';
+import { useNav } from '@/app/nav';
 import { AppScreen } from '@stackflow/plugin-basic-ui';
 import { toMarkdownPost } from '@/app/postOps';
 import { toast } from '@/app/toast';
@@ -36,15 +36,15 @@ function allPosts(): Post[] {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-const ProfileActivity: ActivityComponentType<'Profile'> = () => {
+const ProfileActivity: ActivityComponentType<'Profile'> = ({ params }) => {
   const profile = useProfile();
   const postIds = usePostIds();
   const replyIds = useAllReplyIds();
   const savedIds = useLikedPostIds();
-  const { push } = useFlow();
+  const { push } = useNav();
   const scrollRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
-  const [tab, setTab] = useState<Tab>('posts');
+  const [tab, setTab] = useState<Tab>(params.tab && TABS.some((t) => t.key === params.tab) ? params.tab : 'posts');
   const [exportOpen, setExportOpen] = useState(false);
 
   const ids = tab === 'posts' ? postIds : tab === 'replies' ? replyIds : savedIds;

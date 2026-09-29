@@ -10,14 +10,23 @@ import { Workbox } from 'workbox-window';
  */
 
 const MIN_AWAY_MS = 60_000;
+const LAUNCH_WINDOW_MS = 5_000;
 
 export function registerServiceWorker(): void {
   if (!('serviceWorker' in navigator) || import.meta.env.DEV) return;
   const wb = new Workbox('/sw.js');
   let waiting = false;
   let hiddenAt: number | null = null;
+  // A new version found right at launch, before the first touch, takes over at
+  // once: the app was just opened, nothing is being written yet.
+  const bootAt = Date.now();
+  let touched = false;
+  window.addEventListener('pointerdown', () => { touched = true; }, { once: true, capture: true });
 
-  wb.addEventListener('waiting', () => { waiting = true; });
+  wb.addEventListener('waiting', () => {
+    waiting = true;
+    if (!touched && Date.now() - bootAt < LAUNCH_WINDOW_MS) wb.messageSkipWaiting();
+  });
   // Only a new version taking over reloads. The very first install also
   // "takes control" (clients.claim), and reloading then would just flash the page.
   wb.addEventListener('controlling', (event) => { if (event.isUpdate) window.location.reload(); });

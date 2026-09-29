@@ -3,6 +3,7 @@ import type { ActivityComponentType } from '@stackflow/react';
 import { AppScreen } from '@stackflow/plugin-basic-ui';
 import { useMainTab, type MainTab } from '@/app/mainTab';
 import BottomNav from '@/components/BottomNav';
+import ProfileDrawer from '@/components/ProfileDrawer';
 import { cn } from '@/lib/utils';
 import CalendarPane from '@/panes/CalendarPane';
 import GoalsPane from '@/panes/GoalsPane';
@@ -40,6 +41,7 @@ const MainActivity: ActivityComponentType<'Main'> = () => {
           </div>
         ))}
         <BottomNav />
+        <ProfileDrawer />
       </div>
     </AppScreen>
   );

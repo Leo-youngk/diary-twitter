@@ -1,18 +1,19 @@
 import { useRef } from 'react';
-import { useFlow } from '@stackflow/react';
+import { setDrawerOpen } from '@/app/drawer';
+import { useNav } from '@/app/nav';
+import { useHideOnScroll } from '@/app/useHideOnScroll';
 import Avatar from '@/components/Avatar';
 import FeedSkeleton from '@/components/FeedSkeleton';
-import Icon from '@/components/Icon';
+import Icon, { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
 import Timeline from '@/components/Timeline';
 import { useAwaitingFirstSync, useConnectionState } from '@/data/connection';
 import { usePostIds, useProfile } from '@/data/hooks';
 
-function ProfileButton() {
+function DrawerButton() {
   const profile = useProfile();
-  const { push } = useFlow();
   return (
-    <button type="button" onClick={() => push('Profile', {})} className="pressable rounded-full" aria-label="我的">
+    <button type="button" onClick={() => setDrawerOpen(true)} className="pressable rounded-full" aria-label="我的">
       <Avatar src={profile.avatar} name={profile.displayName} size={32} />
     </button>
   );
@@ -20,7 +21,7 @@ function ProfileButton() {
 
 function OfflineBadge() {
   const state = useConnectionState();
-  const { push } = useFlow();
+  const { push } = useNav();
   if (state !== 'offline') return null;
   return (
     <button type="button" onClick={() => push('Settings', {})} className="pressable -mr-1 p-1 text-x-gray" aria-label="离线，点此查看同步状态">
@@ -35,6 +36,7 @@ export default function HomePane() {
   const awaitingFirstSync = useAwaitingFirstSync();
   const offline = useConnectionState() === 'offline';
   const scrollRef = useRef<HTMLDivElement>(null);
+  const headerHidden = useHideOnScroll(scrollRef);
 
   let empty: React.ReactNode;
   if (awaitingFirstSync) {
@@ -57,7 +59,12 @@ export default function HomePane() {
 
   return (
     <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28">
-      <PaneHeader title="日记本" left={<ProfileButton />} right={<OfflineBadge />} />
+      <PaneHeader
+        title={<XLogo size={24} />}
+        left={<DrawerButton />}
+        right={<OfflineBadge />}
+        hidden={headerHidden}
+      />
       <Timeline ids={ids} scrollRef={scrollRef} empty={empty} />
     </div>
   );

@@ -14,7 +14,7 @@ declare module '@stackflow/config' {
     Main: Record<string, never>;
     Post: { postId: string; focusReply?: string };
     Compose: { editId?: string; replyTo?: string };
-    Profile: Record<string, never>;
+    Profile: { tab?: 'posts' | 'replies' | 'saved' };
     Settings: Record<string, never>;
   }
 }
