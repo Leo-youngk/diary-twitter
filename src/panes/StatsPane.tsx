@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useMainTab } from '@/app/mainTab';
+import { useHideOnScroll } from '@/app/useHideOnScroll';
 import { useNav } from '@/app/nav';
 import { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
@@ -98,6 +100,8 @@ export default function StatsPane() {
   const today = useToday();
   const { push } = useNav();
   const [period, setPeriod] = useState<Period>(30);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const headerHidden = useHideOnScroll(scrollRef, useMainTab() === 'stats');
 
   const perDay = useMemo(() => {
     const map = new Map<string, number>();
@@ -186,8 +190,8 @@ export default function StatsPane() {
   const goalRate = goals.range.total > 0 ? `${Math.round((goals.range.done / goals.range.total) * 100)}%` : '—';
 
   return (
-    <div data-scroll-root className="relative h-full overflow-y-auto pb-28">
-      <PaneHeader title="统计">
+    <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28">
+      <PaneHeader title="统计" hidden={headerHidden}>
         <div className="flex gap-2 px-4 pb-2.5">
           {PERIODS.map(({ value, label }) => (
             <button

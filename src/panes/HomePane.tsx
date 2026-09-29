@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { setProfileOpen } from '@/app/profilePanel';
 import { useNav } from '@/app/nav';
+import { useMainTab } from '@/app/mainTab';
 import { useHideOnScroll } from '@/app/useHideOnScroll';
 import Avatar from '@/components/Avatar';
 import FeedSkeleton from '@/components/FeedSkeleton';
@@ -36,7 +37,7 @@ export default function HomePane() {
   const awaitingFirstSync = useAwaitingFirstSync();
   const offline = useConnectionState() === 'offline';
   const scrollRef = useRef<HTMLDivElement>(null);
-  const headerHidden = useHideOnScroll(scrollRef);
+  const headerHidden = useHideOnScroll(scrollRef, useMainTab() === 'home');
 
   let empty: React.ReactNode;
   if (awaitingFirstSync) {

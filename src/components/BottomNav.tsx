@@ -1,5 +1,6 @@
 import { useNav } from '@/app/nav';
 import { scrollPaneToTop, setMainTab, useMainTab, type MainTab } from '@/app/mainTab';
+import { useNavHidden } from '@/app/useHideOnScroll';
 import { cn } from '@/lib/utils';
 import Icon, { type IconName } from './Icon';
 
@@ -13,6 +14,7 @@ export const MAIN_TABS: Array<{ tab: MainTab; label: string; icon: IconName }> =
 /** Floating tab bar; the post button sits in the middle. */
 export default function BottomNav() {
   const current = useMainTab();
+  const hidden = useNavHidden();
   const { push } = useNav();
 
   const item = ({ tab, label, icon }: (typeof MAIN_TABS)[number]) => {
@@ -33,7 +35,7 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="absolute inset-x-3 z-30 flex h-[62px] items-center justify-around rounded-[28px] border backdrop-blur-xl md:hidden"
+      className={cn('absolute inset-x-3 z-30 flex h-[62px] items-center justify-around rounded-[28px] border backdrop-blur-xl transition-[transform,opacity] duration-300 ease-out md:hidden', hidden && 'pointer-events-none translate-y-[calc(100%+40px)] opacity-0')}
       style={{
         bottom: 'max(10px, calc(env(safe-area-inset-bottom) - 6px))',
         background: 'var(--nav-bg)',

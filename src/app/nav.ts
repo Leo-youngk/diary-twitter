@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useFlow } from '@stackflow/react';
 import type { InferActivityParams, RegisteredActivityName } from '@stackflow/config';
+import { primeKeyboard } from './keyboard';
 
 /**
  * Navigation that ignores a second tap while a page is still sliding in or
@@ -28,7 +29,12 @@ export interface Nav {
 export function useNav(): Nav {
   const flow = useFlow();
   return useMemo<Nav>(() => ({
-    push(name, params) { if (acquireNavigation()) flow.push(name, params); },
+    push(name, params) {
+      if (!acquireNavigation()) return;
+      // Writing screens: raise the keyboard now, while this is still the tap.
+      if (name === 'Compose') primeKeyboard();
+      flow.push(name, params);
+    },
     replace(name, params, options) { if (acquireNavigation()) flow.replace(name, params, options); },
     pop() { if (acquireNavigation()) flow.pop(); },
   }), [flow]);

@@ -97,7 +97,7 @@ const PostActivity: ActivityComponentType<'Post'> = ({ params }) => {
         <div ref={scrollRef} data-scroll-root className="relative flex-1 overflow-y-auto">
           <article className="px-4 pt-3">
             <div className="flex items-center gap-3">
-              <Avatar src={profile.avatar} name={profile.displayName} size={44} />
+              <Avatar src={profile.avatar} name={profile.displayName} size={36} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-semibold">{profile.displayName}</p>
                 <p className="truncate text-[14px] text-x-gray">@{profile.username}</p>

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
-import type { ActivityComponentType } from '@stackflow/react';
+import { useActivity, type ActivityComponentType } from '@stackflow/react';
 import { useNav } from '@/app/nav';
 import { AppScreen } from '@stackflow/plugin-basic-ui';
 import { toast } from '@/app/toast';
+import { releaseKeyboard, takeKeyboard } from '@/app/keyboard';
 import { useKeyboardViewport } from '@/app/useKeyboardViewport';
 import Avatar from '@/components/Avatar';
 import Icon, { XLogo } from '@/components/Icon';
@@ -48,7 +49,15 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
   useKeyboardViewport(hostRef);
+  const { transitionState } = useActivity();
+
+  // The tap that opened this screen raised the keyboard on a proxy field
+  // (see app/keyboard.ts); take it over once the screen has slid into place.
+  const arrived = transitionState === 'enter-done';
+  useEffect(() => { if (arrived) takeKeyboard(fieldRef.current); }, [arrived]);
+  useEffect(() => () => releaseKeyboard(), []);
 
   // Keep an unfinished new post across closes and reloads.
   useEffect(() => {
@@ -169,7 +178,7 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
                   />
                 )}
                 <TextareaAutosize
-                  autoFocus
+                  ref={fieldRef}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   onPaste={(e) => {

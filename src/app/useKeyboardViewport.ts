@@ -22,6 +22,8 @@ export function useKeyboardViewport(ref: RefObject<HTMLElement | null>): void {
       host.style.height = open && viewport ? `${viewport.height}px` : '';
       host.style.transform = open && viewport ? `translateY(${viewport.offsetTop}px)` : '';
       host.dataset.keyboard = open ? 'open' : 'closed';
+      // Follow the keyboard smoothly instead of snapping once it has settled.
+      host.style.transition = 'height 0.25s ease-out, transform 0.25s ease-out';
     };
     sync();
     viewport?.addEventListener('resize', sync);

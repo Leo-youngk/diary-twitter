@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useMainTab } from '@/app/mainTab';
+import { useHideOnScroll } from '@/app/useHideOnScroll';
 import { useNav } from '@/app/nav';
 import Icon from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
@@ -16,6 +18,8 @@ export default function CalendarPane() {
   const goals = useGoalProgress();
   const today = useToday();
   const { push } = useNav();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const headerHidden = useHideOnScroll(scrollRef, useMainTab() === 'calendar');
   const [view, setView] = useState<'month' | 'life'>('month');
   const [month, setMonth] = useState(() => new Date());
   const [selected, setSelected] = useState<string | null>(today);
@@ -41,9 +45,10 @@ export default function CalendarPane() {
   const shift = (delta: number) => { setMonth(new Date(year, m + delta, 1)); setSelected(null); };
 
   return (
-    <div data-scroll-root className="relative h-full overflow-y-auto pb-28">
+    <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28">
       <PaneHeader
         title="日历"
+        hidden={headerHidden}
         right={(
           <button type="button" onClick={() => { setMonth(new Date()); setSelected(today); setView('month'); }} className="text-[15px] text-x-blue">
             今天

@@ -19,7 +19,7 @@ function ReplyListItem({ id }: { id: string }) {
       onClick={() => post && push('Post', { postId: post.id, focusReply: id })}
       className="flex cursor-pointer gap-3 border-b border-x-border px-4 pb-3 pt-3 active:bg-x-hover"
     >
-      <Avatar src={profile.avatar} name={profile.displayName} size={44} />
+      <Avatar src={profile.avatar} name={profile.displayName} size={36} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-[15px] leading-5">
           <span className="max-w-[55%] shrink-0 truncate font-semibold">{profile.displayName}</span>
