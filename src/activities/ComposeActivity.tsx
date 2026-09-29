@@ -145,8 +145,8 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
           <div data-scroll-root className="relative flex-1 overflow-y-auto px-4 pb-6">
             {mode === 'reply' && replyingTo && (
               <div className="flex gap-3">
-                <div className="flex w-9 flex-col items-center">
-                  <Avatar src={profile.avatar} name={profile.displayName} size={36} />
+                <div className="flex w-8 flex-col items-center">
+                  <Avatar src={profile.avatar} name={profile.displayName} size={32} />
                   <div className="my-1 w-0.5 flex-1 rounded-full bg-x-border" />
                 </div>
                 <div className="min-w-0 flex-1 pb-4">
@@ -157,7 +157,7 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
             )}
 
             <div className="flex gap-3 pt-1">
-              <Avatar src={profile.avatar} name={profile.displayName} size={36} />
+              <Avatar src={profile.avatar} name={profile.displayName} size={32} />
               <div className="min-w-0 flex-1">
                 <p className="text-[15px] font-semibold leading-5">{profile.displayName}</p>
                 {initial.title && (

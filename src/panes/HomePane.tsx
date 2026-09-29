@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { setDrawerOpen } from '@/app/drawer';
+import { setProfileOpen } from '@/app/profilePanel';
 import { useNav } from '@/app/nav';
 import { useHideOnScroll } from '@/app/useHideOnScroll';
 import Avatar from '@/components/Avatar';
@@ -10,10 +10,10 @@ import Timeline from '@/components/Timeline';
 import { useAwaitingFirstSync, useConnectionState } from '@/data/connection';
 import { usePostIds, useProfile } from '@/data/hooks';
 
-function DrawerButton() {
+function ProfileButton() {
   const profile = useProfile();
   return (
-    <button type="button" onClick={() => setDrawerOpen(true)} className="pressable rounded-full" aria-label="我的">
+    <button type="button" onClick={() => setProfileOpen(true)} className="pressable rounded-full" aria-label="我的">
       <Avatar src={profile.avatar} name={profile.displayName} size={32} />
     </button>
   );
@@ -61,7 +61,7 @@ export default function HomePane() {
     <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28">
       <PaneHeader
         title={<XLogo size={24} />}
-        left={<DrawerButton />}
+        left={<ProfileButton />}
         right={<OfflineBadge />}
         hidden={headerHidden}
       />

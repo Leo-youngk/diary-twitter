@@ -29,6 +29,9 @@ export default function Timeline({ ids, scrollRef, empty, renderRow = renderPost
     overscan: 6,
     getItemKey: (index) => ids[index],
     scrollMargin: listRef.current?.offsetTop ?? 0,
+    // Rows render from the first frame even if the list mounts before its
+    // scroller has been measured (e.g. inside a panel that is sliding in).
+    initialRect: { width: window.innerWidth, height: window.innerHeight },
   });
 
   // Keep the row being read in place when rows are added or removed above it.
