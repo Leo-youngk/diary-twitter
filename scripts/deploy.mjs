@@ -16,7 +16,7 @@
 //
 // The environment is chosen at build time (CLOUDFLARE_ENV), as the Cloudflare
 // Vite plugin requires; wrangler then deploys the config the build wrote.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -90,6 +90,12 @@ function deploy() {
 }
 
 run('npm', ['run', 'build']);
+// The Cloudflare Vite plugin copies .env.local (which holds the API token) into
+// the build output as .dev.vars for `vite preview`. wrangler does not upload
+// it, but it has no business sitting in dist either.
+for (const dir of readdirSync(new URL('../dist', import.meta.url), { withFileTypes: true })) {
+  if (dir.isDirectory()) rmSync(new URL(`../dist/${dir.name}/.dev.vars`, import.meta.url), { force: true });
+}
 try {
   const version = await deploy();
   console.log(`\n✓ 已部署 ${target ?? 'production'}，版本 ${version}`);
