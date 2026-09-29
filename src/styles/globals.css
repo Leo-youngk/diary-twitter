@@ -1,0 +1,230 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* RGB channels — used by Tailwind for opacity variants (bg-x-blue/10 etc.) */
+  --color-x-blue: 29 155 240;        /* #1d9bf0 twitter blue */
+  --color-x-blue-hover: 26 140 216;  /* #1a8cd8 */
+  --color-x-gray: 113 118 123;       /* #71767b */
+
+  /* Nav pill surface, per theme; the fallback is dark. */
+  --nav-bg: rgba(22, 24, 28, 0.72);
+  --nav-border: rgba(255, 255, 255, 0.10);
+  --nav-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+
+  /* Reading font scale — multiplies post and reply text sizes. Set on <html>
+     by the font-size setting; 1 = 中 (default). */
+  --font-scale: 1;
+}
+
+html.dark {
+  --color-x-dark: #000000;
+  --color-x-darker: #16181c;
+  --color-x-fg: #e7e9ea;
+  --color-x-border: #2f3336;
+  --color-x-hover: #080808;
+  --color-x-search: #202327;
+
+  --nav-bg: rgba(22, 24, 28, 0.72);
+  --nav-border: rgba(255, 255, 255, 0.10);
+  --nav-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+
+html.light {
+  --color-x-dark: #ffffff;
+  --color-x-darker: #f7f9f9;
+  --color-x-fg: #0f1419;
+  --color-x-border: #eff3f4;
+  --color-x-hover: #f7f9f9;
+  --color-x-search: #eff3f4;
+
+  --nav-bg: rgba(255, 255, 255, 0.78);
+  --nav-border: rgba(0, 0, 0, 0.08);
+  --nav-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ── 禅意主题 ────────────────────────────────────────────────────────────────
+ * 米白背景 + 苔绿强调色。x-blue / x-gray 在此覆写，Tailwind 的 text-x-blue 等自动跟随。
+ */
+html.zen {
+  --color-x-dark: #f5f0e8;         /* 米白主背景 */
+  --color-x-darker: #ede8de;       /* 略深一度，卡片/次级背景 */
+  --color-x-fg: #2d2a24;           /* 暖深棕前景 */
+  --color-x-border: #d4cdbf;       /* 土色边框 */
+  --color-x-hover: #e6e0d4;        /* 按下状态 */
+  --color-x-search: #e4ddd2;       /* 占位/输入底色 */
+  --color-x-blue: 90 138 114;      /* 苔绿 #5a8a72 */
+  --color-x-blue-hover: 74 122 98; /* 深苔绿 #4a7a62 */
+  --color-x-gray: 138 128 112;     /* 暖灰 #8a8070 */
+
+  --nav-bg: rgba(245, 240, 232, 0.80);
+  --nav-border: rgba(45, 42, 36, 0.10);
+  --nav-shadow: 0 6px 24px rgba(90, 76, 50, 0.16);
+}
+
+/* Single-series chart marks. The zen accent (#5a8a72) reads grey as a bar, so
+ * charts use a more saturated step of the same green (validated vs #f5f0e8). */
+:root, html.dark, html.light { --chart-bar: #1d9bf0; }
+html.zen { --chart-bar: #2f8a5c; }
+
+/* Background must live on the <html> root, not just <body>: iOS paints the
+ * opaque status-bar strip (and any safe-area gutter) from the root box. */
+html.dark { color-scheme: dark; background-color: #000000; }
+html.light { color-scheme: light; background-color: #ffffff; }
+html.zen { color-scheme: light; background-color: #f5f0e8; }
+html.dark body { background-color: #000000; color: var(--color-x-fg); }
+html.light body { background-color: #ffffff; color: var(--color-x-fg); }
+html.zen body { background-color: #f5f0e8; color: var(--color-x-fg); }
+
+/* The date field in 设置 renders in light mode on the zen theme. */
+html.zen input[type="date"] { color-scheme: light !important; }
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── iOS PWA full-screen fix ─────────────────────────────────────────────── */
+html {
+  height: 100%;
+  overflow: hidden; /* html/body never scroll — kills the iOS rubber-band bounce for good */
+  overflow-x: clip;
+  /*
+   * touch-action: pan-y — the only reliable way to block horizontal swipe on iOS.
+   * iOS Safari does NOT support overscroll-behavior at all (MDN: unsupported).
+   * pan-y allows vertical scroll but discards horizontal touch gestures entirely.
+   * Elements that legitimately need horizontal scroll must override with touch-auto.
+   */
+  touch-action: pan-y;
+}
+
+body, #root {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  /* Push page content below status bar */
+  padding-top: env(safe-area-inset-top);
+  touch-action: pan-y; /* inherited by all children unless overridden */
+  overscroll-behavior-x: none; /* works on Chrome/Android, no-op on iOS but harmless */
+}
+
+/*
+ * Scroll containers — each screen scrolls inside its own [data-scroll-root].
+ * html/body never scroll, so there is nothing left for iOS to rubber-band;
+ * the touch guard in src/app/touchGuard.ts stops bounces at their edges.
+ */
+[data-scroll-root] {
+  overflow-y: auto;
+  /* Without this, overflow-y: auto forces overflow-x's computed value from
+     visible to auto too (CSS overflow spec), so any child that overflows
+     horizontally makes the whole page swipeable sideways. */
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: none;
+}
+
+/* Fonts: the system font by default (PingFang SC on Apple devices, nothing to
+ * download, no reflow when it arrives). 思源黑体 and 宋体 are options in 设置. */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+html.font-noto body {
+  font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+}
+html.font-song body {
+  font-family: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+html.light ::-webkit-scrollbar-thumb { background: #ccc; }
+html.zen ::-webkit-scrollbar-thumb { background: #c4bdb0; }
+
+/*
+ * iOS Safari auto-zooms when focused input font-size < 16px.
+ * "max(1rem, 16px)" respects user font preferences while setting a floor.
+ */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+select {
+  font-size: max(1rem, 16px);
+}
+
+/* Sticky headers: the page shows through, softened. */
+.frosted {
+  background: color-mix(in srgb, var(--color-x-dark) 86%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+
+@layer utilities {
+  .skeleton-pulse {
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0% { opacity: 0.45; }
+    50% { opacity: 0.9; }
+    100% { opacity: 0.45; }
+  }
+
+  .toast-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+
+  @keyframes slideIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  /* A goal being ticked off. */
+  .check-pop {
+    animation: checkPop 0.28s cubic-bezier(0.3, 1.6, 0.5, 1);
+  }
+
+  @keyframes checkPop {
+    0% { transform: scale(0.7); }
+    100% { transform: scale(1); }
+  }
+}
+
+/* The default focus ring is nearly invisible on the dark theme. Text fields
+ * show their caret instead of a ring. */
+:focus-visible:not(input):not(textarea) {
+  outline: 2px solid rgb(var(--color-x-blue));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Press feedback. Hover styles only apply on devices that can hover
+ * (tailwind future.hoverOnlyWhenSupported), so taps need their own state. */
+.pressable {
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.pressable:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+/* Sheets and overlays: visibility (not just opacity) so a hidden one can
+ * never hold focus and push the page up for a keyboard. */
+.overlay { visibility: hidden; opacity: 0; transition: opacity 0.2s ease, visibility 0s linear 0.2s; }
+.overlay.open { visibility: visible; opacity: 1; transition: opacity 0.2s ease, visibility 0s; }
+.sheet { transform: translateY(100%); transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
+.overlay.open .sheet { transform: translateY(0); }

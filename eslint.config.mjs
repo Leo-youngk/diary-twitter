@@ -1,29 +1,37 @@
 import { defineConfig, globalIgnores } from 'eslint/config';
-import nextVitals from 'eslint-config-next/core-web-vitals';
+import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 export default defineConfig([
-  ...nextVitals,
   globalIgnores([
     'node_modules/**',
-    '.next/**',
-    '.open-next/**',
-    '.open-next.previous-deploy/**',
+    'dist/**',
     '.wrangler/**',
-    'out/**',
-    'build/**',
-    'next-env.d.ts',
-    'env.d.ts',
-    'public/sw.js',
     '.gstack/**',
     '.claude/**',
     '.trae/**',
+    '.next/**',
+    '.open-next/**',
+    '.open-next.previous-deploy/**',
+    '.tmp-cp-test/**',
+    'icon-preview.html',
   ]),
+  ...tseslint.configs.recommended,
   {
-    // These effects intentionally hydrate browser-only state after SSR. The
-    // rule is useful for pure data flows, but would reject this app's storage
-    // and theme hydration boundaries.
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
     rules: {
-      'react-hooks/set-state-in-effect': 'off',
+      ...reactHooks.configs.recommended.rules,
     },
+  },
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // Node CommonJS preload for the build (see scripts/deploy.mjs).
+    files: ['scripts/**/*.cjs'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
 ]);

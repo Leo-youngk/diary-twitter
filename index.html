@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN" class="zen">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>我的日记本</title>
+    <meta name="description" content="推特风格的个人日记，随时记录想法" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- iOS needs this exact name; without it the status-bar style below only
+         half-applies and the viewport ends 47pt short of the screen. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="日记本" />
+    <!-- Opaque: black-translucent leaves an unpaintable band at the bottom. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- Android/desktop only; iOS standalone ignores theme-color. -->
+    <meta name="theme-color" content="#f5f0e8" />
+    <script>
+      // Apply the saved theme, font and text size before the first paint.
+      (function () {
+        try {
+          var html = document.documentElement;
+          var theme = JSON.parse(localStorage.getItem('diary-theme') || '"zen"');
+          if (['dark', 'light', 'zen'].indexOf(theme) < 0) theme = 'zen';
+          html.classList.remove('dark', 'light', 'zen');
+          html.classList.add(theme);
+          var colors = { dark: '#000000', light: '#ffffff', zen: '#f5f0e8' };
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', colors[theme]);
+          var font = localStorage.getItem('diary-font') || 'system';
+          if (font === 'noto') html.classList.add('font-noto');
+          if (font === 'song') html.classList.add('font-song');
+          var scales = { small: 0.9, medium: 1, large: 1.15, xlarge: 1.3 };
+          var size = JSON.parse(localStorage.getItem('diary-font-size') || '"medium"');
+          html.style.setProperty('--font-scale', String(scales[size] || 1));
+        } catch (e) {}
+      })();
+      // iOS ignores user-scalable=no; block pinch zoom through gesture events.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+      document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
+      document.addEventListener('gestureend', function (e) { e.preventDefault(); });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

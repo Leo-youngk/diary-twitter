@@ -1,21 +1,56 @@
 name = "diary-app"
 # Pinned so a token for another account fails instead of deploying there.
 account_id = "8f92f605a9c8c7e4872d8869c72e1a59"
-main = ".open-next/worker.js"
-# Next.js App Router requires the modern Workers AsyncLocalStorage runtime.
+main = "./worker/index.ts"
 compatibility_date = "2026-08-04"
-compatibility_flags = ["nodejs_compat", "nodejs_als"]
 
 [assets]
-directory = ".open-next/assets"
-binding = "ASSETS"
+# The client is a single-page app; unknown paths fall back to index.html.
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+# One Durable Object per sync code: it holds the synced store, relays changes
+# between devices, and delivers to X / Obsidian from its alarm.
+[[durable_objects.bindings]]
+name = "SPACES"
+class_name = "DiarySpace"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DiarySpace"]
+
+# DATA_KV: images and daily backups written by this version.
+# LEGACY_KV: read-only source of the pre-rebuild snapshots and X markers.
+[[kv_namespaces]]
+binding = "DATA_KV"
+id = "11eb7cdef6914b4f8af8f2a21b251ded"
 
 [[kv_namespaces]]
-binding = "DIARY_KV"
+binding = "LEGACY_KV"
 id = "11eb7cdef6914b4f8af8f2a21b251ded"
 
 [vars]
-# 只放公开的目标接口地址；签名密钥用 wrangler secret put OBSIDIAN_SYNC_SECRET 注入。
+# 只放公开的目标接口地址与频道；OBSIDIAN_SYNC_SECRET、BUFFER_API_KEY 用 wrangler secret 注入。
 OBSIDIAN_SYNC_URL = "https://obsidian-ios-pwa.if5v.workers.dev/api/integrations/twitter"
-# Buffer 里已连接的 X 频道 ID（公开信息）；API key 用 wrangler secret 注入 BUFFER_API_KEY。
 BUFFER_CHANNEL_ID = "6abb7219ea19ca0bde20241e"
+
+# Staging: its own worker, Durable Objects and data namespace; it may read the
+# legacy snapshots but has no X / Obsidian credentials, so it never posts.
+[env.staging]
+name = "diary-app-next"
+
+[[env.staging.durable_objects.bindings]]
+name = "SPACES"
+class_name = "DiarySpace"
+
+[[env.staging.migrations]]
+tag = "v1"
+new_sqlite_classes = ["DiarySpace"]
+
+[[env.staging.kv_namespaces]]
+binding = "DATA_KV"
+id = "f881a8fbe48f4fc4b7dcb54bbf6f956b" # DIARY_NEXT_DATA
+
+[[env.staging.kv_namespaces]]
+binding = "LEGACY_KV"
+id = "11eb7cdef6914b4f8af8f2a21b251ded"
