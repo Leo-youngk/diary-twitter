@@ -159,7 +159,6 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
                   <div className="my-1 w-0.5 flex-1 rounded-full bg-x-border" />
                 </div>
                 <div className="min-w-0 flex-1 pb-4">
-                  <p className="text-[15px] font-semibold">{profile.displayName}</p>
                   <p className="line-clamp-4 whitespace-pre-wrap break-words text-[15px] leading-[1.6] text-x-gray">{replyingTo.content}</p>
                 </div>
               </div>
@@ -168,7 +167,6 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
             <div className="flex gap-3 pt-1">
               <Avatar src={profile.avatar} name={profile.displayName} size={32} />
               <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-semibold leading-5">{profile.displayName}</p>
                 {initial.title && (
                   <input
                     value={title}
@@ -187,7 +185,7 @@ const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
                   }}
                   minRows={3}
                   placeholder={mode === 'reply' ? '接着写…' : '有什么新鲜事？'}
-                  className="w-full resize-none bg-transparent pt-0.5 text-[calc(17px*var(--font-scale))] leading-[1.65] outline-none placeholder:text-x-gray"
+                  className="w-full resize-none bg-transparent pt-1 text-[calc(17px*var(--font-scale))] leading-[1.65] outline-none placeholder:text-x-gray"
                 />
 
                 {images.length > 0 && (

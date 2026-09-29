@@ -174,7 +174,7 @@ function CarryOver({ today, progress }: { today: string; progress: ReadonlyMap<s
 }
 
 /** Today's list, the one place goals are written. */
-function TodayCard({ today, progress, first }: { today: string; progress: ReadonlyMap<string, DayProgress>; first: boolean }) {
+function TodayCard({ today, progress }: { today: string; progress: ReadonlyMap<string, DayProgress> }) {
   const ids = useGoalIds(today);
   const entry = progress.get(today);
   return (
@@ -196,7 +196,6 @@ function TodayCard({ today, progress, first }: { today: string; progress: Readon
       </ul>
       <AddGoal key={today} day={today} placeholder={ids.length === 0 ? '写下今天想完成的事' : '添加目标'} />
       {ids.length === 0 && <CarryOver today={today} progress={progress} />}
-      {first && <p className="pb-1 pt-1 text-[13px] leading-relaxed text-x-gray">做完一件，就点左边的圆圈打卡。每天的完成情况会记在下面。</p>}
     </section>
   );
 }
@@ -245,13 +244,6 @@ function Heatmap({ today, progress, onPick }: { today: string; progress: Readonl
             />
           );
         })}
-      </div>
-      <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-x-gray">
-        <span className="mr-1">没写</span>
-        {['bg-x-search', 'bg-x-gray/30', 'bg-x-blue/30', 'bg-x-blue/60', 'bg-x-blue'].map((c) => (
-          <span key={c} className={cn('h-2.5 w-2.5 rounded-[2px]', c)} />
-        ))}
-        <span className="ml-1">全部完成</span>
       </div>
     </section>
   );
@@ -313,7 +305,7 @@ export default function GoalsPane() {
   return (
     <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28">
       <div className="px-4 pt-3">
-        <TodayCard today={today} progress={progress} first={progress.size === 0} />
+        <TodayCard today={today} progress={progress} />
       </div>
       <Heatmap today={today} progress={progress} onPick={pick} />
       <div className="mt-5">
