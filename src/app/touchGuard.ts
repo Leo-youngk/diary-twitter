@@ -10,6 +10,8 @@
  *    buttons remain tappable.
  */
 
+import { probeSpan } from './perfProbe';
+
 const EDGE_GUARD_PX = 12;
 
 function findScroller(el: Element | null, axis: 'x' | 'y'): HTMLElement | null {
@@ -31,6 +33,7 @@ export function installTouchGuard(): void {
   let lastY = 0;
 
   document.addEventListener('touchstart', (event) => {
+    const timed = probeSpan('触摸处理', 4); // TEMPORARY
     const touch = event.touches[0];
     lastY = touch?.clientY ?? 0;
     const target = event.target as Element;
@@ -38,6 +41,7 @@ export function installTouchGuard(): void {
     const x = touch?.clientX ?? 0;
     const nearEdge = x < EDGE_GUARD_PX || x > window.innerWidth - EDGE_GUARD_PX;
     if (nearEdge && !findScroller(target, 'x')) event.preventDefault();
+    timed('touchstart');
   }, { passive: false });
 
   document.addEventListener('touchmove', (event) => {
@@ -45,10 +49,12 @@ export function installTouchGuard(): void {
       event.preventDefault();
       return;
     }
+    const timed = probeSpan('触摸处理', 4); // TEMPORARY
     const y = event.touches[0]?.clientY ?? lastY;
     const atTop = scroller.scrollTop <= 0;
     const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
     if ((atTop && y > lastY) || (atBottom && y < lastY)) event.preventDefault();
     lastY = y;
+    timed('touchmove');
   }, { passive: false });
 }

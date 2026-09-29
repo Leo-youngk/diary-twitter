@@ -1,10 +1,20 @@
+import { execSync } from 'node:child_process';
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { cloudflare } from '@cloudflare/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 
+function buildId(): string {
+  let commit = 'dev';
+  try { commit = execSync('git rev-parse --short HEAD').toString().trim(); } catch { /* not a git checkout */ }
+  const time = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `${commit} · ${time}`;
+}
+
 export default defineConfig({
+  // Shown in 设置, so it is always clear which version a device is running.
+  define: { __BUILD_ID__: JSON.stringify(buildId()) },
   plugins: [
     react(),
     // Runs worker/index.ts (and its Durable Object) inside workerd in dev, and
