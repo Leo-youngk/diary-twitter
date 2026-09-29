@@ -5,7 +5,7 @@ import type { XSyncStatus } from './bufferIntegration';
 
 export type { XSyncFailure, XSyncStatus } from './bufferIntegration';
 
-const TOGGLE_KEY = 'diary-compose-x-sync';
+const TOGGLE_KEY = 'diary-x-sync';
 // Buffer answers within a second or two, X a little later.
 const WATCH_DELAYS_MS = [3_000, 6_000, 12_000, 24_000];
 
@@ -83,9 +83,9 @@ export async function watchXSync(
   notify('同步到 X 仍在进行，稍后可在设置页查看结果', 'info');
 }
 
-// The toggle remembers the last choice, per device.
+// Whether new 随想 go to X. On unless switched off in settings; per device.
 export function readXSyncPreference(): boolean {
-  try { return localStorage.getItem(TOGGLE_KEY) === '1'; } catch { return false; }
+  try { return localStorage.getItem(TOGGLE_KEY) !== '0'; } catch { return true; }
 }
 
 export function writeXSyncPreference(on: boolean) {

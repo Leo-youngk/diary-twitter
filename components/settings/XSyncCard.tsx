@@ -1,12 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { actOnXSync, fetchXSyncStatus, type XSyncStatus } from '@/lib/xSync';
+import {
+  actOnXSync, fetchXSyncStatus, readXSyncPreference, writeXSyncPreference, type XSyncStatus,
+} from '@/lib/xSync';
 
 export default function XSyncCard({ syncId }: { syncId: string }) {
   const [status, setStatus] = useState<XSyncStatus | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [enabled, setEnabled] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!syncId) return;
@@ -15,6 +18,13 @@ export default function XSyncCard({ syncId }: { syncId: string }) {
   }, [syncId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { setEnabled(readXSyncPreference()); }, []);
+
+  const toggle = () => {
+    const next = !enabled;
+    setEnabled(next);
+    writeXSyncPreference(next);
+  };
 
   const act = async (action: 'retry' | 'dismiss', postId?: string) => {
     setBusy(true);
@@ -54,9 +64,27 @@ export default function XSyncCard({ syncId }: { syncId: string }) {
           </button>
         </div>
       </div>
-      <p className="text-xs text-x-gray mt-2">
-        发随想时打开「同步到 X」即可。只同步新发的文字，之后的编辑和删除不会改动 X 上的帖子。
-      </p>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-bold">发随想时同步到 X</p>
+          <p className="text-xs text-x-gray mt-0.5">
+            只同步新发的文字，之后的编辑和删除不会改动 X 上的帖子。超过 140 个汉字的只保存在本地。
+          </p>
+        </div>
+        <button
+          role="switch"
+          aria-checked={enabled}
+          aria-label="发随想时同步到 X"
+          onClick={toggle}
+          className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${enabled ? 'bg-x-blue' : 'bg-x-border'}`}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+              enabled ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
 
       {status?.failed.map((item) => (
         <div key={item.postId} className="mt-3 rounded-lg bg-x-darker p-3">
