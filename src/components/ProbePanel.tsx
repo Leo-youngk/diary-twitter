@@ -3,7 +3,7 @@ import { chromeExperiment, probeReport, setChromeExperiment, type ChromeExperime
 import { cn } from '@/lib/utils';
 
 const EXPERIMENTS: Array<[ChromeExperiment, string]> = [
-  ['follow', '跟手收起'],
+  ['follow', '滑动收起（新）'],
   ['static', '不收起'],
   ['plain', '不收起·无毛玻璃'],
 ];
@@ -22,7 +22,7 @@ export default function ProbePanel() {
       <h2 className="px-1 pb-1.5 text-[13px] text-x-gray">性能诊断（排查完会删掉）</h2>
       <div className="rounded-2xl bg-x-darker p-4 text-[13px] leading-relaxed">
         <p>版本 {__BUILD_ID__}</p>
-        <p className="mt-2">首页滚动对照：各试一次快速上下滑，告诉我哪种还会停顿</p>
+        <p className="mt-2">首页滚动对照：先用「滑动收起（新）」快速上下滑，还停顿再和另外两档比</p>
         <div className="mb-2 mt-1.5 flex gap-1.5">
           {EXPERIMENTS.map(([mode, label]) => (
             <button

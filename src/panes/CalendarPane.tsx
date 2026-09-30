@@ -4,6 +4,7 @@ import { useScrollChrome } from '@/app/scrollChrome';
 import { useNav } from '@/app/nav';
 import Icon from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
+import PaneLayout from '@/components/PaneLayout';
 import PostRow from '@/components/PostRow';
 import { useGoalProgress, usePosts, useProfile, useToday } from '@/data/hooks';
 import { isComplete } from '@/lib/goals';
@@ -46,32 +47,38 @@ export default function CalendarPane() {
   const shift = (delta: number) => { setMonth(new Date(year, m + delta, 1)); setSelected(null); };
 
   return (
-    <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28">
-      <PaneHeader
-        title="日历"
-        ref={headerRef}
-        right={(
-          <button type="button" onClick={() => { setMonth(new Date()); setSelected(today); setView('month'); }} className="text-[15px] text-x-blue">
-            今天
-          </button>
-        )}
-      >
-        <div className="flex" role="tablist">
-          {(['month', 'life'] as const).map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={view === key}
-              onClick={() => setView(key)}
-              className={cn('relative flex-1 pb-2.5 pt-1 text-[15px]', view === key ? 'font-semibold' : 'text-x-gray')}
-            >
-              {key === 'month' ? '月历' : '人生周历'}
-              {view === key && <span className="absolute bottom-0 left-1/2 h-[3px] w-10 -translate-x-1/2 rounded-full bg-x-blue" />}
-            </button>
-          ))}
-        </div>
-      </PaneHeader>
+    <PaneLayout
+      scrollRef={scrollRef}
+      headerRef={headerRef}
+      className="pb-28"
+      header={(
+          <PaneHeader
+            title="日历"
+            ref={headerRef}
+            right={(
+              <button type="button" onClick={() => { setMonth(new Date()); setSelected(today); setView('month'); }} className="text-[15px] text-x-blue">
+                今天
+              </button>
+            )}
+          >
+            <div className="flex" role="tablist">
+              {(['month', 'life'] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === key}
+                  onClick={() => setView(key)}
+                  className={cn('relative flex-1 pb-2.5 pt-1 text-[15px]', view === key ? 'font-semibold' : 'text-x-gray')}
+                >
+                  {key === 'month' ? '月历' : '人生周历'}
+                  {view === key && <span className="absolute bottom-0 left-1/2 h-[3px] w-10 -translate-x-1/2 rounded-full bg-x-blue" />}
+                </button>
+              ))}
+            </div>
+          </PaneHeader>
+      )}
+    >
 
       {view === 'life' ? (
         profile.birthDate ? (
@@ -137,6 +144,6 @@ export default function CalendarPane() {
           )}
         </>
       )}
-    </div>
+    </PaneLayout>
   );
 }

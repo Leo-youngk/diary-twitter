@@ -7,6 +7,7 @@ import Avatar from '@/components/Avatar';
 import FeedSkeleton from '@/components/FeedSkeleton';
 import Icon, { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
+import PaneLayout from '@/components/PaneLayout';
 import Timeline from '@/components/Timeline';
 import { useAwaitingFirstSync, useConnectionState } from '@/data/connection';
 import { usePostIds, useProfile } from '@/data/hooks';
@@ -60,14 +61,20 @@ export default function HomePane() {
   }
 
   return (
-    <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28 md:pb-8">
-      <PaneHeader
-        title={<><XLogo size={24} className="md:hidden" /><span className="hidden md:block">全部随想</span></>}
-        left={<ProfileButton />}
-        right={<OfflineBadge />}
-        ref={headerRef}
-      />
+    <PaneLayout
+      scrollRef={scrollRef}
+      headerRef={headerRef}
+      className="pb-28 md:pb-8"
+      header={(
+        <PaneHeader
+          title={<><XLogo size={24} className="md:hidden" /><span className="hidden md:block">全部随想</span></>}
+          left={<ProfileButton />}
+          right={<OfflineBadge />}
+          ref={headerRef}
+        />
+      )}
+    >
       <Timeline ids={ids} scrollRef={scrollRef} empty={empty} />
-    </div>
+    </PaneLayout>
   );
 }

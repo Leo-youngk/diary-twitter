@@ -4,6 +4,7 @@ import { useScrollChrome } from '@/app/scrollChrome';
 import { useNav } from '@/app/nav';
 import { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
+import PaneLayout from '@/components/PaneLayout';
 import { useGoalProgress, usePosts, useToday, useXPosts } from '@/data/hooks';
 import { store, ui } from '@/data/store';
 import { goalTotals, perfectStreak } from '@/lib/goals';
@@ -191,21 +192,27 @@ export default function StatsPane() {
   const goalRate = goals.range.total > 0 ? `${Math.round((goals.range.done / goals.range.total) * 100)}%` : '—';
 
   return (
-    <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28">
-      <PaneHeader title="统计" ref={headerRef}>
-        <div className="flex gap-2 px-4 pb-2.5">
-          {PERIODS.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setPeriod(value)}
-              className={cn('pressable rounded-full px-3.5 py-1 text-[14px]', period === value ? 'bg-x-fg font-semibold text-x-dark' : 'bg-x-darker text-x-gray')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </PaneHeader>
+    <PaneLayout
+      scrollRef={scrollRef}
+      headerRef={headerRef}
+      className="pb-28"
+      header={(
+          <PaneHeader title="统计" ref={headerRef}>
+            <div className="flex gap-2 px-4 pb-2.5">
+              {PERIODS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setPeriod(value)}
+                  className={cn('pressable rounded-full px-3.5 py-1 text-[14px]', period === value ? 'bg-x-fg font-semibold text-x-dark' : 'bg-x-darker text-x-gray')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </PaneHeader>
+      )}
+    >
 
       <Section title="发帖">
         <div className="mt-3 grid grid-cols-2 gap-2.5">
@@ -276,6 +283,6 @@ export default function StatsPane() {
           </div>
         )}
       </Section>
-    </div>
+    </PaneLayout>
   );
 }
