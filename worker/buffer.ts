@@ -12,7 +12,7 @@ export type CreateResult =
   | { kind: 'ok'; bufferPostId: string; status: BufferPostStatus; link?: string }
   // Buffer answered that nothing was posted. `retryable` marks refusals that
   // clear up on their own (rate limit, daily posting limit).
-  | { kind: 'rejected'; message: string; retryable: boolean }
+  | { kind: 'rejected'; message: string; retryable: boolean; retryAfterMs?: number }
   // No usable answer: the post may or may not be on X.
   | { kind: 'unknown'; message: string };
 
@@ -30,12 +30,7 @@ const CREATE_POST = `mutation($input: CreatePostInput!) {
   createPost(input: $input) {
     __typename
     ... on PostActionSuccess { post { id status externalLink } }
-    ... on InvalidInputError { message }
-    ... on NotFoundError { message }
-    ... on UnauthorizedError { message }
-    ... on LimitReachedError { message }
-    ... on UnexpectedError { message }
-    ... on RestProxyError { message }
+    ... on MutationError { message }
   }
 }`;
 
@@ -52,6 +47,27 @@ function isBufferStatus(value: unknown): value is BufferPostStatus {
     || value === 'scheduled' || value === 'sending' || value === 'sent';
 }
 
+function graphQLError(body: unknown): { code: string; message: string } | null {
+  const first = isRecord(body) && Array.isArray(body.errors) ? body.errors.find(isRecord) : undefined;
+  if (!first) return null;
+  return {
+    code: isRecord(first.extensions) && typeof first.extensions.code === 'string' ? first.extensions.code : '',
+    message: typeof first.message === 'string' ? first.message : 'Buffer 查询失败',
+  };
+}
+
+export class BufferApiError extends Error {
+  constructor(message: string, readonly retryAfterMs?: number, readonly terminal = false) { super(message); }
+}
+
+function retryAfter(response: Response): number | undefined {
+  const header = response.headers.get('retry-after');
+  if (!header) return undefined;
+  const seconds = Number(header);
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(header) - Date.now();
+  return Number.isFinite(ms) && ms > 0 ? ms : undefined;
+}
+
 export function bufferConfigured(env: BufferEnv): boolean {
   return Boolean(env.BUFFER_API_KEY && env.BUFFER_CHANNEL_ID);
 }
@@ -64,7 +80,7 @@ async function bufferRequest(
   env: BufferEnv,
   query: string,
   variables: Record<string, unknown>,
-): Promise<{ status: number; body: unknown }> {
+): Promise<{ status: number; body: unknown; retryAfterMs?: number }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -78,7 +94,7 @@ async function bufferRequest(
       signal: controller.signal,
     });
     const body: unknown = await response.json().catch(() => null);
-    return { status: response.status, body };
+    return { status: response.status, body, retryAfterMs: retryAfter(response) };
   } finally {
     clearTimeout(timeout);
   }
@@ -88,8 +104,9 @@ async function bufferRequest(
 export async function createBufferPost(env: BufferEnv, text: string, quoteTweetId?: string): Promise<CreateResult> {
   let status: number;
   let body: unknown;
+  let retryAfterMs: number | undefined;
   try {
-    ({ status, body } = await bufferRequest(env, CREATE_POST, {
+    ({ status, body, retryAfterMs } = await bufferRequest(env, CREATE_POST, {
       input: {
         channelId: env.BUFFER_CHANNEL_ID,
         text,
@@ -106,7 +123,7 @@ export async function createBufferPost(env: BufferEnv, text: string, quoteTweetI
     return { kind: 'unknown', message: `${reason}，可能已经发出；请先到 X 确认，没发出再点重试` };
   }
 
-  if (status === 429) return { kind: 'rejected', message: 'Buffer 请求过于频繁，稍后会自动重试', retryable: true };
+  if (status === 429) return { kind: 'rejected', message: 'Buffer 请求过于频繁，配额恢复后会自动重试', retryable: true, retryAfterMs };
   if (status === 401 || status === 403) {
     return { kind: 'rejected', message: 'Buffer API key 无效或已被撤销，请重新生成并更新 BUFFER_API_KEY', retryable: false };
   }
@@ -114,6 +131,13 @@ export async function createBufferPost(env: BufferEnv, text: string, quoteTweetI
     ? body.data.createPost
     : null;
   if (!payload) {
+    const error = graphQLError(body);
+    if (error?.code === 'RATE_LIMIT_EXCEEDED') {
+      return { kind: 'rejected', message: 'Buffer 请求过于频繁，配额恢复后会自动重试', retryable: true, retryAfterMs };
+    }
+    if (error && ['UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'GRAPHQL_VALIDATION_FAILED', 'BAD_USER_INPUT'].includes(error.code)) {
+      return { kind: 'rejected', message: `Buffer 拒绝了这次发布（${error.code}）：${error.message}`, retryable: false };
+    }
     return { kind: 'unknown', message: `Buffer 返回了无法识别的响应（HTTP ${status}），可能已经发出；请先到 X 确认` };
   }
 
@@ -133,6 +157,7 @@ export async function createBufferPost(env: BufferEnv, text: string, quoteTweetI
   const message = typeof payload.message === 'string' ? payload.message : String(payload.__typename ?? '未知错误');
   switch (payload.__typename) {
     case 'LimitReachedError':
+    case 'PostLimitReachedError':
       return { kind: 'rejected', message: `已达到发帖上限：${message}，稍后会自动重试`, retryable: true };
     case 'InvalidInputError':
     case 'NotFoundError':
@@ -214,7 +239,14 @@ export async function fetchChannelMetrics(env: BufferEnv, organizationId: string
 
 export async function fetchBufferPost(env: BufferEnv, bufferPostId: string): Promise<BufferPostState | null> {
   try {
-    const { body } = await bufferRequest(env, GET_POST, { id: bufferPostId });
+    const { status, body, retryAfterMs } = await bufferRequest(env, GET_POST, { id: bufferPostId });
+    const error = graphQLError(body);
+    if (status === 429 || error?.code === 'RATE_LIMIT_EXCEEDED') {
+      throw new BufferApiError('Buffer 查询限流，配额恢复后继续核对发布状态', retryAfterMs ?? 60_000);
+    }
+    if ([401, 403, 404].includes(status) || (error && ['UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND'].includes(error.code))) {
+      throw new BufferApiError(`无法核对 Buffer 发布状态：${error?.message ?? `HTTP ${status}`}；请到 Buffer / X 确认后处理`, undefined, true);
+    }
     const post = isRecord(body) && isRecord(body.data) && isRecord(body.data.post) ? body.data.post : null;
     if (!post || !isBufferStatus(post.status)) return null;
     return {
@@ -222,7 +254,8 @@ export async function fetchBufferPost(env: BufferEnv, bufferPostId: string): Pro
       link: typeof post.externalLink === 'string' ? post.externalLink : undefined,
       error: isRecord(post.error) && typeof post.error.message === 'string' ? post.error.message : undefined,
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof BufferApiError) throw error;
     return null;
   }
 }

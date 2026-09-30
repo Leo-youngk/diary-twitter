@@ -2,7 +2,7 @@ import type { MergeableStore, Row } from 'tinybase';
 import { X_MAX_WEIGHT, xWeightedLength } from '../src/lib/xText';
 import { ROW_ID_PATTERN, type XState } from '../src/lib/schema';
 import {
-  bufferConfigured, createBufferPost, fetchBufferPost, fetchChannelMetrics, fetchOrganizationId, tweetIdOf, type BufferEnv,
+  BufferApiError, bufferConfigured, createBufferPost, fetchBufferPost, fetchChannelMetrics, fetchOrganizationId, tweetIdOf, type BufferEnv,
 } from './buffer';
 import { getMeta, setMeta } from './sql';
 
@@ -42,6 +42,7 @@ export interface XCandidate {
 const STALE_MS = 72 * 60 * 60 * 1000;
 const SENDING_STALE_MS = 60_000;
 const REFRESH_MS = 60_000;
+const REFRESH_DELAYS_MS = [5000, 15_000, REFRESH_MS, 5 * 60_000, 30 * 60_000, 2 * 3600_000, 6 * 3600_000];
 const PARENT_WAIT_MS = 30_000;
 const MAX_SEND_PER_RUN = 5;
 const MAX_REFRESH_PER_RUN = 10;
@@ -132,7 +133,11 @@ function applyCommands(sql: SqlStorage, store: MergeableStore, ledger: Map<strin
     if (!command) continue;
     const entry = ledger.get(id);
     if (command === 'retry' && entry && (entry.state === 'failed' || entry.state === 'dismissed')) {
-      updateRow(sql, id, { state: 'queued', attempts: 0, next_at: 0, error: '', updated_at: now });
+      updateRow(sql, id, {
+        state: 'queued', attempts: 0, next_at: 0, error: '', updated_at: now,
+        // Only this explicit retry acknowledges that the user undid the plain retweet.
+        ...(entry.error === MSG.plainRetweet ? { buffer_id: '' } : {}),
+      });
     } else if (command === 'dismiss' && entry && (entry.state === 'failed' || entry.state === 'queued')) {
       updateRow(sql, id, { state: 'dismissed', updated_at: now });
     }
@@ -145,8 +150,27 @@ function retryDelay(attempts: number): number | null {
 }
 
 async function refreshPublishing(sql: SqlStorage, env: BufferEnv, row: XRow, parentTweetId: string | undefined, now: number): Promise<void> {
-  const state = await fetchBufferPost(env, row.buffer_id);
-  if (!state) return;
+  const attempts = row.attempts + 1;
+  const delay = REFRESH_DELAYS_MS[Math.min(row.attempts, REFRESH_DELAYS_MS.length - 1)];
+  updateRow(sql, row.id, { attempts, next_at: now + delay });
+  let state;
+  try {
+    state = await fetchBufferPost(env, row.buffer_id);
+  } catch (error) {
+    if (!(error instanceof BufferApiError)) throw error;
+    if (error.terminal) {
+      updateRow(sql, row.id, { state: 'failed', error: error.message, updated_at: now });
+    } else {
+      const next = now + (error.retryAfterMs ?? delay);
+      setMeta(sql, 'buffer_retry_at', String(next));
+      updateRow(sql, row.id, { next_at: next, error: error.message, updated_at: now });
+    }
+    return;
+  }
+  if (!state) {
+    updateRow(sql, row.id, { error: '暂时无法查询 Buffer，稍后继续核对；不会重复发布', updated_at: now });
+    return;
+  }
   if (state.status === 'sent') {
     if (row.kind === 'reply' && parentTweetId && tweetIdOf(state.link) === parentTweetId) {
       updateRow(sql, row.id, { state: 'failed', error: MSG.plainRetweet, link: state.link ?? '', updated_at: now });
@@ -155,6 +179,8 @@ async function refreshPublishing(sql: SqlStorage, env: BufferEnv, row: XRow, par
     }
   } else if (state.status === 'error' || state.status === 'draft' || state.status === 'needs_approval') {
     updateRow(sql, row.id, { state: 'failed', error: `X 没有发布成功：${state.error ?? state.status}`, updated_at: now });
+  } else if (row.error) {
+    updateRow(sql, row.id, { error: '', updated_at: now });
   }
 }
 
@@ -184,7 +210,7 @@ async function deliver(
       updateRow(sql, row.id, { state: 'failed', error: MSG.parentMissing, updated_at: now });
       return;
     }
-    if (parent.state === 'publishing') {
+    if (parent.state === 'publishing' && parent.next_at <= now) {
       await refreshPublishing(sql, env, parent, undefined, now);
       const refreshed = readLedger(sql).find((r) => r.id === parent.id);
       if (refreshed) ledger.set(parent.id, refreshed);
@@ -205,6 +231,37 @@ async function deliver(
     }
   }
 
+  // A retry of a known Buffer post must first resolve its existing outcome.
+  // Only a confirmed draft/error is safe to publish again.
+  if (row.buffer_id) {
+    let existing;
+    try {
+      existing = await fetchBufferPost(env, row.buffer_id);
+    } catch (error) {
+      if (!(error instanceof BufferApiError)) throw error;
+      if (error.terminal) {
+        updateRow(sql, row.id, { state: 'failed', error: error.message, updated_at: now });
+      } else {
+        const next = now + (error.retryAfterMs ?? REFRESH_MS);
+        setMeta(sql, 'buffer_retry_at', String(next));
+        updateRow(sql, row.id, { state: 'publishing', next_at: next, error: error.message, updated_at: now });
+      }
+      return;
+    }
+    if (!existing || existing.status === 'scheduled' || existing.status === 'sending') {
+      updateRow(sql, row.id, { state: 'publishing', next_at: now + REFRESH_DELAYS_MS[0], updated_at: now });
+      return;
+    }
+    if (existing.status === 'sent') {
+      updateRow(sql, row.id, {
+        state: quoteId && tweetIdOf(existing.link) === quoteId ? 'failed' : 'sent',
+        link: existing.link ?? row.link,
+        error: quoteId && tweetIdOf(existing.link) === quoteId ? MSG.plainRetweet : '', updated_at: now,
+      });
+      return;
+    }
+  }
+
   // Committed before the request: if the object dies mid-send, the row stays
   // in `sending` and is failed (never resent) on the next run.
   updateRow(sql, row.id, { state: 'sending', text, updated_at: now });
@@ -220,7 +277,7 @@ async function deliver(
         updateRow(sql, row.id, { state: 'sent', buffer_id: result.bufferPostId, link, error: '', updated_at: done });
       }
     } else if (result.status === 'sending' || result.status === 'scheduled') {
-      updateRow(sql, row.id, { state: 'publishing', buffer_id: result.bufferPostId, link, error: '', updated_at: done });
+      updateRow(sql, row.id, { state: 'publishing', buffer_id: result.bufferPostId, link, error: '', attempts: 0, next_at: done + REFRESH_DELAYS_MS[0], updated_at: done });
     } else {
       updateRow(sql, row.id, {
         state: 'failed', buffer_id: result.bufferPostId,
@@ -232,9 +289,11 @@ async function deliver(
   if (result.kind === 'rejected' && result.retryable) {
     const attempts = row.attempts + 1;
     const delay = retryDelay(attempts);
+    const next = done + Math.max(delay ?? 0, result.retryAfterMs ?? 0);
+    if (result.retryAfterMs) setMeta(sql, 'buffer_retry_at', String(next));
     updateRow(sql, row.id, delay === null
       ? { state: 'failed', attempts, error: result.message, updated_at: done }
-      : { state: 'queued', attempts, next_at: done + delay, error: result.message, updated_at: done });
+      : { state: 'queued', attempts, next_at: next, error: result.message, updated_at: done });
     return;
   }
   console.warn('[x] delivery failed', { id: row.id, kind: result.kind, message: result.message });
@@ -301,22 +360,25 @@ export async function runX(sql: SqlStorage, store: MergeableStore, env: BufferEn
   }
 
   for (const row of readLedger(sql)) {
-    if (row.state === 'sending' && now - row.updated_at > SENDING_STALE_MS) {
+    if (row.state === 'sending' && now - row.updated_at >= SENDING_STALE_MS) {
       updateRow(sql, row.id, { state: 'failed', error: MSG.interrupted, updated_at: now });
     }
   }
 
-  if (configured) {
+  const cooldown = () => Number(getMeta(sql, 'buffer_retry_at') ?? 0);
+  if (configured && cooldown() <= now) {
     ledger = new Map(readLedger(sql).map((row) => [row.id, row]));
     const due = [...ledger.values()].filter((row) => row.state === 'queued' && row.next_at <= now).slice(0, MAX_SEND_PER_RUN);
     for (const row of due) {
+      if (cooldown() > Date.now()) break;
       await deliver(sql, store, env, row, ledger, Date.now());
       const updated = readLedger(sql).find((r) => r.id === row.id);
       if (updated) ledger.set(row.id, updated);
     }
 
-    const publishing = [...ledger.values()].filter((row) => row.state === 'publishing').slice(0, MAX_REFRESH_PER_RUN);
+    const publishing = [...ledger.values()].filter((row) => row.state === 'publishing' && row.next_at <= now).slice(0, MAX_REFRESH_PER_RUN);
     for (const row of publishing) {
+      if (cooldown() > Date.now()) break;
       const parentTweetId = row.kind === 'reply' ? tweetIdOf(ledger.get(row.parent)?.link) : undefined;
       await refreshPublishing(sql, env, row, parentTweetId, Date.now());
     }
@@ -326,10 +388,10 @@ export async function runX(sql: SqlStorage, store: MergeableStore, env: BufferEn
   mirror(store, rows);
 
   if (!configured) return Infinity;
-  let next = await refreshMetrics(sql, store, env, rows, now);
+  let next = cooldown() > now ? cooldown() : await refreshMetrics(sql, store, env, rows, now);
   for (const row of rows) {
-    if (row.state === 'queued') next = Math.min(next, Math.max(row.next_at, now + 1000));
-    if (row.state === 'publishing') next = Math.min(next, now + REFRESH_MS);
+    if (row.state === 'queued' || row.state === 'publishing') next = Math.min(next, Math.max(row.next_at, cooldown(), now + 1000));
+    if (row.state === 'sending') next = Math.min(next, Math.max(now + 1000, row.updated_at + SENDING_STALE_MS));
   }
   return next;
 }

@@ -102,6 +102,14 @@ function XSection() {
         <XLogo size={12} />
         <span>{pending.length > 0 ? `${pending.length} 条正在发` : `已发出 ${sent} 条`}{failed.length > 0 && ` · ${failed.length} 条失败`}</span>
       </Row>
+      {pending.map(([id, row]) => (
+        <div key={id} className="border-t border-x-border px-4 py-3 text-[13px]">
+          <p className="line-clamp-2">{textOf(id, row.kind) || '（已删除）'}</p>
+          <p className="mt-1 text-x-gray">{row.error || (row.state === 'publishing'
+            ? 'Buffer 已接收，正在核对 X 发布状态；不会重复发布'
+            : row.state === 'sending' ? '正在确认发送结果；暂时不要重复发布' : '等待发送到 X')}</p>
+        </div>
+      ))}
       {failed.map(([id, row]) => (
         <div key={id} className="border-b border-x-border px-4 py-3 last:border-b-0">
           <p className="line-clamp-2 text-[15px]">{row.kind === 'reply' ? '追加：' : ''}{textOf(id, row.kind) || '（已删除）'}</p>

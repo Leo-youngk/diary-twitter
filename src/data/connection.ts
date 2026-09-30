@@ -34,11 +34,14 @@ interface Synchronizer {
 interface Connection {
   socket: WebSocket;
   synchronizer: Synchronizer | null;
+  checkTimer?: ReturnType<typeof setTimeout>;
+  checking?: Promise<void>;
 }
 
 const REQUEST_TIMEOUT_SECONDS = 15;
 const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
 const STALE_AFTER_HIDDEN_MS = 20_000;
+const CHECK_EVERY_MS = 30_000;
 
 let status: Status = { state: 'connecting', syncedAt: null };
 const listeners = new Set<() => void>();
@@ -71,9 +74,43 @@ function scheduleRetry(): void {
 
 function drop(target: Connection | null): void {
   if (!target) return;
+  clearTimeout(target.checkTimer);
   if (current === target) current = null;
   void target.synchronizer?.destroy();
   try { target.socket.close(); } catch { /* already closed */ }
+}
+
+function connectionFailed(connection: Connection, error: unknown): void {
+  if (current !== connection) return;
+  const reason = error instanceof Error ? error.message : '同步连接异常';
+  console.warn('[sync] connection failed', reason.replaceAll(getSyncCode(), '[redacted]'));
+  drop(connection);
+  setStatus({ state: 'offline' });
+  scheduleRetry();
+}
+
+function scheduleCheck(connection: Connection): void {
+  clearTimeout(connection.checkTimer);
+  if (current !== connection || document.visibilityState !== 'visible') return;
+  connection.checkTimer = setTimeout(() => { void verifyConnection(connection); }, CHECK_EVERY_MS);
+}
+
+/** An open socket alone cannot prove that the server is still responding. */
+function verifyConnection(connection: Connection): Promise<void> {
+  if (current !== connection || !connection.synchronizer) return Promise.resolve();
+  if (connection.checking) return connection.checking;
+  connection.checking = (async () => {
+    try {
+      await connection.synchronizer!.load();
+      if (current === connection) setStatus({ state: 'online', syncedAt: Date.now() });
+    } catch (error) {
+      connectionFailed(connection, error);
+    } finally {
+      connection.checking = undefined;
+      scheduleCheck(connection);
+    }
+  })();
+  return connection.checking;
 }
 
 async function connect(): Promise<void> {
@@ -95,28 +132,23 @@ async function connect(): Promise<void> {
   });
 
   try {
-    const synchronizer = await createWsSynchronizer(store, socket, REQUEST_TIMEOUT_SECONDS, undefined, undefined, (error) => {
-      console.warn('[sync] ignored error', error);
-    });
+    // TinyBase reports some request failures through this callback while load()
+    // itself resolves. Treat those failures as a broken connection as well.
+    const synchronizer = await createWsSynchronizer(store, socket, REQUEST_TIMEOUT_SECONDS, undefined, undefined,
+      (error) => connectionFailed(connection, error));
     if (current !== connection) { void synchronizer.destroy(); return; }
     connection.synchronizer = synchronizer;
     const syncing = probeSpan('同步', 0);
+    // startSync already performs the initial load and starts automatic saving.
     await synchronizer.startSync();
-    // Pull what the server has, then offer what this device has.
-    await synchronizer.load();
-    await synchronizer.save();
     syncing('连接+对账（含网络等待）');
     if (current !== connection) return;
     failures = 0;
     setStatus({ state: 'online', syncedAt: Date.now() });
+    scheduleCheck(connection);
     firstSync.splice(0).forEach((resolve) => resolve());
   } catch (error) {
-    console.warn('[sync] connection failed', error);
-    if (current === connection) {
-      drop(connection);
-      setStatus({ state: 'offline' });
-      scheduleRetry();
-    }
+    connectionFailed(connection, error);
   }
 }
 
@@ -135,12 +167,15 @@ export function startConnection(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       hiddenAt = Date.now();
+      clearTimeout(current?.checkTimer);
       return;
     }
     const wasAwayLong = hiddenAt !== null && Date.now() - hiddenAt > STALE_AFTER_HIDDEN_MS;
     hiddenAt = null;
     if (wasAwayLong || !current) reconnectNow();
+    else void verifyConnection(current);
   });
+  window.addEventListener('focus', () => { if (current) void verifyConnection(current); else reconnectNow(); });
   void connect();
 }
 

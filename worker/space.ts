@@ -31,7 +31,7 @@ export class DiarySpace extends WsServerDurableObject<Env> {
   createPersister() {
     const store = createMergeableStore();
     this.store = store;
-    store.addDidFinishTransactionListener(() => { void this.requestReconcile(); });
+    store.addDidFinishTransactionListener(() => { this.ctx.waitUntil(this.requestReconcile()); });
     // Fragmented: one row per cell, clear of the 2MB row limit as data grows.
     return createDurableObjectSqlStoragePersister(store, this.ctx.storage.sql, {
       mode: 'fragmented',
@@ -50,9 +50,12 @@ export class DiarySpace extends WsServerDurableObject<Env> {
     const known = getMeta(sql, 'code');
     if (known && known !== code) throw new Error('sync code mismatch');
     if (!known) setMeta(sql, 'code', code);
-    if (getMeta(sql, 'imported')) return;
-    this.importing ??= this.importOnce(code).finally(() => { this.importing = undefined; });
-    await this.importing;
+    if (!getMeta(sql, 'imported')) {
+      this.importing ??= this.importOnce(code).finally(() => { this.importing = undefined; });
+      await this.importing;
+    }
+    // Reconnecting must also recover work whose alarm was lost during an interruption.
+    await this.requestReconcile();
   }
 
   private async importOnce(code: string): Promise<void> {
@@ -69,9 +72,14 @@ export class DiarySpace extends WsServerDurableObject<Env> {
   private async requestReconcile(): Promise<void> {
     if (this.reconcileRequested) return;
     this.reconcileRequested = true;
-    const soon = Date.now() + RECONCILE_DELAY_MS;
-    const current = await this.ctx.storage.getAlarm();
-    if (current === null || current > soon) await this.ctx.storage.setAlarm(soon);
+    try {
+      const soon = Date.now() + RECONCILE_DELAY_MS;
+      const current = await this.ctx.storage.getAlarm();
+      if (current === null || current > soon) await this.ctx.storage.setAlarm(soon);
+    } catch (error) {
+      this.reconcileRequested = false;
+      throw error;
+    }
   }
 
   async alarm(): Promise<void> {
