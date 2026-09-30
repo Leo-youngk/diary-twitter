@@ -11,8 +11,6 @@ vi.mock('./buffer', async (importOriginal) => ({
   bufferConfigured: vi.fn(() => true),
   createBufferPost: vi.fn(),
   fetchBufferPost: vi.fn(),
-  fetchChannelMetrics: vi.fn().mockResolvedValue([]),
-  fetchOrganizationId: vi.fn().mockResolvedValue(null),
   tweetIdOf: (link?: string) => link?.match(/\/status\/(\d+)/)?.[1],
 }));
 

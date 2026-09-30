@@ -6,7 +6,6 @@ import { setPreference, usePreferences, type FontFamily, type FontSize, type Scr
 import { toast } from '@/app/toast';
 import Avatar from '@/components/Avatar';
 import { XLogo } from '@/components/Icon';
-import ProbePanel from '@/components/ProbePanel';
 import ScreenHeader from '@/components/ScreenHeader';
 import { sendXCommand, updateProfile } from '@/data/actions';
 import { downloadBackup, parseBackup, restoreBackup } from '@/data/backup';
@@ -244,7 +243,6 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
 
           <DevicesSection />
 
-          <ProbePanel />
 
           <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={(e) => { void pickImage(e.target.files?.[0], 'avatar'); e.target.value = ''; }} />
           <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={(e) => { void pickImage(e.target.files?.[0], 'banner'); e.target.value = ''; }} />

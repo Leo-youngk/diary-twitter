@@ -5,8 +5,9 @@ import { useNav } from '@/app/nav';
 import { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
 import PaneLayout from '@/components/PaneLayout';
-import { useGoalProgress, usePosts, useToday, useXPosts } from '@/data/hooks';
+import { useGoalProgress, usePosts, useToday, useXAccount, useXPosts, useXTweets } from '@/data/hooks';
 import { store, ui } from '@/data/store';
+import { tweetIdOfLink } from '@/lib/schema';
 import { goalTotals, perfectStreak } from '@/lib/goals';
 import { addDays, cn, daysBetween, parseDateKey, toLocalDateKey } from '@/lib/utils';
 
@@ -97,6 +98,8 @@ export default function StatsPane() {
   const posts = usePosts();
   const replies = ui.useTable('replies', store);
   const xposts = useXPosts();
+  const xTweets = useXTweets();
+  const account = useXAccount();
   const progress = useGoalProgress();
   const today = useToday();
   const { push } = useNav();
@@ -164,31 +167,38 @@ export default function StatsPane() {
   }), [progress, period, from, today]);
 
   const x = useMemo(() => {
-    const sent = Object.entries(xposts).filter(([, row]) => row.state === 'sent' && (period === 0 || toLocalDateKey(row.at) >= from));
-    const sum = (key: 'impressions' | 'likes' | 'replies' | 'reposts') => sent.reduce((n, [, row]) => n + (row[key] ?? 0), 0);
-    const totals = { impressions: sum('impressions'), likes: sum('likes'), replies: sum('replies'), reposts: sum('reposts') };
-    const measuredAt = Math.max(0, ...sent.map(([, row]) => row.metricsAt ?? 0));
-    const textOf = (id: string, kind: string) => String(
-      kind === 'reply' ? store.getCell('replies', id, 'content') ?? '' : store.getCell('posts', id, 'content') ?? '',
-    );
-    const top = [...sent]
-      .sort(([, a], [, b]) => (b.impressions - a.impressions) || (b.likes - a.likes))
+    // Tweets sent from the app open their post here; the rest open on X.
+    const appPost = new Map<string, string>();
+    for (const [id, row] of Object.entries(xposts)) {
+      const tweetId = row.state === 'sent' ? tweetIdOfLink(row.link) : null;
+      if (!tweetId) continue;
+      appPost.set(tweetId, row.kind === 'reply' ? String(store.getCell('replies', id, 'postId') ?? '') : id);
+    }
+    const live = Object.entries(xTweets)
+      .filter(([, t]) => !t.gone && t.createdAt && (period === 0 || toLocalDateKey(t.createdAt) >= from));
+    const measured = live.filter(([, t]) => t.measuredAt > 0);
+    const sum = (key: 'views' | 'likes' | 'replies' | 'reposts' | 'quotes' | 'bookmarks') => measured.reduce((n, [, t]) => n + (t[key] ?? 0), 0);
+    const totals = { views: sum('views'), likes: sum('likes'), replies: sum('replies'), reposts: sum('reposts'), quotes: sum('quotes'), bookmarks: sum('bookmarks') };
+    const top = [...measured]
+      .sort(([, a], [, b]) => (b.views - a.views) || (b.likes - a.likes))
       .slice(0, 5)
-      .map(([id, row]) => ({
-        id,
-        postId: row.kind === 'reply' ? String(store.getCell('replies', id, 'postId') ?? '') : id,
-        text: textOf(id, row.kind),
-        row,
-      }));
-    return { count: sent.length, totals, measuredAt, top };
-  }, [xposts, period, from]);
+      .map(([id, t]) => ({ id, text: t.text, views: t.views, likes: t.likes, postId: appPost.get(id) ?? '' }));
+    return {
+      count: live.length,
+      fromApp: live.filter(([id]) => appPost.has(id)).length,
+      measuredCount: measured.length,
+      totals,
+      measuredAt: Math.max(0, ...measured.map(([, t]) => t.measuredAt)),
+      top,
+    };
+  }, [xTweets, xposts, period, from]);
 
   const todayCount = perDay.get(today) ?? 0;
   const yesterdayCount = perDay.get(addDays(today, -1)) ?? 0;
   const average = writing.total / spanDays;
-  const rate = x.totals.impressions > 0
-    ? `${(((x.totals.likes + x.totals.replies + x.totals.reposts) / x.totals.impressions) * 100).toFixed(1)}%`
-    : '—';
+  const engagements = x.totals.likes + x.totals.replies + x.totals.reposts + x.totals.quotes;
+  const rate = x.totals.views > 0 ? `${((engagements / x.totals.views) * 100).toFixed(1)}%` : '—';
+  const time = (at: number) => new Date(at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const goalRate = goals.range.total > 0 ? `${Math.round((goals.range.done / goals.range.total) * 100)}%` : '—';
 
   return (
@@ -249,34 +259,45 @@ export default function StatsPane() {
 
       <Section title="X 上的表现" icon={<XLogo size={16} />}>
         <p className="mt-1 text-[13px] text-x-gray">
-          {x.count === 0
-            ? '这段时间没有发到 X 的内容。'
-            : x.measuredAt > 0
-              ? `${x.count} 条 · 数据由 Buffer 提供，更新于 ${new Date(x.measuredAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-              : `${x.count} 条 · Buffer 还没有返回数据`}
+          {account?.handle
+            ? <>@{account.handle} · <span className="font-semibold text-x-fg">{account.followers}</span> 粉丝 · 关注 {account.following}</>
+            : '还没有读到 X 账号的数据'}
         </p>
         {x.count > 0 && (
+          <p className="text-[13px] text-x-gray">
+            {x.count} 条推文 · App 发出 {x.fromApp} 条{x.measuredAt > 0 && ` · ${time(x.measuredAt)} 更新`}
+          </p>
+        )}
+        {account?.error && (
+          <p className="mt-1 text-[13px] text-x-danger">最近一次更新失败：{account.error}{x.measuredAt > 0 && '，下面是较早的数据'}</p>
+        )}
+
+        {x.count === 0 ? (
+          <p className="mt-3 text-[13px] text-x-gray">这段时间没有推文。</p>
+        ) : x.measuredCount === 0 ? (
+          <p className="mt-3 text-[13px] text-x-gray">正在读取这些推文的数据…</p>
+        ) : (
           <div className="mt-3 grid grid-cols-2 gap-2.5">
-            <Tile label="曝光" value={compact.format(x.totals.impressions)} />
-            <Tile label="互动率" value={rate} note="点赞、回复、转发 ÷ 曝光" />
-            <Tile label="点赞" value={compact.format(x.totals.likes)} />
-            <Tile label="回复" value={compact.format(x.totals.replies)} note={`转发 ${compact.format(x.totals.reposts)}`} />
+            <Tile label="浏览" value={compact.format(x.totals.views)} note={`平均每条 ${compact.format(Math.round(x.totals.views / x.measuredCount))}`} />
+            <Tile label="互动率" value={rate} note="互动 ÷ 浏览" />
+            <Tile label="点赞" value={compact.format(x.totals.likes)} note={`收藏 ${compact.format(x.totals.bookmarks)}`} />
+            <Tile label="回复" value={compact.format(x.totals.replies)} note={`转发 ${compact.format(x.totals.reposts)} · 引用 ${compact.format(x.totals.quotes)}`} />
           </div>
         )}
 
         {x.top.length > 0 && (
           <div className="mt-4">
-            <h3 className="mb-1 text-[15px] font-semibold">曝光最多</h3>
-            {x.top.map(({ id, postId, text, row }) => (
+            <h3 className="mb-1 text-[15px] font-semibold">浏览最多</h3>
+            {x.top.map(({ id, text, views, likes, postId }) => (
               <button
                 key={id}
                 type="button"
-                onClick={() => postId && push('Post', { postId })}
+                onClick={() => (postId ? push('Post', { postId }) : window.open(`https://x.com/i/status/${id}`, '_blank', 'noopener'))}
                 className="flex w-full items-center gap-3 border-b border-x-border py-2.5 text-left active:bg-x-hover"
               >
-                <p className="min-w-0 flex-1 truncate text-[15px]">{text || '（已删除）'}</p>
+                <p className="min-w-0 flex-1 truncate text-[15px]">{text || '（无文字）'}</p>
                 <span className="shrink-0 text-right text-[13px] tabular-nums text-x-gray">
-                  {compact.format(row.impressions)} 曝光 · {compact.format(row.likes)} 赞
+                  {compact.format(views)} 浏览 · {compact.format(likes)} 赞
                 </span>
               </button>
             ))}

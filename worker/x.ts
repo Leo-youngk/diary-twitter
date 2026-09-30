@@ -2,7 +2,7 @@ import type { MergeableStore, Row } from 'tinybase';
 import { X_MAX_WEIGHT, xWeightedLength } from '../src/lib/xText';
 import { ROW_ID_PATTERN, type XState } from '../src/lib/schema';
 import {
-  BufferApiError, bufferConfigured, createBufferPost, fetchBufferPost, fetchChannelMetrics, fetchOrganizationId, tweetIdOf, type BufferEnv,
+  BufferApiError, bufferConfigured, createBufferPost, fetchBufferPost, tweetIdOf, type BufferEnv,
 } from './buffer';
 import { getMeta, setMeta } from './sql';
 
@@ -47,8 +47,6 @@ const PARENT_WAIT_MS = 30_000;
 const MAX_SEND_PER_RUN = 5;
 const MAX_REFRESH_PER_RUN = 10;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3600_000, 6 * 3600_000, 12 * 3600_000];
-// Buffer's free plan allows about 100 requests a day; four metric refreshes are plenty.
-const METRICS_EVERY_MS = 6 * 3600_000;
 
 const MSG = {
   notConfigured: '当前环境没有配置 Buffer，不会发到 X',
@@ -314,40 +312,6 @@ function mirror(store: MergeableStore, rows: XRow[]): void {
   });
 }
 
-/** Copy Buffer's engagement numbers onto the posts that were sent. */
-async function refreshMetrics(sql: SqlStorage, store: MergeableStore, env: BufferEnv, rows: XRow[], now: number): Promise<number> {
-  const sent = rows.filter((row) => row.state === 'sent' && row.buffer_id);
-  if (sent.length === 0) return Infinity;
-  const last = Number(getMeta(sql, 'x_metrics_at') ?? 0);
-  if (now - last < METRICS_EVERY_MS) return last + METRICS_EVERY_MS;
-
-  let org = getMeta(sql, 'buffer_org');
-  if (!org) {
-    org = await fetchOrganizationId(env);
-    if (!org) return now + 3600_000;
-    setMeta(sql, 'buffer_org', org);
-  }
-  const metrics = await fetchChannelMetrics(env, org);
-  if (!metrics) return now + 3600_000;
-  const byBufferId = new Map(metrics.map((metric) => [metric.bufferPostId, metric]));
-  store.transaction(() => {
-    for (const row of sent) {
-      const metric = byBufferId.get(row.buffer_id);
-      if (!metric) continue;
-      store.setPartialRow('xposts', row.id, {
-        impressions: metric.impressions,
-        likes: metric.likes,
-        replies: metric.replies,
-        reposts: metric.reposts,
-        clicks: metric.clicks,
-        metricsAt: metric.metricsAt,
-      });
-    }
-  });
-  setMeta(sql, 'x_metrics_at', String(now));
-  return now + METRICS_EVERY_MS;
-}
-
 /** One reconcile-and-deliver pass. Returns when it next needs to run. */
 export async function runX(sql: SqlStorage, store: MergeableStore, env: BufferEnv, now: number): Promise<number> {
   const configured = bufferConfigured(env);
@@ -391,7 +355,7 @@ export async function runX(sql: SqlStorage, store: MergeableStore, env: BufferEn
   mirror(store, rows);
 
   if (!configured) return Infinity;
-  let next = cooldown() > now ? cooldown() : await refreshMetrics(sql, store, env, rows, now);
+  let next = cooldown() > now ? cooldown() : Infinity;
   for (const row of rows) {
     if (row.state === 'queued' || row.state === 'publishing') next = Math.min(next, Math.max(row.next_at, cooldown(), now + 1000));
     if (row.state === 'sending') next = Math.min(next, Math.max(now + 1000, row.updated_at + SENDING_STALE_MS));

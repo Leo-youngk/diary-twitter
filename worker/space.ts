@@ -7,6 +7,7 @@ import { loginAttempt, migrateLoginTable, type LoginOutcome } from './login';
 import { runObsidian } from './obsidian';
 import { getMeta, migrateAppTables, setMeta } from './sql';
 import { runX } from './x';
+import { runXStats } from './xstats';
 
 // Changes are batched: one pass runs shortly after the last edit.
 const RECONCILE_DELAY_MS = 2000;
@@ -100,6 +101,7 @@ export class DiarySpace extends WsServerDurableObject<Env> {
     const wakeups: number[] = [];
     const passes: Array<[string, () => Promise<number>]> = [
       ['x', () => runX(sql, store, this.env, now)],
+      ['xstats', () => runXStats(sql, store, this.env, now)],
       ['obsidian', () => runObsidian(sql, store, this.env, code, now)],
       ['backup', () => runBackup(sql, store, this.env.DATA_KV, code, now)],
     ];

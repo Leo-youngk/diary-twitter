@@ -3,7 +3,7 @@ import { useNav } from '@/app/nav';
 import { useDesktopSelection } from '@/app/desktopPanel';
 import { sharePost } from '@/app/postOps';
 import { toggleLike } from '@/data/actions';
-import { usePost, useProfile, useReplyIds, useXPost } from '@/data/hooks';
+import { usePost, useProfile, useReplyIds, useTweetStats, useXPost } from '@/data/hooks';
 import { cn } from '@/lib/utils';
 import Avatar from './Avatar';
 import Icon from './Icon';
@@ -34,6 +34,7 @@ function PostRow({ id }: { id: string }) {
   const profile = useProfile();
   const replyIds = useReplyIds(id);
   const x = useXPost(id);
+  const tweet = useTweetStats(x?.state === 'sent' ? x.link : undefined);
   const { push } = useNav();
   const [menuOpen, setMenuOpen] = useState(false);
   if (!post) return null;
@@ -84,7 +85,7 @@ function PostRow({ id }: { id: string }) {
           </Action>
           <Action label="X 上的点赞" onClick={() => (x?.link ? window.open(x.link, '_blank', 'noopener') : open())}>
             <Icon name="heart" size={18} />
-            {onX && <span>{x.likes}</span>}
+            {onX && tweet && <span>{tweet.likes}</span>}
           </Action>
           <Action label={post.isLiked ? '取消收藏' : '收藏'} active={post.isLiked} onClick={() => toggleLike(id)}>
             <Icon name="bookmark" size={18} filled={post.isLiked} />

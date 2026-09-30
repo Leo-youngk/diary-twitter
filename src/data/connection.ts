@@ -1,6 +1,5 @@
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client/with-schemas';
 import { useSyncExternalStore } from 'react';
-import { probeSpan } from '@/app/perfProbe';
 import { SYNC_PROTOCOL } from '@/lib/schema';
 import { checkSession, deviceName, getToken, onTokenChange, signOut } from './auth';
 import { store } from './store';
@@ -153,10 +152,8 @@ async function connect(): Promise<void> {
       (error) => connectionFailed(connection, error));
     if (current !== connection) { void synchronizer.destroy(); return; }
     connection.synchronizer = synchronizer;
-    const syncing = probeSpan('同步', 0);
     // startSync already performs the initial load and starts automatic saving.
     await synchronizer.startSync();
-    syncing('连接+对账（含网络等待）');
     if (current !== connection) return;
     failures = 0;
     setStatus({ state: 'online', syncedAt: Date.now() });

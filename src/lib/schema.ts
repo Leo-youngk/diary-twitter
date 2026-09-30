@@ -45,14 +45,38 @@ export interface XPostRow {
   error: string;
   at: number;
   command: XCommand;
-  /** Engagement on X as last reported by Buffer; 0 until the first report. */
-  impressions: number;
+}
+
+/**
+ * One tweet on the X account (row id = tweet id), written by the server from
+ * X's public numbers: sent from the app or posted on X directly.
+ */
+export interface XTweetRow {
+  text: string;
+  /** ISO time it was posted. */
+  createdAt: string;
+  views: number;
   likes: number;
   replies: number;
   reposts: number;
-  clicks: number;
-  /** When Buffer last measured these numbers (ms), 0 if never. */
-  metricsAt: number;
+  quotes: number;
+  bookmarks: number;
+  /** When these numbers were read (ms), 0 if not yet. */
+  measuredAt: number;
+  /** Deleted on X (or no longer public); left out of the numbers. */
+  gone: boolean;
+}
+
+/** The X account (row 'me'), written by the server. */
+export interface XAccountRow {
+  handle: string;
+  followers: number;
+  following: number;
+  tweets: number;
+  measuredAt: number;
+  /** Why the last refresh failed ('' when it did not); the numbers are then older. */
+  error: string;
+  errorAt: number;
 }
 
 /** One goal on one day's list (每日目标). */
@@ -103,12 +127,27 @@ export const TABLES_SCHEMA = {
     error: { type: 'string', default: '' },
     at: { type: 'number', default: 0 },
     command: { type: 'string', default: '' },
-    impressions: { type: 'number', default: 0 },
+  },
+  xtweets: {
+    text: { type: 'string', default: '' },
+    createdAt: { type: 'string', default: '' },
+    views: { type: 'number', default: 0 },
     likes: { type: 'number', default: 0 },
     replies: { type: 'number', default: 0 },
     reposts: { type: 'number', default: 0 },
-    clicks: { type: 'number', default: 0 },
-    metricsAt: { type: 'number', default: 0 },
+    quotes: { type: 'number', default: 0 },
+    bookmarks: { type: 'number', default: 0 },
+    measuredAt: { type: 'number', default: 0 },
+    gone: { type: 'boolean', default: false },
+  },
+  xaccount: {
+    handle: { type: 'string', default: '' },
+    followers: { type: 'number', default: 0 },
+    following: { type: 'number', default: 0 },
+    tweets: { type: 'number', default: 0 },
+    measuredAt: { type: 'number', default: 0 },
+    error: { type: 'string', default: '' },
+    errorAt: { type: 'number', default: 0 },
   },
   goals: {
     day: { type: 'string', default: '' },
@@ -140,6 +179,11 @@ export const ROW_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 export const SYNC_PROTOCOL = 'diary-sync';
 export const BLOB_HASH_PATTERN = /^[0-9a-f]{64}$/;
 const BLOB_REF_PATTERN = /^blob:([0-9a-f]{64})$/;
+
+/** The tweet id in an x.com / twitter.com status link. */
+export function tweetIdOfLink(link: string | undefined): string | null {
+  return link ? /\/status\/(\d+)/.exec(link)?.[1] ?? null : null;
+}
 
 export function blobHashOf(ref: string): string | null {
   return BLOB_REF_PATTERN.exec(ref)?.[1] ?? null;

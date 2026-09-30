@@ -1,5 +1,4 @@
 import { startTransition, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { probeSpan } from '@/app/perfProbe';
 import PostRow from './PostRow';
 
 interface TimelineProps {
@@ -36,9 +35,6 @@ export default function Timeline({ ids, scrollRef, empty, renderRow = renderPost
   const sentinelRef = useRef<HTMLDivElement>(null);
   const shown = ids.length > limit ? ids.slice(0, limit) : ids;
   const hasMore = ids.length > shown.length;
-  // TEMPORARY: how long rendering a page of rows takes (perf probe).
-  const appending = useRef<((note?: string) => void) | null>(null);
-  useLayoutEffect(() => { appending.current?.(`到 ${limit} 行`); appending.current = null; }, [limit]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -48,7 +44,6 @@ export default function Timeline({ ids, scrollRef, empty, renderRow = renderPost
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
-        appending.current = probeSpan('追加行', 0); // TEMPORARY
         startTransition(() => setLimit((current) => current + PAGE));
       },
       { root, rootMargin: `0px 0px ${PRELOAD_PX}px 0px` },

@@ -1,6 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import type { DayProgress } from '@/lib/goals';
-import { parseImages, type PostRow, type ProfileValues, type XPostRow } from '@/lib/schema';
+import { parseImages, tweetIdOfLink, type PostRow, type ProfileValues, type XAccountRow, type XPostRow, type XTweetRow } from '@/lib/schema';
 import { toLocalDateKey } from '@/lib/utils';
 import { indexes, store, ui } from './store';
 
@@ -116,6 +116,21 @@ export function useXPost(id: string): XPostRow | null {
 
 export function useXPosts(): Record<string, XPostRow> {
   return ui.useTable('xposts', store) as Record<string, XPostRow>;
+}
+
+/** X's numbers for a sent post or reply (from its link), once they have been read. */
+export function useTweetStats(link: string | undefined): XTweetRow | null {
+  const row = ui.useRow('xtweets', tweetIdOfLink(link) ?? '', store);
+  return row.measuredAt ? (row as XTweetRow) : null;
+}
+
+export function useXTweets(): Record<string, XTweetRow> {
+  return ui.useTable('xtweets', store) as Record<string, XTweetRow>;
+}
+
+export function useXAccount(): XAccountRow | null {
+  const row = ui.useRow('xaccount', 'me', store);
+  return row.handle || row.error ? (row as XAccountRow) : null;
 }
 
 export interface Device {

@@ -15,7 +15,7 @@ import PostTime from '@/components/PostTime';
 import ScreenHeader from '@/components/ScreenHeader';
 import XMark from '@/components/XMark';
 import { addReply, fitsOnX, toggleLike } from '@/data/actions';
-import { usePost, useProfile, useReply, useReplyIds, useXPost, useXSyncEnabled } from '@/data/hooks';
+import { usePost, useProfile, useReply, useReplyIds, useTweetStats, useXPost, useXSyncEnabled } from '@/data/hooks';
 import { cn, formatDateCN } from '@/lib/utils';
 
 function ReplyItem({ id, last }: { id: string; last: boolean }) {
@@ -51,6 +51,7 @@ export default function PostDetail({ params, onBack, embedded = false }: {
   const profile = useProfile();
   const replyIds = useReplyIds(params.postId);
   const x = useXPost(params.postId);
+  const tweet = useTweetStats(x?.state === 'sent' ? x.link : undefined);
   const xEnabled = useXSyncEnabled();
   const { push } = useNav();
   const fallbackBack = useBack();
@@ -145,12 +146,16 @@ export default function PostDetail({ params, onBack, embedded = false }: {
                 <button type="button" onClick={() => push('Settings', {})} className="underline">去处理</button>
               </p>
             )}
-            {x?.state === 'sent' && (
+            {tweet && (
               <p className="mt-2 border-t border-x-border pt-2 text-[14px] text-x-gray">
-                <span className="font-semibold text-x-fg">{x.impressions}</span> 曝光 ·{' '}
-                <span className="font-semibold text-x-fg">{x.likes}</span> 点赞 ·{' '}
-                <span className="font-semibold text-x-fg">{x.replies}</span> 回复 ·{' '}
-                <span className="font-semibold text-x-fg">{x.reposts}</span> 转发
+                {tweet.gone ? '这条在 X 上已删除' : (
+                  <>
+                    <span className="font-semibold text-x-fg">{tweet.views}</span> 浏览 ·{' '}
+                    <span className="font-semibold text-x-fg">{tweet.likes}</span> 点赞 ·{' '}
+                    <span className="font-semibold text-x-fg">{tweet.replies}</span> 回复 ·{' '}
+                    <span className="font-semibold text-x-fg">{tweet.reposts + tweet.quotes}</span> 转发
+                  </>
+                )}
               </p>
             )}
 

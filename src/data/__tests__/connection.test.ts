@@ -10,7 +10,6 @@ vi.mock('@/data/auth', () => ({
   onTokenChange: () => () => {},
   signOut: () => {},
 }));
-vi.mock('@/app/perfProbe', () => ({ probeSpan: () => () => {} }));
 vi.mock('react', () => ({ useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot() }));
 
 let ignoredError: (error: unknown) => void;
