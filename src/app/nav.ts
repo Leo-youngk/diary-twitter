@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { useFlow } from '@stackflow/react';
+import { useActivity, useFlow } from '@stackflow/react';
 import type { InferActivityParams, RegisteredActivityName } from '@stackflow/config';
 import { primeKeyboard } from './keyboard';
+import { isWideDesktop, showDesktopPanel } from './desktopPanel';
 
 /**
  * Navigation that ignores a second tap while a page is still sliding in or
@@ -28,8 +29,19 @@ export interface Nav {
 
 export function useNav(): Nav {
   const flow = useFlow();
+  const activity = useActivity();
   return useMemo<Nav>(() => ({
     push(name, params) {
+      if (activity.name === 'Main' && isWideDesktop()) {
+        if (name === 'Post') {
+          showDesktopPanel({ kind: 'post', params: params as InferActivityParams<'Post'> });
+          return;
+        }
+        if (name === 'Compose') {
+          showDesktopPanel({ kind: 'compose', params: params as InferActivityParams<'Compose'>, focus: Date.now() });
+          return;
+        }
+      }
       if (!acquireNavigation()) return;
       // Writing screens: raise the keyboard now, while this is still the tap.
       if (name === 'Compose') primeKeyboard();
@@ -37,5 +49,5 @@ export function useNav(): Nav {
     },
     replace(name, params, options) { if (acquireNavigation()) flow.replace(name, params, options); },
     pop() { if (acquireNavigation()) flow.pop(); },
-  }), [flow]);
+  }), [flow, activity.name]);
 }

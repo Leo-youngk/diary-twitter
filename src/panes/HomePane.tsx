@@ -14,7 +14,7 @@ import { usePostIds, useProfile } from '@/data/hooks';
 function ProfileButton() {
   const profile = useProfile();
   return (
-    <button type="button" onClick={() => setProfileOpen(true)} className="pressable rounded-full" aria-label="我的">
+    <button type="button" onClick={() => setProfileOpen(true)} className="pressable rounded-full md:hidden" aria-label="我的">
       <Avatar src={profile.avatar} name={profile.displayName} size={32} />
     </button>
   );
@@ -60,9 +60,9 @@ export default function HomePane() {
   }
 
   return (
-    <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28">
+    <div ref={scrollRef} data-scroll-root className="relative h-full overflow-y-auto pb-28 md:pb-8">
       <PaneHeader
-        title={<XLogo size={24} />}
+        title={<><XLogo size={24} className="md:hidden" /><span className="hidden md:block">全部随想</span></>}
         left={<ProfileButton />}
         right={<OfflineBadge />}
         ref={headerRef}

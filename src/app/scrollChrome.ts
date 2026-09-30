@@ -44,19 +44,22 @@ export function useScrollChrome(scrollRef: RefObject<HTMLElement | null>, header
     const scroller = scrollRef.current;
     if (!scroller || !active) return;
     const header = headerRef?.current ?? null;
-    const range = () => header?.offsetHeight || FALLBACK_RANGE_PX;
+    const mobile = window.matchMedia('(max-width: 767px)');
+    let max = header?.offsetHeight || FALLBACK_RANGE_PX;
+    const observer = new ResizeObserver(() => { max = header?.offsetHeight || FALLBACK_RANGE_PX; });
+    if (header) observer.observe(header);
     let hidden = 0; // px of the range currently tucked away
     let last = scroller.scrollTop;
     let frame = 0;
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const draw = (animate: boolean) => { frame = 0; place(header, hidden / range(), animate); };
+    const draw = (animate: boolean) => { frame = 0; place(header, hidden / max, animate); };
 
     const onScroll = () => {
+      if (!mobile.matches) return;
       const top = scroller.scrollTop;
       const delta = top - last;
       last = top;
-      const max = range();
       // Never more tucked away than the distance from the top.
       hidden = Math.max(0, Math.min(max, hidden + delta, top));
       if (!frame) frame = requestAnimationFrame(() => draw(false));
@@ -69,11 +72,16 @@ export function useScrollChrome(scrollRef: RefObject<HTMLElement | null>, header
       }, SETTLE_AFTER_MS);
     };
 
+    const onWidth = () => { hidden = 0; last = scroller.scrollTop; place(header, 0, false); };
+    mobile.addEventListener('change', onWidth);
+
     scroller.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       scroller.removeEventListener('scroll', onScroll);
       cancelAnimationFrame(frame);
       clearTimeout(settleTimer);
+      mobile.removeEventListener('change', onWidth);
+      observer.disconnect();
       // Leaving a tab never leaves the chrome tucked away.
       place(header, 0, true);
     };

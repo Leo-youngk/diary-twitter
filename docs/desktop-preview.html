@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>随想 · 桌面布局预览</title>
+<style>
+:root{color-scheme:light;--bg:#f5f0e8;--surface:#ede8de;--line:#d4cdbf;--ink:#2d2a24;--muted:#8a8070;--accent:#5a8a72}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 "PingFang SC","Microsoft YaHei",sans-serif}button,textarea{font:inherit;color:inherit}button{cursor:pointer;border:0;background:none}button:hover{background:var(--surface)}.notice{height:35px;background:var(--surface);font-size:12px;color:var(--muted);display:flex;align-items:center;justify-content:center;letter-spacing:.04em}.workspace{height:calc(100vh - 35px);max-width:1328px;margin:auto;display:grid;grid-template-columns:208px minmax(460px,1fr) 360px}.rail{padding:24px 18px 20px 0;display:flex;flex-direction:column}.brand{font-size:23px;font-weight:650;padding:0 18px 22px;letter-spacing:.08em}.brand small{font-size:11px;color:var(--muted);letter-spacing:.12em;display:block;font-weight:400}.nav{display:flex;align-items:center;gap:15px;padding:12px 18px;text-align:left;border-radius:12px;margin:2px 0;font-size:17px}.nav.active{background:var(--surface);font-weight:600}.glyph{font-size:21px;width:24px;text-align:center;font-family:Arial,sans-serif}.write{background:var(--accent);color:white;padding:11px;border-radius:12px;margin-top:20px;font-weight:600}.write:hover,.publish:hover{background:#4a7a62}.profile{display:flex;gap:10px;align-items:center;margin-top:auto;padding:12px}.avatar{display:flex;align-items:center;justify-content:center;border-radius:50%;width:38px;height:38px;background:var(--surface);color:var(--muted);flex-shrink:0}.handle,.meta{font-size:12px;color:var(--muted)}.feed{border-left:1px solid var(--line);border-right:1px solid var(--line);overflow:auto}.feed-head{display:flex;align-items:center;justify-content:space-between;padding:24px 28px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg)}h1{font-size:23px;margin:0;letter-spacing:.02em}h2{font-size:18px;margin:0}.eyebrow{font-size:11px;letter-spacing:.12em;color:var(--muted)}.day{padding:14px 28px 9px;font-size:12px;color:var(--muted)}.post{padding:22px 28px;display:flex;gap:12px;border-bottom:1px solid var(--line);cursor:pointer}.post:hover{background:#ede8de66}.body{min-width:0;flex:1}.post-header{display:flex;align-items:center;gap:8px;font-size:14px}.post-header strong{font-weight:600}.post-header span{color:var(--muted);font-size:12px}.more{margin-left:auto;color:var(--muted)}.post p{font-size:16px;line-height:1.85;margin:8px 0 14px;white-space:pre-wrap}.actions{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;max-width:380px}.actions button{padding:3px 0}.side{padding:26px 0 20px 26px;display:flex;flex-direction:column}.side-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.side-head button{color:var(--accent);font-size:13px}.writing{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#f8f4ed}.identity{padding:16px;display:flex;gap:10px;align-items:center}.writing textarea{width:100%;height:196px;resize:vertical;padding:2px 18px 16px;outline:0;border:0;background:transparent;font-size:16px;line-height:1.85}.writing textarea::placeholder{color:var(--muted)}.tools{border-top:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px}.tools button{color:var(--accent)}.switch{width:30px;height:18px;border-radius:20px;background:var(--accent);display:inline-block;vertical-align:middle;margin-left:5px;padding:2px}.switch:after{content:"";display:block;width:14px;height:14px;background:white;border-radius:50%;margin-left:12px}.submit{padding:0 16px 16px;display:flex;align-items:center;justify-content:space-between}.publish{background:var(--accent);color:white;border-radius:9px;font-weight:600;padding:8px 24px}.note{font-size:12px;color:var(--muted);padding:14px 1px;line-height:1.9}.detail{display:none;border-top:1px solid var(--line);padding:18px 0}.detail p{font-size:16px;line-height:1.85}.detail textarea{width:100%;height:90px;padding:12px;border:1px solid var(--line);border-radius:12px;background:transparent;resize:vertical;outline:0}.footer{margin-top:auto;font-size:11px;color:var(--muted);letter-spacing:.07em}.empty-rule{height:1px;background:var(--line);margin:14px 0}.read-mode .writing,.read-mode .note{display:none}.read-mode .detail{display:block}@media(max-width:1200px){.workspace{grid-template-columns:180px minmax(420px,1fr) 330px}.side{padding-right:18px;padding-left:18px}.rail{padding-left:12px}}
+</style>
+<div class="notice">桌面布局预览 · 以下为示例内容</div>
+<div class="workspace">
+  <aside class="rail">
+    <div class="brand">随想<small>记录当下，慢慢回看</small></div>
+    <button class="nav active"><span class="glyph">⌂</span>首页</button>
+    <button class="nav"><span class="glyph">◎</span>目标</button>
+    <button class="nav"><span class="glyph">▦</span>日历</button>
+    <button class="nav"><span class="glyph">▥</span>统计</button>
+    <button class="nav"><span class="glyph">⚙</span>设置</button>
+    <button class="write" id="write">写随想</button>
+    <div class="profile"><span class="avatar">我</span><div>我的日记本<div class="handle">@myjournal</div></div></div>
+  </aside>
+  <main class="feed">
+    <header class="feed-head"><div><div class="eyebrow">我的记录</div><h1>全部随想</h1></div><span class="meta">时间顺序</span></header>
+    <div class="day">今天 · 9 月 30 日</div>
+    <article class="post"><span class="avatar">我</span><div class="body"><div class="post-header"><strong>我的日记本</strong><span>· 12 分钟前</span><button class="more">···</button></div><p>刚刚想到，记录不一定要等到想明白之后。
+先留下此刻的念头，以后回头看，也是一种线索。</p><div class="actions"><button>↳ 追加</button><button>♡</button><button>♧ 收藏</button><button>↗</button></div></div></article>
+    <article class="post"><span class="avatar">我</span><div class="body"><div class="post-header"><strong>我的日记本</strong><span>· 46 分钟前</span><button class="more">···</button></div><p>上午把桌面收拾了一遍。东西少了一点，注意力好像也更容易回来了。</p><div class="actions"><button>↳ 2 条追加</button><button>♡</button><button>♧ 收藏</button><button>↗</button></div></div></article>
+    <article class="post"><span class="avatar">我</span><div class="body"><div class="post-header"><strong>我的日记本</strong><span>· 2 小时前</span><button class="more">···</button></div><p>出去走了一小圈。今天的风很舒服。</p><div class="actions"><button>↳ 追加</button><button>♡</button><button>♧ 收藏</button><button>↗</button></div></div></article>
+    <div class="day">昨天 · 9 月 29 日</div>
+    <article class="post"><span class="avatar">我</span><div class="body"><div class="post-header"><strong>我的日记本</strong><span>· 昨天</span><button class="more">···</button></div><p>做完一件小事，再开始下一件。今天试着只这么想。</p><div class="actions"><button>↳ 追加</button><button>♡</button><button>♧ 收藏</button><button>↗</button></div></div></article>
+  </main>
+  <aside class="side" id="side">
+    <div class="side-head"><h2 id="panel-title">写一条随想</h2><button id="back" hidden>继续写作</button></div>
+    <div class="writing"><div class="identity"><span class="avatar">我</span><div>我的日记本<div class="handle">@myjournal</div></div></div><textarea id="draft" placeholder="此刻有什么想法？"></textarea><div class="tools"><button>＋ 添加图片</button><span>同步到 X <i class="switch"></i></span></div><div class="submit"><span class="meta" id="count">0 / 280</span><button class="publish">发布</button></div></div>
+    <p class="note">一边浏览，一边记录。<br>离开写作区时，草稿会保留。</p>
+    <div class="detail"><div class="post-header"><strong>我的日记本</strong><span>· 刚刚</span></div><p id="detail-content"></p><div class="actions"><button>♧ 收藏</button><button>↗ 分享</button></div><div class="empty-rule"></div><h2>追加想法</h2><p class="meta">接着写，也可以回到右侧继续写新随想。</p><textarea placeholder="接着写…"></textarea></div>
+    <div class="footer">随手写下 · 按时间回看</div>
+  </aside>
+</div>
+<script>
+const side=document.getElementById('side'),title=document.getElementById('panel-title'),back=document.getElementById('back'),draft=document.getElementById('draft');
+const write=()=>{side.classList.remove('read-mode');title.textContent='写一条随想';back.hidden=true;draft.focus()};
+document.getElementById('write').onclick=write;back.onclick=write;
+document.querySelectorAll('.post').forEach(post=>post.onclick=()=>{document.getElementById('detail-content').textContent=post.querySelector('p').textContent;side.classList.add('read-mode');title.textContent='这条随想';back.hidden=false});
+draft.oninput=()=>document.getElementById('count').textContent=draft.value.length+' / 280';
+document.querySelector('.publish').onclick=()=>alert('这是布局预览，不会实际发布。');
+</script>
+</html>

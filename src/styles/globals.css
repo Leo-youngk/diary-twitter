@@ -93,7 +93,7 @@ html {
   overflow-x: clip;
   /*
    * touch-action: pan-y — the only reliable way to block horizontal swipe on iOS.
-   * iOS Safari does NOT support overscroll-behavior at all (MDN: unsupported).
+   * Safari 16+ also supports overscroll-behavior for scroll boundaries.
    * pan-y allows vertical scroll but discards horizontal touch gestures entirely.
    * Elements that legitimately need horizontal scroll must override with touch-auto.
    */
@@ -109,13 +109,14 @@ body {
   /* Push page content below status bar */
   padding-top: env(safe-area-inset-top);
   touch-action: pan-y; /* inherited by all children unless overridden */
-  overscroll-behavior-x: none; /* works on Chrome/Android, no-op on iOS but harmless */
+  overscroll-behavior-x: none;
 }
 
 /*
  * Scroll containers — each screen scrolls inside its own [data-scroll-root].
  * html/body never scroll, so there is nothing left for iOS to rubber-band;
- * the touch guard in src/app/touchGuard.ts stops bounces at their edges.
+ * overscroll-behavior stops boundary chaining; touchGuard only supplies the
+ * boundary fallback for older browsers and protects edge navigation.
  */
 [data-scroll-root] {
   overflow-y: auto;
@@ -181,6 +182,14 @@ select {
   background: color-mix(in srgb, var(--color-x-dark) 86%, transparent);
   -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
+}
+
+@media (min-width: 768px) {
+  .frosted {
+    background: var(--color-x-dark);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 @layer utilities {

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { startTransition, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { probeSpan } from '@/app/perfProbe';
 import PostRow from './PostRow';
 
@@ -10,15 +10,16 @@ interface TimelineProps {
   renderRow?: (id: string) => React.ReactNode;
 }
 
-const PAGE = 40;
+const INITIAL_ROWS = 16;
+const PAGE = 4;
 // Start rendering the next page this far before the end comes into view.
-const PRELOAD_PX = 1500;
+const PRELOAD_PX = 2200;
 
 const renderPost = (id: string) => <PostRow id={id} />;
 
 /**
- * A list of posts (unless told otherwise) that renders in pages: the first 40
- * rows right away, the next 40 whenever the end is getting close.
+ * Render enough rows for the first screen, then small batches ahead of the
+ * viewport. A concurrent update lets input interrupt the rendering work.
  *
  * Scrolling is left entirely to the browser. A virtualised list had to move
  * the scroll position whenever a row above the screen turned out taller or
@@ -26,11 +27,11 @@ const renderPost = (id: string) => <PostRow id={id} />;
  * momentum of a flick — the stutter when scrolling fast right after launch.
  * Appending below the screen never moves anything.
  *
- * New posts arriving from another device are inserted above; the scroll
- * position shifts by exactly their height so what is being read stays put.
+ * Browsers with scroll anchoring keep incoming posts above the reader from
+ * moving the viewport. Older Safari versions receive that compensation here.
  */
 export default function Timeline({ ids, scrollRef, empty, renderRow = renderPost }: TimelineProps) {
-  const [limit, setLimit] = useState(PAGE);
+  const [limit, setLimit] = useState(INITIAL_ROWS);
   const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const shown = ids.length > limit ? ids.slice(0, limit) : ids;
@@ -48,7 +49,7 @@ export default function Timeline({ ids, scrollRef, empty, renderRow = renderPost
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
         appending.current = probeSpan('追加行', 0); // TEMPORARY
-        setLimit((current) => current + PAGE);
+        startTransition(() => setLimit((current) => current + PAGE));
       },
       { root, rootMargin: `0px 0px ${PRELOAD_PX}px 0px` },
     );
@@ -63,11 +64,25 @@ export default function Timeline({ ids, scrollRef, empty, renderRow = renderPost
     const scroller = scrollRef.current;
     const list = listRef.current;
     if (!before || before === ids[0] || !scroller || !list || scroller.scrollTop <= 0) return;
+    // Reading scrollTop already applies native anchoring. Adding the inserted
+    // height again would move the reader twice (Chrome and Safari 27+).
+    if (CSS.supports('overflow-anchor', 'auto')) return;
     const inserted = ids.indexOf(before);
     if (inserted <= 0) return;
-    let height = 0;
-    for (let i = 0; i < inserted && i < list.children.length; i++) height += (list.children[i] as HTMLElement).offsetHeight;
+    const added = Array.from(list.children).slice(0, inserted) as HTMLElement[];
+    const readHeight = () => added.reduce((total, row) => total + row.offsetHeight, 0);
+    let height = readHeight();
     scroller.scrollTop += height;
+    // A newly inserted long paragraph gets its expansion button after layout.
+    // Compensate that height too, only for rows inserted above the reader.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      const next = readHeight();
+      if (scroller.scrollTop > 0 && next !== height) scroller.scrollTop += next - height;
+      height = next;
+    });
+    added.forEach((row) => observer.observe(row));
+    return () => observer.disconnect();
   }, [ids, scrollRef]);
 
   if (ids.length === 0) return <>{empty}</>;

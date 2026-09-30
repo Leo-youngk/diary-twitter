@@ -12,8 +12,9 @@ const KEYBOARD_MIN_PX = 120;
  * The same approach runs on-device in 人生之书's writing page. The element gets
  * data-keyboard="open|closed" for styling (e.g. dropping the home-indicator gap).
  */
-export function useKeyboardViewport(ref: RefObject<HTMLElement | null>): void {
+export function useKeyboardViewport(ref: RefObject<HTMLElement | null>, enabled = true): void {
   useLayoutEffect(() => {
+    if (!enabled) return;
     const viewport = window.visualViewport;
     const sync = () => {
       const host = ref.current;
@@ -32,5 +33,5 @@ export function useKeyboardViewport(ref: RefObject<HTMLElement | null>): void {
       viewport?.removeEventListener('resize', sync);
       viewport?.removeEventListener('scroll', sync);
     };
-  }, [ref]);
+  }, [ref, enabled]);
 }

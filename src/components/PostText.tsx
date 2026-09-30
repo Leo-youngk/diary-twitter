@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { usePreferences } from '@/app/preferences';
+import { observeClampedText } from '@/app/textMeasurement';
 import { cn } from '@/lib/utils';
 
 interface PostTextProps {
@@ -11,9 +12,8 @@ interface PostTextProps {
 }
 
 /**
- * Clamped text that knows whether it was cut. It is measured in a layout
- * effect, before the browser paints, so the "more" line never appears a frame
- * later and pushes everything below it down.
+ * Paragraphs share an observer so measurements are read together after
+ * layout. Width and font changes also update whether more text is hidden.
  */
 export default function PostText({ text, lines, className, moreLabel }: PostTextProps) {
   const ref = useRef<HTMLParagraphElement>(null);
@@ -24,7 +24,7 @@ export default function PostText({ text, lines, className, moreLabel }: PostText
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || expanded) return;
-    setCut(el.scrollHeight - el.clientHeight > 1);
+    return observeClampedText(el, setCut);
   }, [text, lines, expanded, fontSize, font]);
 
   return (

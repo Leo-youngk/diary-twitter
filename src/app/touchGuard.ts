@@ -1,8 +1,8 @@
 /**
  * iOS touch handling that CSS alone cannot do in a standalone web app.
  *
- * 1. Rubber-band: a drag may only move the scroll container it started in,
- *    and not past that container's edges; everything else is swallowed.
+ * 1. Modern browsers use CSS overscroll-behavior for scroll boundaries. Only
+ *    older browsers need the JS fallback that cancels boundary drags.
  * 2. System back gesture: WKWebView keeps its own edge-swipe navigation when
  *    there is history. Touches that start at the very edge are claimed before
  *    the system recogniser sees them; the app's own swipe-back (Stackflow)
@@ -29,22 +29,27 @@ function findScroller(el: Element | null, axis: 'x' | 'y'): HTMLElement | null {
 }
 
 export function installTouchGuard(): void {
+  const nativeBoundaries = CSS.supports('overscroll-behavior-y', 'none');
   let scroller: HTMLElement | null = null;
   let lastY = 0;
 
   document.addEventListener('touchstart', (event) => {
     const timed = probeSpan('触摸处理', 4); // TEMPORARY
     const touch = event.touches[0];
+    if (!touch || event.touches.length !== 1) return;
     lastY = touch?.clientY ?? 0;
     const target = event.target as Element;
-    scroller = findScroller(target, 'y');
+    if (!nativeBoundaries) scroller = findScroller(target, 'y');
     const x = touch?.clientX ?? 0;
     const nearEdge = x < EDGE_GUARD_PX || x > window.innerWidth - EDGE_GUARD_PX;
-    if (nearEdge && !findScroller(target, 'x')) event.preventDefault();
+    if (nearEdge && !target.closest('button, a, input, textarea, select') && !findScroller(target, 'x')) event.preventDefault();
     timed('touchstart');
   }, { passive: false });
 
+  if (nativeBoundaries) return;
+
   document.addEventListener('touchmove', (event) => {
+    if (event.touches.length !== 1) return;
     if (!scroller) {
       event.preventDefault();
       return;

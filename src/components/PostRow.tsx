@@ -1,14 +1,16 @@
 import { memo, useState } from 'react';
 import { useNav } from '@/app/nav';
+import { useDesktopSelection } from '@/app/desktopPanel';
 import { sharePost } from '@/app/postOps';
 import { toggleLike } from '@/data/actions';
-import { useMinute, usePost, useProfile, useReplyIds, useXPost } from '@/data/hooks';
-import { cn, formatCompactTime } from '@/lib/utils';
+import { usePost, useProfile, useReplyIds, useXPost } from '@/data/hooks';
+import { cn } from '@/lib/utils';
 import Avatar from './Avatar';
 import Icon from './Icon';
 import PostImages from './PostImages';
 import PostMenu from './PostMenu';
 import PostText from './PostText';
+import PostTime from './PostTime';
 import ReplyCard from './ReplyCard';
 import XMark from './XMark';
 
@@ -28,12 +30,12 @@ function Action({ label, onClick, active, children }: { label: string; onClick: 
 /** One post in a list. Re-renders only when this post, its replies or its X state change. */
 function PostRow({ id }: { id: string }) {
   const post = usePost(id);
+  const selected = useDesktopSelection(id);
   const profile = useProfile();
   const replyIds = useReplyIds(id);
   const x = useXPost(id);
   const { push } = useNav();
   const [menuOpen, setMenuOpen] = useState(false);
-  useMinute();
   if (!post) return null;
 
   const open = () => {
@@ -46,13 +48,13 @@ function PostRow({ id }: { id: string }) {
   const onX = x?.state === 'sent';
 
   return (
-    <article onClick={open} className="flex cursor-pointer gap-3 border-b border-x-border px-4 pb-2.5 pt-3 active:bg-x-hover">
+    <article data-post-id={id} aria-current={selected ? 'true' : undefined} onClick={open} className={cn('flex cursor-pointer gap-3 border-b border-x-border px-4 pb-2.5 pt-3 active:bg-x-hover md:px-6 md:py-5 md:hover:bg-x-hover', selected && 'xl:bg-x-darker/50')}>
       <Avatar src={profile.avatar} name={profile.displayName} size={36} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-[15px] leading-5">
           <span className="max-w-[55%] shrink-0 truncate font-semibold">{profile.displayName}</span>
           <span className="min-w-0 truncate text-x-gray">@{profile.username}</span>
-          <span className="shrink-0 text-x-gray">· {formatCompactTime(post.createdAt)}</span>
+          <span className="shrink-0 text-x-gray">· <PostTime date={post.createdAt} /></span>
           {post.category && <span className="min-w-0 shrink truncate text-[13px] text-x-gray">· {post.category}</span>}
           <XMark x={x} />
           <button
@@ -70,7 +72,7 @@ function PostRow({ id }: { id: string }) {
           text={post.content}
           lines={longForm ? 4 : 8}
           moreLabel={longForm ? '阅读全文' : undefined}
-          className="mt-0.5 text-[calc(15px*var(--font-scale))] leading-[1.6]"
+          className="mt-0.5 text-[calc(15px*var(--font-scale))] leading-[1.6] md:mt-2 md:text-[calc(16px*var(--font-scale))] md:leading-[1.85]"
         />
         <PostImages images={post.images} />
         {latestReply && <ReplyCard replyId={latestReply} more={replyIds.length - 1} />}

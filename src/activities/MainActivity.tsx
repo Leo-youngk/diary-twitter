@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import type { ActivityComponentType } from '@stackflow/react';
+import { useEffect, useState } from 'react';
+import { useActivity, useFlow, useStack, type ActivityComponentType } from '@stackflow/react';
 import { AppScreen } from '@stackflow/plugin-basic-ui';
 import { useMainTab, type MainTab } from '@/app/mainTab';
+import { registerDesktopMainReturn } from '@/app/desktopPanel';
 import BottomNav from '@/components/BottomNav';
+import DesktopPanel from '@/components/DesktopPanel';
 import ProfilePanel from '@/components/ProfilePanel';
 import { cn } from '@/lib/utils';
 import CalendarPane from '@/panes/CalendarPane';
@@ -24,12 +26,21 @@ const PANES: Array<[MainTab, () => React.ReactElement]> = [
  */
 const MainActivity: ActivityComponentType<'Main'> = () => {
   const tab = useMainTab();
+  const activity = useActivity();
+  const stack = useStack();
+  const flow = useFlow();
+  useEffect(() => registerDesktopMainReturn(() => {
+    const active = stack.activities.filter((item) => item.transitionState === 'enter-active' || item.transitionState === 'enter-done');
+    const index = active.findIndex((item) => item.id === activity.id);
+    if (index >= 0 && active.length > index + 1) flow.pop(active.length - index - 1, { animate: false });
+  }), [activity.id, stack.activities, flow]);
   const [opened, setOpened] = useState<MainTab[]>([tab]);
   if (!opened.includes(tab)) setOpened([...opened, tab]);
 
   return (
     <AppScreen>
-      <div className="relative h-full">
+      <div className="relative flex h-full">
+        <div className="relative h-full min-w-0 flex-1">
         {PANES.filter(([key]) => opened.includes(key)).map(([key, Pane]) => (
           <div
             key={key}
@@ -42,6 +53,8 @@ const MainActivity: ActivityComponentType<'Main'> = () => {
         ))}
         <BottomNav />
         <ProfilePanel />
+        </div>
+        <DesktopPanel />
       </div>
     </AppScreen>
   );
