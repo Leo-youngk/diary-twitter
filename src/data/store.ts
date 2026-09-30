@@ -2,7 +2,6 @@ import { createIndexes, createMergeableStore, type SortKey } from 'tinybase/with
 import { createIndexedDbPersister } from 'tinybase/persisters/persister-indexed-db/with-schemas';
 import * as UiReact from 'tinybase/ui-react/with-schemas';
 import { TABLES_SCHEMA, VALUES_SCHEMA } from '@/lib/schema';
-import { getSyncCode } from './syncCode';
 
 type Schemas = [typeof TABLES_SCHEMA, typeof VALUES_SCHEMA];
 
@@ -24,8 +23,8 @@ export const indexes = createIndexes(store)
 
 export const ui = UiReact as UiReact.WithSchemas<Schemas>;
 
-// One database per sync code, so switching codes never mixes two people's data.
-const persister = createIndexedDbPersister(store, `diary-${getSyncCode()}`, 5);
+// This device's copy of the one data space.
+const persister = createIndexedDbPersister(store, 'diary', 5);
 
 let loaded: Promise<void> | null = null;
 

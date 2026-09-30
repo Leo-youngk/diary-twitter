@@ -11,10 +11,10 @@ import ScreenHeader from '@/components/ScreenHeader';
 import { sendXCommand, updateProfile } from '@/data/actions';
 import { downloadBackup, parseBackup, restoreBackup } from '@/data/backup';
 import { imageSrc, storeImage } from '@/data/blobs';
+import { getDeviceId } from '@/data/auth';
 import { useConnection } from '@/data/connection';
-import { useProfile, useXPosts } from '@/data/hooks';
+import { useDevices, useProfile, useXPosts } from '@/data/hooks';
 import { store } from '@/data/store';
-import { getSyncCode, isValidSyncCode, setSyncCode } from '@/data/syncCode';
 import { AVATAR_OPTS, BANNER_OPTS, compressImage } from '@/lib/image';
 import type { ProfileValues } from '@/lib/schema';
 import { cn } from '@/lib/utils';
@@ -124,6 +124,39 @@ function XSection() {
   );
 }
 
+function seenText(at: number): string {
+  const minutes = Math.round((Date.now() - at) / 60_000);
+  if (minutes < 2) return '刚刚';
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  return new Date(at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+}
+
+/** Every device that has connected, with the version it last ran. */
+function DevicesSection() {
+  const devices = useDevices();
+  const self = getDeviceId();
+  if (devices.length === 0) return null;
+  return (
+    <Section title="设备" footer="新设备第一次打开时输入一次口令，之后自动同步。版本和本机不同的设备，重新打开一次 App 就会更新。">
+      {devices.map((device) => {
+        const mine = device.id === self;
+        const outdated = !mine && device.build !== __BUILD_ID__;
+        return (
+          <div key={device.id} className="flex min-h-[48px] items-center gap-3 border-b border-x-border px-4 py-2 last:border-b-0">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[16px]">{device.name || '未知设备'}{mine && <span className="ml-2 text-[13px] text-x-blue">本机</span>}</p>
+              <p className={cn('truncate text-[12px]', outdated ? 'text-x-danger' : 'text-x-gray')}>{device.build || '未知版本'}{outdated && ' · 与本机版本不同'}</p>
+            </div>
+            <span className="shrink-0 text-[13px] text-x-gray">{mine ? '在线' : seenText(device.seenAt)}</span>
+          </div>
+        );
+      })}
+    </Section>
+  );
+}
+
 const SettingsActivity: ActivityComponentType<'Settings'> = () => {
   const prefs = usePreferences();
   const profile = useProfile();
@@ -132,9 +165,7 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
   const avatarRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
   const backupRef = useRef<HTMLInputElement>(null);
-  const [restoreCode, setRestoreCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const code = getSyncCode();
 
   const pickImage = async (file: File | undefined, field: 'avatar' | 'banner') => {
     if (!file) return;
@@ -162,15 +193,6 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
     } finally {
       setBusy(false);
     }
-  };
-
-  const switchCode = () => {
-    const next = restoreCode.trim();
-    if (!isValidSyncCode(next)) { toast('同步码格式不对', 'error'); return; }
-    if (next === code) { toast('这就是本设备的同步码', 'info'); return; }
-    if (!window.confirm('切换到这个同步码后，本设备会显示那边的数据。现在的同步码请先记下来。继续？')) return;
-    setSyncCode(next);
-    window.location.replace('/');
   };
 
   const syncText = connection.state === 'online'
@@ -210,25 +232,14 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
 
           <XSection />
 
-          <Section title="数据" footer="任何拿到同步码的人都能看到你的数据，不要分享给别人。">
+          <Section title="数据">
             <Row label="同步"><span className={cn(connection.state === 'offline' && 'text-x-danger')}>{syncText}</span></Row>
-            <Row label="本设备同步码" onClick={() => { void navigator.clipboard.writeText(code).then(() => toast('已复制'), () => toast('复制失败', 'error')); }}>
-              <span className="truncate font-mono text-[13px]">{code.slice(0, 8)}…</span>
-              <span className="text-x-blue">复制</span>
-            </Row>
-            <div className="flex items-center gap-2 border-b border-x-border px-4 py-2.5">
-              <input
-                value={restoreCode}
-                onChange={(e) => setRestoreCode(e.target.value)}
-                placeholder="粘贴其他设备的同步码"
-                className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-x-gray"
-              />
-              <button type="button" onClick={switchCode} disabled={!restoreCode.trim()} className="font-semibold text-x-blue disabled:opacity-40">恢复</button>
-            </div>
             <Row label="导出完整备份" onClick={() => { void downloadBackup().then(() => toast('备份已导出'), () => toast('导出失败', 'error')); }} />
             <Row label={busy ? '正在恢复…' : '从备份恢复'} onClick={() => backupRef.current?.click()} />
             <Row label="我的记录" onClick={() => push('Profile', {})} />
           </Section>
+
+          <DevicesSection />
 
           <ProbePanel />
 

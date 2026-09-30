@@ -9,7 +9,7 @@ compatibility_date = "2026-08-04"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*"]
 
-# One Durable Object per sync code: it holds the synced store, relays changes
+# The app's one data space: it holds the synced store, relays changes
 # between devices, and delivers to X / Obsidian from its alarm.
 [[durable_objects.bindings]]
 name = "SPACES"
@@ -19,38 +19,17 @@ class_name = "DiarySpace"
 tag = "v1"
 new_sqlite_classes = ["DiarySpace"]
 
-# DATA_KV: images and daily backups written by this version.
-# LEGACY_KV: read-only source of the pre-rebuild snapshots and X markers.
+# Images and daily backups.
 [[kv_namespaces]]
 binding = "DATA_KV"
 id = "11eb7cdef6914b4f8af8f2a21b251ded"
 
-[[kv_namespaces]]
-binding = "LEGACY_KV"
-id = "11eb7cdef6914b4f8af8f2a21b251ded"
+# Keeps console output (sync, X and Obsidian delivery) for the dashboard.
+[observability]
+enabled = true
 
 [vars]
-# 只放公开的目标接口地址与频道；OBSIDIAN_SYNC_SECRET、BUFFER_API_KEY 用 wrangler secret 注入。
+# 只放公开的目标接口地址与频道。密钥用 `npm run secrets` 从 .env.secrets.local 推送：
+# SPACE_ID、APP_PASSPHRASE、SESSION_SECRET、BUFFER_API_KEY、OBSIDIAN_SYNC_SECRET。
 OBSIDIAN_SYNC_URL = "https://obsidian-ios-pwa.if5v.workers.dev/api/integrations/twitter"
 BUFFER_CHANNEL_ID = "6abb7219ea19ca0bde20241e"
-
-# Staging: its own worker, Durable Objects and data namespace; it may read the
-# legacy snapshots but has no X / Obsidian credentials, so it never posts.
-[env.staging]
-name = "diary-app-next"
-
-[[env.staging.durable_objects.bindings]]
-name = "SPACES"
-class_name = "DiarySpace"
-
-[[env.staging.migrations]]
-tag = "v1"
-new_sqlite_classes = ["DiarySpace"]
-
-[[env.staging.kv_namespaces]]
-binding = "DATA_KV"
-id = "f881a8fbe48f4fc4b7dcb54bbf6f956b" # DIARY_NEXT_DATA
-
-[[env.staging.kv_namespaces]]
-binding = "LEGACY_KV"
-id = "11eb7cdef6914b4f8af8f2a21b251ded"

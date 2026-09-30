@@ -181,15 +181,6 @@ export async function currentVersions(posts: LegacyShapePost[]): Promise<Map<str
   return map;
 }
 
-export function seedLedger(sql: SqlStorage, versions: Map<string, { post: NormalizedPost; version: string }>): void {
-  for (const { post, version } of versions.values()) {
-    sql.exec(
-      'INSERT OR REPLACE INTO app_obsidian (id, entity, created_at, version) VALUES (?, ?, ?, ?)',
-      post.id, post.entity, post.createdAt, version,
-    );
-  }
-}
-
 /** Deletions first, so a changed type or date never leaves the old file behind. */
 export async function diffEvents(
   ledger: LedgerRow[],

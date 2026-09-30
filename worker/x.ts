@@ -126,13 +126,16 @@ export function insertLedgerRow(sql: SqlStorage, row: Partial<XRow> & Pick<XRow,
   });
 }
 
-function applyCommands(sql: SqlStorage, store: MergeableStore, ledger: Map<string, XRow>, now: number): void {
+function applyCommands(sql: SqlStorage, store: MergeableStore, ledger: Map<string, XRow>, now: number, configured: boolean): void {
   const xposts = store.getTable('xposts');
   for (const [id, row] of Object.entries(xposts)) {
     const command = str(row.command);
     if (!command) continue;
     const entry = ledger.get(id);
-    if (command === 'retry' && entry && (entry.state === 'failed' || entry.state === 'dismissed')) {
+    if (command === 'retry' && entry && (entry.state === 'failed' || entry.state === 'dismissed') && !configured) {
+      // Nothing here could ever send it; a queued row would wait forever.
+      updateRow(sql, id, { state: 'failed', error: MSG.notConfigured, updated_at: now });
+    } else if (command === 'retry' && entry && (entry.state === 'failed' || entry.state === 'dismissed')) {
       updateRow(sql, id, {
         state: 'queued', attempts: 0, next_at: 0, error: '', updated_at: now,
         // Only this explicit retry acknowledges that the user undid the plain retweet.
@@ -350,7 +353,7 @@ export async function runX(sql: SqlStorage, store: MergeableStore, env: BufferEn
   const configured = bufferConfigured(env);
   let ledger = new Map(readLedger(sql).map((row) => [row.id, row]));
 
-  applyCommands(sql, store, ledger, now);
+  applyCommands(sql, store, ledger, now, configured);
 
   for (const candidate of findCandidates(store.getTable('posts'), store.getTable('replies'), new Set(ledger.keys()))) {
     const { state, error } = initialState(candidate, now, configured);

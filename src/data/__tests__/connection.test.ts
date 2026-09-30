@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ create: vi.fn(), start: vi.fn(), load: vi.fn(), destroy: vi.fn() }));
 vi.mock('tinybase/synchronizers/synchronizer-ws-client/with-schemas', () => ({ createWsSynchronizer: mocks.create }));
 vi.mock('@/data/store', () => ({ store: {} }));
-vi.mock('@/data/syncCode', () => ({ getSyncCode: () => 'test-sync-code' }));
+vi.mock('@/data/auth', () => ({
+  getToken: () => 'test-token',
+  checkSession: async () => 'ok',
+  deviceName: () => 'test device',
+  onTokenChange: () => () => {},
+  signOut: () => {},
+}));
 vi.mock('@/app/perfProbe', () => ({ probeSpan: () => () => {} }));
 vi.mock('react', () => ({ useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot() }));
 
@@ -23,6 +29,7 @@ beforeEach(async () => {
   vi.stubGlobal('window', new EventTarget());
   vi.stubGlobal('navigator', { onLine: true });
   vi.stubGlobal('location', { protocol: 'https:', host: 'test.invalid' });
+  vi.stubGlobal('__BUILD_ID__', 'test build');
   vi.stubGlobal('WebSocket', class extends EventTarget { close() { this.dispatchEvent(new Event('close')); } });
   mocks.create.mockImplementation(async (...args: unknown[]) => {
     ignoredError = args[5] as typeof ignoredError;

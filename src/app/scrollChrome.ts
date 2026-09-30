@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from 'react';
+import { chromeExperiment } from './perfProbe';
 
 /**
  * X-style chrome while reading: the header and the bottom tab bar move with
@@ -42,7 +43,8 @@ function place(header: HTMLElement | null, fraction: number, animate: boolean): 
 export function useScrollChrome(scrollRef: RefObject<HTMLElement | null>, headerRef: RefObject<HTMLElement | null> | null, active: boolean): void {
   useEffect(() => {
     const scroller = scrollRef.current;
-    if (!scroller || !active) return;
+    // TEMPORARY: the scroll experiment in 设置 → 性能诊断 can keep the chrome still.
+    if (!scroller || !active || chromeExperiment() !== 'follow') return;
     const header = headerRef?.current ?? null;
     const mobile = window.matchMedia('(max-width: 767px)');
     let max = header?.offsetHeight || FALLBACK_RANGE_PX;

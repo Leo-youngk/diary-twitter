@@ -15,6 +15,7 @@ build/
 *.pem
 .env
 .env*.local
+.dev.vars
 
 # debug
 npm-debug.log*

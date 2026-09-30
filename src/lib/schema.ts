@@ -116,6 +116,12 @@ export const TABLES_SCHEMA = {
     done: { type: 'boolean', default: false },
     createdAt: { type: 'string', default: '' },
   },
+  // Written by the server on each connection: which version every device last ran.
+  devices: {
+    name: { type: 'string', default: '' },
+    build: { type: 'string', default: '' },
+    seenAt: { type: 'number', default: 0 },
+  },
 } as const;
 
 export const VALUES_SCHEMA = {
@@ -130,7 +136,8 @@ export const VALUES_SCHEMA = {
 } as const;
 
 export const ROW_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
-export const SYNC_CODE_PATTERN = /^[a-z0-9]{16,64}$/i;
+/** WebSocket subprotocol of the sync connection; the device token is offered next to it. */
+export const SYNC_PROTOCOL = 'diary-sync';
 export const BLOB_HASH_PATTERN = /^[0-9a-f]{64}$/;
 const BLOB_REF_PATTERN = /^blob:([0-9a-f]{64})$/;
 

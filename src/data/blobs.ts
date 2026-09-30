@@ -1,5 +1,5 @@
 import { blobHashOf } from '@/lib/schema';
-import { getSyncCode } from './syncCode';
+import { getToken, signOut } from './auth';
 
 /**
  * Images live outside the synced store, addressed by the SHA-256 of their
@@ -15,7 +15,7 @@ const QUEUE_KEY = 'diary-blob-queue';
 const objectUrls = new Map<string, string>();
 
 export function blobUrl(hash: string): string {
-  return `/api/blob/${getSyncCode()}/${hash}`;
+  return `/api/blob/${hash}`;
 }
 
 /** What an <img> should load for a ref. */
@@ -66,11 +66,14 @@ export function flushUploads(): Promise<void> {
           writeQueue(readQueue().filter((item) => item !== hash));
           continue;
         }
+        const token = getToken();
+        if (!token) break;
         const response = await fetch(blobUrl(hash), {
           method: 'PUT',
-          headers: { 'content-type': blob.type || 'image/jpeg' },
+          headers: { 'content-type': blob.type || 'image/jpeg', authorization: `Bearer ${token}` },
           body: blob,
         }).catch(() => null);
+        if (response?.status === 401) signOut();
         if (!response?.ok) break;
         writeQueue(readQueue().filter((item) => item !== hash));
       }

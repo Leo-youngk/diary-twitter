@@ -1,11 +1,12 @@
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client/with-schemas';
 import { useSyncExternalStore } from 'react';
 import { probeSpan } from '@/app/perfProbe';
+import { SYNC_PROTOCOL } from '@/lib/schema';
+import { checkSession, deviceName, getToken, onTokenChange, signOut } from './auth';
 import { store } from './store';
-import { getSyncCode } from './syncCode';
 
 /**
- * Keeps this device connected to its Durable Object.
+ * Keeps this device connected to the data space's Durable Object.
  *
  * A TinyBase WsSynchronizer is bound to one socket and stops receiving once
  * that socket closes, so every connection gets a fresh socket and a fresh
@@ -50,6 +51,7 @@ let failures = 0;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let hiddenAt: number | null = null;
 let started = false;
+let connecting = false;
 const firstSync: Array<() => void> = [];
 
 function setStatus(next: Partial<Status>): void {
@@ -59,7 +61,8 @@ function setStatus(next: Partial<Status>): void {
 
 function socketUrl(): string {
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${location.host}/api/sync/${getSyncCode()}`;
+  const device = new URLSearchParams({ name: deviceName(), build: __BUILD_ID__ });
+  return `${scheme}://${location.host}/api/sync?${device.toString()}`;
 }
 
 function scheduleRetry(): void {
@@ -83,7 +86,7 @@ function drop(target: Connection | null): void {
 function connectionFailed(connection: Connection, error: unknown): void {
   if (current !== connection) return;
   const reason = error instanceof Error ? error.message : '同步连接异常';
-  console.warn('[sync] connection failed', reason.replaceAll(getSyncCode(), '[redacted]'));
+  console.warn('[sync] connection failed', reason);
   drop(connection);
   setStatus({ state: 'offline' });
   scheduleRetry();
@@ -114,13 +117,25 @@ function verifyConnection(connection: Connection): Promise<void> {
 }
 
 async function connect(): Promise<void> {
-  if (current || !navigator.onLine) {
+  if (current || !navigator.onLine || connecting) {
     if (!navigator.onLine) setStatus({ state: 'offline' });
     return;
   }
   if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  const token = getToken();
+  if (!token) return;
   setStatus({ state: 'connecting' });
-  const socket = new WebSocket(socketUrl());
+  // A refused WebSocket cannot say why, so ask whether the token still counts.
+  connecting = true;
+  const session = await checkSession().finally(() => { connecting = false; });
+  if (session === 'rejected') { signOut(); return; }
+  if (session === 'unreachable') {
+    setStatus({ state: 'offline' });
+    scheduleRetry();
+    return;
+  }
+  if (current || getToken() !== token) return;
+  const socket = new WebSocket(socketUrl(), [SYNC_PROTOCOL, token]);
   const connection: Connection = { socket, synchronizer: null };
   current = connection;
 
@@ -158,10 +173,11 @@ function reconnectNow(): void {
   void connect();
 }
 
-/** Start syncing. Safe to call more than once. */
+/** Start syncing. Safe to call more than once; waits for a token if there is none yet. */
 export function startConnection(): void {
   if (started) return;
   started = true;
+  onTokenChange(() => { if (getToken()) reconnectNow(); else drop(current); });
   window.addEventListener('online', reconnectNow);
   window.addEventListener('offline', () => { drop(current); setStatus({ state: 'offline' }); });
   document.addEventListener('visibilitychange', () => {

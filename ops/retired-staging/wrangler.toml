@@ -1,0 +1,15 @@
+# The retired test site (diary-app-next). Deployed once from this folder with
+# ops/retired-staging/deploy.mjs; the app itself lives only at diary-app.
+name = "diary-app-next"
+account_id = "8f92f605a9c8c7e4872d8869c72e1a59"
+main = "./index.js"
+compatibility_date = "2026-08-04"
+
+# Kept so Cloudflare keeps the test site's stored data instead of deleting it.
+[[durable_objects.bindings]]
+name = "SPACES"
+class_name = "DiarySpace"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DiarySpace"]

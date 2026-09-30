@@ -118,6 +118,21 @@ export function useXPosts(): Record<string, XPostRow> {
   return ui.useTable('xposts', store) as Record<string, XPostRow>;
 }
 
+export interface Device {
+  id: string;
+  name: string;
+  build: string;
+  seenAt: number;
+}
+
+/** Devices that have connected, most recently seen first. */
+export function useDevices(): Device[] {
+  const table = ui.useTable('devices', store);
+  return useMemo(() => Object.entries(table)
+    .map(([id, row]) => ({ id, name: row.name ?? '', build: row.build ?? '', seenAt: row.seenAt ?? 0 }))
+    .sort((a, b) => b.seenAt - a.seenAt), [table]);
+}
+
 // ── 每日目标 ────────────────────────────────────────────────────────────────
 
 /** One day's goals, in the order they were written. */

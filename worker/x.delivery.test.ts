@@ -2,13 +2,13 @@
 import { createRequire } from 'node:module';
 import { createMergeableStore } from 'tinybase';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BufferApiError, createBufferPost, fetchBufferPost } from './buffer';
+import { BufferApiError, bufferConfigured, createBufferPost, fetchBufferPost } from './buffer';
 import { migrateAppTables } from './sql';
 import { insertLedgerRow, runX } from './x';
 
 vi.mock('./buffer', async (importOriginal) => ({
   ...await importOriginal<typeof import('./buffer')>(),
-  bufferConfigured: () => true,
+  bufferConfigured: vi.fn(() => true),
   createBufferPost: vi.fn(),
   fetchBufferPost: vi.fn(),
   fetchChannelMetrics: vi.fn().mockResolvedValue([]),
@@ -108,5 +108,15 @@ describe('X delivery progress', () => {
     expect(createBufferPost).toHaveBeenCalledTimes(1);
     await runX(sql, store, env, now + 60_000);
     expect(createBufferPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a retry failed where Buffer is not configured instead of queueing it for ever', async () => {
+    insertLedgerRow(sql, { id: 'p', kind: 'post', state: 'failed', error: 'x' });
+    store.setCell('xposts', 'p', 'command', 'retry');
+    vi.mocked(bufferConfigured).mockReturnValueOnce(false);
+    await runX(sql, store, {}, now);
+    expect(store.getCell('xposts', 'p', 'state')).toBe('failed');
+    expect(store.getCell('xposts', 'p', 'error')).toContain('没有配置 Buffer');
+    expect(store.getCell('xposts', 'p', 'command')).toBe('');
   });
 });

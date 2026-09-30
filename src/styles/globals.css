@@ -184,6 +184,14 @@ select {
   backdrop-filter: blur(24px);
 }
 
+/* TEMPORARY (设置 → 性能诊断 scroll experiment): header and tab bar without blur. */
+html[data-probe-chrome='plain'] .frosted,
+html[data-probe-chrome='plain'] nav {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: var(--color-x-dark) !important;
+}
+
 @media (min-width: 768px) {
   .frosted {
     background: var(--color-x-dark);

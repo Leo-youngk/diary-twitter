@@ -10,7 +10,7 @@
     "test": "vitest run",
     "typecheck": "tsc -b",
     "deploy": "node scripts/deploy.mjs",
-    "deploy:staging": "node scripts/deploy.mjs --env staging",
+    "secrets": "node scripts/secrets.mjs",
     "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {

@@ -94,7 +94,30 @@ function begin(label: string): void {
   requestAnimationFrame(frame);
 }
 
+/**
+ * Controlled comparison for the home-screen scroll stutter: the home tab and
+ * the profile page share the same list; what differs is the header and tab
+ * bar. Each mode removes one of those differences.
+ */
+export type ChromeExperiment = 'follow' | 'static' | 'plain';
+const EXPERIMENT_KEY = 'diary-probe-chrome';
+
+export function chromeExperiment(): ChromeExperiment {
+  try {
+    const value = localStorage.getItem(EXPERIMENT_KEY);
+    return value === 'static' || value === 'plain' ? value : 'follow';
+  } catch {
+    return 'follow';
+  }
+}
+
+export function setChromeExperiment(mode: ChromeExperiment): void {
+  try { localStorage.setItem(EXPERIMENT_KEY, mode); } catch { /* stays as it is */ }
+  window.location.reload();
+}
+
 export function startProbe(): void {
+  document.documentElement.dataset.probeChrome = chromeExperiment();
   t0 = 0; // measure the launch from navigation start
   session = '冷启动';
   setTimeout(heartbeat, 16);
