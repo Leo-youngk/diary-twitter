@@ -22,9 +22,10 @@ export default function LockScreen() {
     if (!value.trim() || busy) return;
     setBusy(true);
     setError('');
-    const result = await signIn(value);
+    const { result, minutes } = await signIn(value);
     setBusy(false);
-    if (result !== 'ok') setError(MESSAGES[result] ?? '');
+    if (result === 'locked') setError(`输错太多次，${minutes ?? 15} 分钟后再试`);
+    else if (result !== 'ok') setError(MESSAGES[result] ?? '');
   };
 
   return (

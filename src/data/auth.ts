@@ -49,9 +49,10 @@ export function useSignedIn(): boolean {
   return useSyncExternalStore(onTokenChange, () => token !== null);
 }
 
-export type SignInResult = 'ok' | 'wrong' | 'unreachable' | 'unavailable';
+export type SignInResult = 'ok' | 'wrong' | 'locked' | 'unreachable' | 'unavailable';
 
-export async function signIn(passphrase: string): Promise<SignInResult> {
+/** `minutes` is how long sign-ins are locked after too many wrong tries. */
+export async function signIn(passphrase: string): Promise<{ result: SignInResult; minutes?: number }> {
   let response: Response;
   try {
     response = await fetch('/api/session', {
@@ -60,16 +61,17 @@ export async function signIn(passphrase: string): Promise<SignInResult> {
       body: JSON.stringify({ passphrase }),
     });
   } catch {
-    return 'unreachable';
+    return { result: 'unreachable' };
   }
-  if (response.status === 401) return 'wrong';
-  const body = await response.json().catch(() => null) as { token?: unknown } | null;
+  const body = await response.json().catch(() => null) as { token?: unknown; retryAfterMinutes?: unknown } | null;
+  if (response.status === 401) return { result: 'wrong' };
+  if (response.status === 429) return { result: 'locked', minutes: typeof body?.retryAfterMinutes === 'number' ? body.retryAfterMinutes : undefined };
   if (!response.ok || typeof body?.token !== 'string') {
     console.error('[auth] sign-in failed', response.status);
-    return 'unavailable';
+    return { result: 'unavailable' };
   }
   setToken(body.token);
-  return 'ok';
+  return { result: 'ok' };
 }
 
 /** The server no longer accepts this device's token: ask for the passphrase again. */

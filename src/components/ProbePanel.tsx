@@ -1,12 +1,5 @@
 import { useState } from 'react';
-import { chromeExperiment, probeReport, setChromeExperiment, type ChromeExperiment } from '@/app/perfProbe';
-import { cn } from '@/lib/utils';
-
-const EXPERIMENTS: Array<[ChromeExperiment, string]> = [
-  ['follow', '滑动收起（新）'],
-  ['static', '不收起'],
-  ['plain', '不收起·无毛玻璃'],
-];
+import { probeReport } from '@/app/perfProbe';
 
 /** TEMPORARY — 设置 → 性能诊断. Remove together with app/perfProbe.ts. */
 export default function ProbePanel() {
@@ -22,19 +15,6 @@ export default function ProbePanel() {
       <h2 className="px-1 pb-1.5 text-[13px] text-x-gray">性能诊断（排查完会删掉）</h2>
       <div className="rounded-2xl bg-x-darker p-4 text-[13px] leading-relaxed">
         <p>版本 {__BUILD_ID__}</p>
-        <p className="mt-2">首页滚动对照：先用「滑动收起（新）」快速上下滑，还停顿再和另外两档比</p>
-        <div className="mb-2 mt-1.5 flex gap-1.5">
-          {EXPERIMENTS.map(([mode, label]) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => { if (mode !== chromeExperiment()) setChromeExperiment(mode); }}
-              className={cn('rounded-full border px-3 py-1', mode === chromeExperiment() ? 'border-x-blue text-x-blue' : 'border-x-border text-x-gray')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
         <p>记录的是：{report.session}后 30 秒</p>
         <p>主线程阻塞：{worst('主线程阻塞')}</p>
         <p>掉帧（JS 空闲时）：{worst('掉帧')}</p>

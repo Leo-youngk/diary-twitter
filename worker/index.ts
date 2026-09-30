@@ -29,7 +29,14 @@ app.post('/api/session', async (c) => {
   if (!settings) return notConfigured(c);
   const body = await c.req.json<{ passphrase?: unknown }>().catch(() => ({ passphrase: undefined }));
   const given = typeof body.passphrase === 'string' ? body.passphrase : '';
-  if (!given || !await passphraseMatches(settings.passphrase, given)) return c.json({ error: '口令不对' }, 401);
+  if (!given) return c.json({ error: '口令不对' }, 401);
+  const stub = c.env.SPACES.get(c.env.SPACES.idFromName(settings.space));
+  const outcome = await stub.signIn(c.req.header('cf-connecting-ip') ?? 'unknown', await passphraseMatches(settings.passphrase, given));
+  if (outcome.result === 'locked') {
+    const minutes = Math.ceil(outcome.retryAfterMs / 60_000);
+    return c.json({ error: `尝试次数太多，${minutes} 分钟后再试`, retryAfterMinutes: minutes }, 429, { 'retry-after': String(Math.ceil(outcome.retryAfterMs / 1000)) });
+  }
+  if (outcome.result === 'wrong') return c.json({ error: '口令不对' }, 401);
   return c.json({ token: await issueToken(settings.secret) });
 });
 

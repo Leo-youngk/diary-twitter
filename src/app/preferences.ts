@@ -8,11 +8,14 @@ import { useSyncExternalStore } from 'react';
 export type Theme = 'dark' | 'light' | 'zen';
 export type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
 export type FontFamily = 'system' | 'noto' | 'song';
+/** What slides away while scrolling down: header and tab bar, only the header, or nothing. */
+export type ScrollChrome = 'both' | 'header' | 'none';
 
 interface Preferences {
   theme: Theme;
   fontSize: FontSize;
   font: FontFamily;
+  chrome: ScrollChrome;
 }
 
 const SCALE: Record<FontSize, number> = { small: 0.9, medium: 1, large: 1.15, xlarge: 1.3 };
@@ -32,6 +35,8 @@ let prefs: Preferences = {
   theme: read('diary-theme', ['dark', 'light', 'zen'] as const, 'zen', true),
   fontSize: read('diary-font-size', ['small', 'medium', 'large', 'xlarge'] as const, 'medium', true),
   font: read('diary-font', ['system', 'noto', 'song'] as const, 'system', false),
+  // Only the header by default: a fast flick stayed smoother with the tab bar still.
+  chrome: read('diary-scroll-chrome', ['both', 'header', 'none'] as const, 'header', false),
 };
 const listeners = new Set<() => void>();
 
@@ -65,6 +70,7 @@ export function setPreference<K extends keyof Preferences>(key: K, value: Prefer
     if (key === 'theme') localStorage.setItem('diary-theme', JSON.stringify(value));
     if (key === 'fontSize') localStorage.setItem('diary-font-size', JSON.stringify(value));
     if (key === 'font') localStorage.setItem('diary-font', String(value));
+    if (key === 'chrome') localStorage.setItem('diary-scroll-chrome', String(value));
   } catch { /* applies for this session */ }
   apply();
   listeners.forEach((listener) => listener());

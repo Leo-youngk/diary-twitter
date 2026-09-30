@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import type { ActivityComponentType } from '@stackflow/react';
 import { useNav } from '@/app/nav';
 import { AppScreen } from '@stackflow/plugin-basic-ui';
-import { setPreference, usePreferences, type FontFamily, type FontSize, type Theme } from '@/app/preferences';
+import { setPreference, usePreferences, type FontFamily, type FontSize, type ScrollChrome, type Theme } from '@/app/preferences';
 import { toast } from '@/app/toast';
 import Avatar from '@/components/Avatar';
 import { XLogo } from '@/components/Icon';
@@ -213,6 +213,9 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
             </Row>
             <Row label="字号">
               <Segmented<FontSize> value={prefs.fontSize} onChange={(v) => setPreference('fontSize', v)} options={[['small', '小'], ['medium', '中'], ['large', '大'], ['xlarge', '特大']]} />
+            </Row>
+            <Row label="滑动时收起">
+              <Segmented<ScrollChrome> value={prefs.chrome} onChange={(v) => setPreference('chrome', v)} options={[['both', '上下'], ['header', '只顶栏'], ['none', '不收']]} />
             </Row>
           </Section>
 

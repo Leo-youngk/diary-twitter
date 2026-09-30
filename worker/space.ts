@@ -3,6 +3,7 @@ import { createDurableObjectSqlStoragePersister } from 'tinybase/persisters/pers
 import { WsServerDurableObject } from 'tinybase/synchronizers/synchronizer-ws-server-durable-object';
 import type { Env } from './env';
 import { runBackup } from './backup';
+import { loginAttempt, migrateLoginTable, type LoginOutcome } from './login';
 import { runObsidian } from './obsidian';
 import { getMeta, migrateAppTables, setMeta } from './sql';
 import { runX } from './x';
@@ -33,6 +34,7 @@ export class DiarySpace extends WsServerDurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     migrateAppTables(ctx.storage.sql);
+    migrateLoginTable(ctx.storage.sql);
   }
 
   createPersister() {
@@ -64,6 +66,11 @@ export class DiarySpace extends WsServerDurableObject<Env> {
     this.store?.setRow('devices', device.id, { name: device.name, build: device.build, seenAt: Date.now() });
     // Reconnecting must also recover work whose alarm was lost during an interruption.
     await this.requestReconcile();
+  }
+
+  /** Passphrase attempts are counted here, the one place every Worker instance shares. */
+  async signIn(ip: string, correct: boolean): Promise<LoginOutcome> {
+    return loginAttempt(this.ctx.storage.sql, ip, correct, Date.now());
   }
 
   private async requestReconcile(): Promise<void> {

@@ -6,6 +6,7 @@ import { registerDesktopMainReturn } from '@/app/desktopPanel';
 import BottomNav from '@/components/BottomNav';
 import DesktopPanel from '@/components/DesktopPanel';
 import ProfilePanel from '@/components/ProfilePanel';
+import UpdatePrompt from '@/components/UpdatePrompt';
 import { cn } from '@/lib/utils';
 import CalendarPane from '@/panes/CalendarPane';
 import GoalsPane from '@/panes/GoalsPane';
@@ -52,6 +53,7 @@ const MainActivity: ActivityComponentType<'Main'> = () => {
           </div>
         ))}
         <BottomNav />
+        <UpdatePrompt />
         <ProfilePanel />
         </div>
         <DesktopPanel />

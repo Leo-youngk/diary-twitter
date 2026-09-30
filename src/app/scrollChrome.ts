@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from 'react';
-import { chromeExperiment } from './perfProbe';
+import { usePreferences, type ScrollChrome } from './preferences';
 
 /**
  * X-style chrome while reading: scrolling down a little tucks the header and
@@ -25,13 +25,13 @@ export function setNavElement(element: HTMLElement | null): void {
   navElement = element;
 }
 
-function place(header: HTMLElement | null, hidden: boolean): void {
+function place(header: HTMLElement | null, hidden: boolean, chrome: ScrollChrome): void {
   const transition = `transform ${SLIDE_MS}ms ease-out, opacity ${SLIDE_MS}ms ease-out`;
   if (header) {
     header.style.transition = transition;
     header.style.transform = hidden ? 'translate3d(0, -100%, 0)' : '';
   }
-  if (navElement) {
+  if (navElement && (chrome === 'both' || !hidden)) {
     navElement.style.transition = transition;
     navElement.style.transform = hidden ? `translate3d(0, ${NAV_TRAVEL_PX}px, 0)` : '';
     navElement.style.opacity = hidden ? '0' : '';
@@ -39,12 +39,15 @@ function place(header: HTMLElement | null, hidden: boolean): void {
   }
 }
 
-/** Drive the chrome from this scroller while `active` (the tab that is showing). */
+/**
+ * Drive the chrome from this scroller while `active` (the tab that is showing),
+ * as chosen in 设置 → 外观 → 滑动时收起.
+ */
 export function useScrollChrome(scrollRef: RefObject<HTMLElement | null>, headerRef: RefObject<HTMLElement | null> | null, active: boolean): void {
+  const { chrome } = usePreferences();
   useEffect(() => {
     const scroller = scrollRef.current;
-    // TEMPORARY: the scroll experiment in 设置 → 性能诊断 can keep the chrome still.
-    if (!scroller || !active || chromeExperiment() !== 'follow') return;
+    if (!scroller || !active || chrome === 'none') return;
     const header = headerRef?.current ?? null;
     const mobile = window.matchMedia('(max-width: 767px)');
     let hidden = false;
@@ -54,7 +57,7 @@ export function useScrollChrome(scrollRef: RefObject<HTMLElement | null>, header
     const set = (next: boolean) => {
       if (next === hidden) return;
       hidden = next;
-      place(header, next);
+      place(header, next, chrome);
     };
 
     const onScroll = () => {
@@ -75,7 +78,7 @@ export function useScrollChrome(scrollRef: RefObject<HTMLElement | null>, header
       scroller.removeEventListener('scroll', onScroll);
       mobile.removeEventListener('change', onWidth);
       // Leaving a tab never leaves the chrome tucked away.
-      place(header, false);
+      place(header, false, chrome);
     };
-  }, [scrollRef, headerRef, active]);
+  }, [scrollRef, headerRef, active, chrome]);
 }
