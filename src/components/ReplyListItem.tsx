@@ -4,6 +4,7 @@ import { useMinute, usePost, useProfile, useReply, useXPost } from '@/data/hooks
 import { formatCompactTime } from '@/lib/utils';
 import Avatar from './Avatar';
 import XMark from './XMark';
+import XDeliveryStatus from './XDeliveryStatus';
 
 /** A 追加 in a list of replies, with the post it belongs to underneath. Opens that post. */
 function ReplyListItem({ id }: { id: string }) {
@@ -28,6 +29,7 @@ function ReplyListItem({ id }: { id: string }) {
           <XMark x={x} />
         </div>
         <p className="mt-0.5 whitespace-pre-wrap break-words text-[calc(15px*var(--font-scale))] leading-[1.6]">{reply.content}</p>
+        <XDeliveryStatus id={id} requested={reply.xSync} x={x} />
         <div className="mt-2 rounded-xl border border-x-border px-3 py-2">
           {post ? (
             <p className="line-clamp-2 whitespace-pre-wrap break-words text-[14px] leading-[1.5] text-x-gray">{post.title || post.content}</p>

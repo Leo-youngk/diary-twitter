@@ -6,7 +6,7 @@ import { useNav } from '@/app/nav';
 import { sharePost } from '@/app/postOps';
 import { useBack } from '@/app/useBack';
 import { useKeyboardViewport } from '@/app/useKeyboardViewport';
-import { toast } from '@/app/toast';
+import { publishReply } from '@/app/publish';
 import Avatar from '@/components/Avatar';
 import Icon, { XLogo } from '@/components/Icon';
 import PostImages from '@/components/PostImages';
@@ -14,7 +14,8 @@ import PostMenu from '@/components/PostMenu';
 import PostTime from '@/components/PostTime';
 import ScreenHeader from '@/components/ScreenHeader';
 import XMark from '@/components/XMark';
-import { addReply, fitsOnX, toggleLike } from '@/data/actions';
+import XDeliveryStatus from '@/components/XDeliveryStatus';
+import { fitsOnX, toggleLike } from '@/data/actions';
 import { usePost, useProfile, useReply, useReplyIds, useTweetStats, useXPost, useXSyncEnabled } from '@/data/hooks';
 import { cn, formatDateCN } from '@/lib/utils';
 
@@ -36,7 +37,7 @@ function ReplyItem({ id, last }: { id: string; last: boolean }) {
           <XMark x={x} />
         </div>
         <p className="mt-0.5 whitespace-pre-wrap break-words text-[calc(15px*var(--font-scale))] leading-[1.6]">{reply.content}</p>
-        {x?.state === 'failed' && <p className="mt-1 text-[12px] text-x-danger">X 同步需要处理：{x.error}</p>}
+        <XDeliveryStatus id={id} requested={reply.xSync} x={x} />
       </div>
     </div>
   );
@@ -92,9 +93,8 @@ export default function PostDetail({ params, onBack, embedded = false }: {
   const tooLongForX = replyToX && !fitsOnX(text);
   const send = () => {
     if (!text) return;
-    if (!addReply(post.id, text)) { toast('这条已被删除', 'error'); return; }
+    if (!publishReply(post.id, text)) return;
     setDraft('');
-    if (tooLongForX) toast('超出 X 的长度上限，这条追加只保存在本地', 'info');
   };
 
   return (
@@ -140,12 +140,7 @@ export default function PostDetail({ params, onBack, embedded = false }: {
                 </>
               )}
             </div>
-            {x?.state === 'failed' && (
-              <p className="mt-1 text-[13px] text-x-danger">
-                {x.error}{' '}
-                <button type="button" onClick={() => push('Settings', {})} className="underline">去处理</button>
-              </p>
-            )}
+            <XDeliveryStatus id={post.id} requested={post.xSync} x={x} />
             {tweet && (
               <p className="mt-2 border-t border-x-border pt-2 text-[14px] text-x-gray">
                 {tweet.gone ? '这条在 X 上已删除' : (

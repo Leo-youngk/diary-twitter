@@ -1,4 +1,5 @@
-import { useProfile, useReply } from '@/data/hooks';
+import { useProfile, useReply, useXPost } from '@/data/hooks';
+import XDeliveryStatus from './XDeliveryStatus';
 import PostTime from './PostTime';
 import Avatar from './Avatar';
 
@@ -6,6 +7,7 @@ import Avatar from './Avatar';
 export default function ReplyCard({ replyId, more }: { replyId: string; more: number }) {
   const reply = useReply(replyId);
   const profile = useProfile();
+  const x = useXPost(replyId);
   if (!reply) return null;
   return (
     <div className="mt-2.5 rounded-xl border border-x-border px-3 py-2.5">
@@ -15,6 +17,7 @@ export default function ReplyCard({ replyId, more }: { replyId: string; more: nu
         <span className="shrink-0 text-x-gray">@{profile.username} · <PostTime date={reply.createdAt} /></span>
       </div>
       <p className="mt-1 whitespace-pre-wrap break-words text-[calc(14px*var(--font-scale))] leading-[1.55] line-clamp-3">{reply.content}</p>
+      <XDeliveryStatus id={replyId} requested={reply.xSync} x={x} />
       {more > 0 && <p className="mt-1 text-[13px] text-x-gray">还有 {more} 条追加</p>}
     </div>
   );

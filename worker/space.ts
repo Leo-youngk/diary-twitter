@@ -99,9 +99,11 @@ export class DiarySpace extends WsServerDurableObject<Env> {
 
     const now = Date.now();
     const wakeups: number[] = [];
+    let nextX = Infinity;
     const passes: Array<[string, () => Promise<number>]> = [
-      ['x', () => runX(sql, store, this.env, now)],
-      ['xstats', () => runXStats(sql, store, this.env, now)],
+      ['x', async () => { nextX = await runX(sql, store, this.env, now); return nextX; }],
+      // Confirming a pending publication takes priority over refreshing stats.
+      ['xstats', () => nextX <= Date.now() + 60_000 ? Promise.resolve(nextX) : runXStats(sql, store, this.env, now)],
       ['obsidian', () => runObsidian(sql, store, this.env, code, now)],
       ['backup', () => runBackup(sql, store, this.env.DATA_KV, code, now)],
     ];

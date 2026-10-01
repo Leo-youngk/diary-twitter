@@ -3,11 +3,12 @@ import TextareaAutosize from 'react-textarea-autosize';
 import type { InferActivityParams } from '@stackflow/config';
 import { guardDesktopPanel } from '@/app/desktopPanel';
 import { toast } from '@/app/toast';
+import { publishPost, publishReply } from '@/app/publish';
 import { releaseKeyboard, takeKeyboard } from '@/app/keyboard';
 import { useKeyboardViewport } from '@/app/useKeyboardViewport';
 import Avatar from '@/components/Avatar';
 import Icon, { XLogo } from '@/components/Icon';
-import { addPost, addReply, fitsOnX, postWillSyncToX, replyWillSyncToX, updatePost } from '@/data/actions';
+import { fitsOnX, updatePost } from '@/data/actions';
 import { imageSrc, storeImage } from '@/data/blobs';
 import { usePost, useProfile, useXPost, useXSyncEnabled } from '@/data/hooks';
 import { compressImage, POST_IMAGE_OPTS } from '@/lib/image';
@@ -112,17 +113,14 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
   const publish = () => {
     if (!canPublish) return;
     if (mode === 'reply' && replyingTo) {
-      if (!addReply(replyingTo.id, text)) { toast('原帖已被删除', 'error'); return; }
-      if (replyingTo.xSync && xEnabled && !replyWillSyncToX(replyingTo.id, text)) toast('这条追加只保存在本地', 'info');
+      if (!publishReply(replyingTo.id, text)) return;
     } else if (mode === 'edit' && editing) {
       const saved = updatePost(editing.id, { content: text, images, title: initial.title ? title : undefined });
       if (!saved) { toast('这条已被删除', 'error'); return; }
       toast('已保存');
     } else {
-      const sending = postWillSyncToX(toX, text);
-      addPost({ content: text, images, toX });
+      if (!publishPost({ content: text, images, toX })) return;
       try { localStorage.removeItem(DRAFT_KEY); } catch { /* nothing to clear */ }
-      toast(sending ? '已发布，正在同步到 X' : '已发布');
     }
     if (embedded && mode === 'new') { setContent(''); setImages([]); setXOverride(null); }
     onClose();

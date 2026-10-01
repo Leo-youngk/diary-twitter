@@ -46,6 +46,28 @@ beforeEach(() => {
 afterEach(() => { db.close(); vi.useRealTimers(); });
 
 describe('X delivery progress', () => {
+  it('acknowledges a received post and exposes sending before waiting for Buffer', async () => {
+    vi.mocked(createBufferPost).mockImplementationOnce(async () => {
+      expect(store.getCell('xposts', 'p', 'state')).toBe('sending');
+      return { kind: 'ok', bufferPostId: 'b', status: 'sent', link: 'https://x.com/me/status/123' };
+    });
+    await runX(sql, store, env, now);
+    expect(store.getCell('xposts', 'p', 'state')).toBe('sent');
+  });
+
+  it('shows the first result before a later delivery finishes', async () => {
+    store.setRow('posts', 'q', { entryType: 'thought', content: '第二条', xSync: true, createdAt: new Date(now + 1).toISOString() });
+    vi.mocked(createBufferPost)
+      .mockResolvedValueOnce({ kind: 'ok', bufferPostId: 'b', status: 'sent', link: 'https://x.com/me/status/123' })
+      .mockImplementationOnce(async () => {
+        expect(store.getCell('xposts', 'p', 'state')).toBe('sent');
+        expect(store.getCell('xposts', 'q', 'state')).toBe('sending');
+        return { kind: 'rejected', message: '频道授权失效', retryable: false };
+      });
+    await runX(sql, store, env, now);
+    expect(store.getCell('xposts', 'q', 'error')).toBe('频道授权失效');
+  });
+
   it('does not poll Buffer on every unrelated app change', async () => {
     insertLedgerRow(sql, { id: 'p', kind: 'post', state: 'publishing', buffer_id: 'b' });
     await runX(sql, store, env, now);
