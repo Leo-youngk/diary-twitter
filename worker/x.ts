@@ -266,6 +266,7 @@ async function deliver(
   // Committed before the request: if the object dies mid-send, the row stays
   // in `sending` and is failed (never resent) on the next run.
   updateRow(sql, row.id, { state: 'sending', text, updated_at: now });
+  mirror(store, readLedger(sql));
   const result = await createBufferPost(env, text, quoteId);
   const done = Date.now();
 
@@ -332,13 +333,21 @@ export async function runX(sql: SqlStorage, store: MergeableStore, env: BufferEn
     }
   }
 
+  // Acknowledge receipt before any external request can hold up this pass.
+  mirror(store, readLedger(sql));
+
   const cooldown = () => Number(getMeta(sql, 'buffer_retry_at') ?? 0);
   if (configured && cooldown() <= now) {
     ledger = new Map(readLedger(sql).map((row) => [row.id, row]));
     const due = [...ledger.values()].filter((row) => row.state === 'queued' && row.next_at <= now).slice(0, MAX_SEND_PER_RUN);
     for (const row of due) {
       if (cooldown() > Date.now()) break;
-      await deliver(sql, store, env, row, ledger, Date.now());
+      try {
+        await deliver(sql, store, env, row, ledger, Date.now());
+      } finally {
+        // One slow/interrupted later delivery must not hide earlier results.
+        mirror(store, readLedger(sql));
+      }
       const updated = readLedger(sql).find((r) => r.id === row.id);
       if (updated) ledger.set(row.id, updated);
     }
@@ -347,7 +356,11 @@ export async function runX(sql: SqlStorage, store: MergeableStore, env: BufferEn
     for (const row of publishing) {
       if (cooldown() > Date.now()) break;
       const parentTweetId = row.kind === 'reply' ? tweetIdOf(ledger.get(row.parent)?.link) : undefined;
-      await refreshPublishing(sql, env, row, parentTweetId, Date.now());
+      try {
+        await refreshPublishing(sql, env, row, parentTweetId, Date.now());
+      } finally {
+        mirror(store, readLedger(sql));
+      }
     }
   }
 

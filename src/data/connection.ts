@@ -212,6 +212,11 @@ export function useConnectionState(): ConnectionState {
   return useSyncExternalStore(subscribe, () => status.state);
 }
 
+/** Current state at the time a write happens, without waiting for a render. */
+export function getConnectionState(): ConnectionState {
+  return status.state;
+}
+
 /** True until this device has finished its first sync (and is not known to be offline). */
 export function useAwaitingFirstSync(): boolean {
   return useSyncExternalStore(subscribe, () => status.syncedAt === null && status.state !== 'offline');

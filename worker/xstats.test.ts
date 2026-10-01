@@ -45,9 +45,20 @@ beforeEach(() => {
     return new Response(JSON.stringify(response?.body ?? null), { status: response?.status ?? 500 });
   }));
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); vi.useRealTimers(); });
 
 describe('X stats', () => {
+  it('times out a stalled stats request so the shared alarm can keep delivering posts', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    })));
+    const run = runXStats(sql, store, env, now);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(await run).toBe(now + 15 * 60_000);
+    expect(store.getCell('xaccount', 'me', 'error')).toContain('请求超时');
+  });
+
   it('finds tweets through Buffer and reads their real numbers and the account from FxTwitter', async () => {
     const next = await runXStats(sql, store, env, now);
     expect(store.getRow('xtweets', '111')).toMatchObject({ views: 71, likes: 1, replies: 2, reposts: 3, quotes: 4, bookmarks: 5, gone: false, measuredAt: now });

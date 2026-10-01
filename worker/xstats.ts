@@ -26,6 +26,8 @@ const YOUNG_EVERY_MS = HOUR;
 const OLD_EVERY_MS = 12 * HOUR;
 const GONE_EVERY_MS = 24 * HOUR;
 const MAX_FETCHES_PER_RUN = 25;
+const REQUEST_TIMEOUT_MS = 8000;
+const REFRESH_BUDGET_MS = 10_000;
 const RETRY_MS = 15 * 60_000;
 
 interface TweetRow {
@@ -41,19 +43,23 @@ type FxResult =
   | { kind: 'error'; message: string };
 
 async function fx(path: string, key: 'tweet' | 'user'): Promise<FxResult> {
-  let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    response = await fetch(`${FX_API}${path}`, { headers: { 'user-agent': USER_AGENT } });
+    const response = await fetch(`${FX_API}${path}`, { headers: { 'user-agent': USER_AGENT }, signal: controller.signal });
+    if (response.status === 404) return { kind: 'gone' };
+    const body: unknown = await response.json().catch(() => null);
+    if (controller.signal.aborted) return { kind: 'error', message: 'FxTwitter 请求超时' };
+    const data = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[key] : null;
+    if (!response.ok || typeof data !== 'object' || data === null) {
+      return { kind: 'error', message: `FxTwitter 返回 HTTP ${response.status}` };
+    }
+    return { kind: 'ok', data: data as Record<string, unknown> };
   } catch {
-    return { kind: 'error', message: '连不上 FxTwitter' };
+    return { kind: 'error', message: controller.signal.aborted ? 'FxTwitter 请求超时' : '连不上 FxTwitter' };
+  } finally {
+    clearTimeout(timer);
   }
-  if (response.status === 404) return { kind: 'gone' };
-  const body: unknown = await response.json().catch(() => null);
-  const data = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[key] : null;
-  if (!response.ok || typeof data !== 'object' || data === null) {
-    return { kind: 'error', message: `FxTwitter 返回 HTTP ${response.status}` };
-  }
-  return { kind: 'ok', data: data as Record<string, unknown> };
 }
 
 const count = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
@@ -101,6 +107,7 @@ async function discover(sql: SqlStorage, store: MergeableStore, env: BufferEnv, 
 /** One pass: find new tweets, refresh the ones that are due. Returns when to run next. */
 export async function runXStats(sql: SqlStorage, store: MergeableStore, env: BufferEnv, now: number): Promise<number> {
   if (!bufferConfigured(env)) return Infinity;
+  const deadline = Date.now() + REFRESH_BUDGET_MS;
 
   const cooldown = Number(getMeta(sql, 'buffer_retry_at') ?? 0);
   const discoveredAt = Number(getMeta(sql, 'x_discovered_at') ?? 0);
@@ -131,7 +138,9 @@ export async function runXStats(sql: SqlStorage, store: MergeableStore, env: Buf
     .sort(([, a], [, b]) => (a.measuredAt ?? 0) - (b.measuredAt ?? 0))
     .slice(0, MAX_FETCHES_PER_RUN);
   for (const [id, row] of due) {
-    if (failed) break;
+    // This shares an alarm with X publication. Give newly arrived posts a turn
+    // instead of spending minutes refreshing a large account's older tweets.
+    if (failed || Date.now() >= deadline) break;
     const result = await fx(`/status/${id}`, 'tweet');
     if (result.kind === 'gone') {
       // Deleted on X (or made private): kept, but left out of the numbers.

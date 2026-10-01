@@ -27,7 +27,7 @@ export function toast(message: string, type: ToastType = 'success', action?: Toa
   if (toasts.some((t) => t.message === message && t.type === type)) return;
   const id = nextId++;
   emit([...toasts, { id, message, type, action }]);
-  setTimeout(() => dismissToast(id), action ? 5000 : 3000);
+  setTimeout(() => dismissToast(id), action ? 10_000 : type === 'error' ? 8000 : type === 'info' ? 6000 : 4000);
 }
 
 export function useToasts(): Toast[] {

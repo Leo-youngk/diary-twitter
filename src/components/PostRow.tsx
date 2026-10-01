@@ -13,6 +13,7 @@ import PostText from './PostText';
 import PostTime from './PostTime';
 import ReplyCard from './ReplyCard';
 import XMark from './XMark';
+import XDeliveryStatus from './XDeliveryStatus';
 
 function Action({ label, onClick, active, children }: { label: string; onClick: () => void; active?: boolean; children: React.ReactNode }) {
   return (
@@ -76,6 +77,7 @@ function PostRow({ id }: { id: string }) {
           className="mt-0.5 text-[calc(15px*var(--font-scale))] leading-[1.6] md:mt-2 md:text-[calc(16px*var(--font-scale))] md:leading-[1.85]"
         />
         <PostImages images={post.images} />
+        <XDeliveryStatus id={id} requested={post.xSync} x={x} />
         {latestReply && <ReplyCard replyId={latestReply} more={replyIds.length - 1} />}
 
         <div className="mt-2 flex items-center justify-between pr-1">
