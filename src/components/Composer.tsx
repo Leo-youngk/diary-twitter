@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import TextareaAutosize from 'react-textarea-autosize';
 import type { InferActivityParams } from '@stackflow/config';
 import { guardDesktopPanel } from '@/app/desktopPanel';
@@ -7,6 +8,7 @@ import { publishPost, publishReply } from '@/app/publish';
 import { releaseKeyboard, takeKeyboard } from '@/app/keyboard';
 import { useKeyboardViewport } from '@/app/useKeyboardViewport';
 import Avatar from '@/components/Avatar';
+import PostTime from '@/components/PostTime';
 import Icon, { XLogo } from '@/components/Icon';
 import { fitsOnX, updatePost } from '@/data/actions';
 import { imageSrc, storeImage } from '@/data/blobs';
@@ -20,14 +22,24 @@ const MAX_IMAGES = 4;
 // A ceiling against runaway pastes; X's own limit is shown separately.
 const MAX_LENGTH = 20_000;
 
-function readDraft(): string {
+interface Draft { content: string; thread: string[] }
+
+function readDraft(): Draft {
   try {
-    const value = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null') as { content?: unknown } | null;
-    return typeof value?.content === 'string' ? value.content : '';
+    const value = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null') as { content?: unknown; thread?: unknown } | null;
+    return {
+      content: typeof value?.content === 'string' ? value.content : '',
+      thread: Array.isArray(value?.thread) ? value.thread.filter((part): part is string => typeof part === 'string') : [],
+    };
   } catch {
-    return '';
+    return { content: '', thread: [] };
   }
 }
+
+/** One more part of a thread, under the post (X's +). The key survives removing the parts before it. */
+interface Part { key: number; text: string }
+let partKey = 0;
+const toParts = (texts: string[]): Part[] => texts.map((text) => ({ key: ++partKey, text }));
 
 interface ComposerProps {
   params: InferActivityParams<'Compose'>;
@@ -47,9 +59,13 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
 
   // Taken once, when the screen opens.
   const [initial] = useState(() => (mode === 'edit' && editing
-    ? { content: editing.content, title: editing.title, images: editing.images }
-    : { content: mode === 'new' ? readDraft() : '', title: '', images: [] as string[] }));
+    ? { content: editing.content, title: editing.title, images: editing.images, thread: [] as string[] }
+    : { ...(mode === 'new' ? readDraft() : { content: '', thread: [] }), title: '', images: [] as string[] }));
   const [content, setContent] = useState(initial.content);
+  const [parts, setParts] = useState<Part[]>(() => toParts(initial.thread));
+  // Which field the length counter follows: -1 the post, otherwise a part's key.
+  const [activeKey, setActiveKey] = useState(-1);
+  const partRefs = useRef(new Map<number, HTMLTextAreaElement>());
   const [title, setTitle] = useState(initial.title);
   const [images, setImages] = useState<string[]>(initial.images);
   const [xOverride, setXOverride] = useState<boolean | null>(null);
@@ -69,26 +85,30 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
   // Keep an unfinished new post across closes and reloads.
   useEffect(() => {
     if (mode !== 'new') return;
+    const draft = JSON.stringify({ content, thread: parts.map((part) => part.text) });
     if (embedded) {
-      try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ content })); } catch { /* storage blocked */ }
+      try { localStorage.setItem(DRAFT_KEY, draft); } catch { /* storage blocked */ }
       return;
     }
     const timer = setTimeout(() => {
-      try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ content })); } catch { /* best effort */ }
+      try { localStorage.setItem(DRAFT_KEY, draft); } catch { /* best effort */ }
     }, 400);
     return () => clearTimeout(timer);
-  }, [mode, content, embedded]);
+  }, [mode, content, parts, embedded]);
 
   const text = content.trim();
+  const thread = parts.map((part) => part.text.trim()).filter(Boolean);
   const target = mode === 'edit' ? editing : mode === 'reply' ? replyingTo : null;
   const missing = mode !== 'new' && !target;
 
   // What happens on X, shown before publishing rather than discovered after.
   const xBound = text.length > 0 && (mode === 'new' ? toX : mode === 'reply' && Boolean(replyingTo?.xSync) && xEnabled);
-  const xFits = fitsOnX(text);
+  const xFits = fitsOnX(text) && thread.every(fitsOnX);
   let xNote: { text: string; warn: boolean } | null = null;
   if (xBound && !xFits) {
-    xNote = { text: `超出 X 的长度上限（中文每字算 2，最多 140 字），这条只保存在本机`, warn: true };
+    xNote = { text: `超出 X 的长度上限（中文每字算 2，最多 140 字），这${thread.length > 0 ? '一串' : '条'}只保存在本机`, warn: true };
+  } else if (xBound && thread.length > 0) {
+    xNote = { text: `将作为一串（${thread.length + 1} 条）一起发到 X${images.length > 0 ? '，图片不会同步' : ''}`, warn: false };
   } else if (xBound && mode === 'reply') {
     xNote = { text: '将以引用原帖的形式同步到 X', warn: false };
   } else if (xBound && images.length > 0) {
@@ -119,10 +139,10 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
       if (!saved) { toast('这条已被删除', 'error'); return; }
       toast('已保存');
     } else {
-      if (!publishPost({ content: text, images, toX })) return;
+      if (!publishPost({ content: text, images, toX, thread })) return;
       try { localStorage.removeItem(DRAFT_KEY); } catch { /* nothing to clear */ }
     }
-    if (embedded && mode === 'new') { setContent(''); setImages([]); setXOverride(null); }
+    if (embedded && mode === 'new') { setContent(''); setParts([]); setImages([]); setXOverride(null); }
     onClose();
   };
 
@@ -141,9 +161,24 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
     }
   };
 
+  // The tap stays inside the gesture so iOS moves the keyboard to the new field.
+  const addPart = () => {
+    const part: Part = { key: ++partKey, text: '' };
+    flushSync(() => { setParts((current) => [...current, part]); setActiveKey(part.key); });
+    partRefs.current.get(part.key)?.focus();
+  };
+  const removePart = (key: number) => {
+    const index = parts.findIndex((part) => part.key === key);
+    const before = index > 0 ? parts[index - 1].key : -1;
+    flushSync(() => { setParts((current) => current.filter((part) => part.key !== key)); setActiveKey(before); });
+    (before === -1 ? fieldRef.current : partRefs.current.get(before))?.focus();
+  };
+  const lastText = parts.length > 0 ? parts[parts.length - 1].text : content;
+  const activeText = (parts.find((part) => part.key === activeKey)?.text ?? content).trim();
+
   const heading = mode === 'reply' ? '追加' : mode === 'edit' ? '编辑' : '新随想';
   const counter = xBound
-    ? { used: xWeightedLength(text), max: X_MAX_WEIGHT, over: !xFits }
+    ? { used: xWeightedLength(activeText), max: X_MAX_WEIGHT, over: !fitsOnX(activeText) }
     : content.length > MAX_LENGTH * 0.9 ? { used: content.length, max: MAX_LENGTH, over: content.length > MAX_LENGTH } : null;
 
   return (
@@ -165,26 +200,19 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
           <p className="flex-1 px-8 py-20 text-center text-x-gray">这条记录不存在，或已经删除。</p>
         ) : (
           <div data-scroll-root className={cn('relative min-h-0 flex-1 overflow-y-auto px-4 pb-6', embedded && 'pt-5')}>
-            {mode === 'reply' && replyingTo && (
-              <div className="flex gap-3">
-                <div className="flex w-8 flex-col items-center">
-                  <Avatar src={profile.avatar} name={profile.displayName} size={32} />
-                  <div className="my-1 w-0.5 flex-1 rounded-full bg-x-border" />
-                </div>
-                <div className="min-w-0 flex-1 pb-4">
-                  <p className="line-clamp-4 whitespace-pre-wrap break-words text-[15px] leading-[1.6] text-x-gray">{replyingTo.content}</p>
-                </div>
-              </div>
-            )}
-
             {embedded && mode === 'new' && <div className="mb-3 flex items-center gap-3">
               <Avatar src={profile.avatar} name={profile.displayName} size={32} />
               <div className="min-w-0 text-[14px]"><p className="truncate font-semibold">{profile.displayName}</p><p className="truncate text-[12px] text-x-gray">@{profile.username}</p></div>
             </div>}
 
             <div className="flex gap-3 pt-1">
-              {!embedded && <Avatar src={profile.avatar} name={profile.displayName} size={32} />}
-              <div className="min-w-0 flex-1">
+              {!embedded && (
+                <div className="flex w-8 shrink-0 flex-col items-center">
+                  <Avatar src={profile.avatar} name={profile.displayName} size={32} />
+                  {parts.length > 0 && <div className="mt-1 w-0.5 flex-1 rounded-full bg-x-border" />}
+                </div>
+              )}
+              <div className={cn('min-w-0 flex-1', parts.length > 0 && 'pb-3')}>
                 {initial.title && (
                   <input
                     value={title}
@@ -197,11 +225,12 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
                   ref={fieldRef}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
+                  onFocus={() => setActiveKey(-1)}
                   onPaste={(e) => {
                     const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'));
                     if (files.length > 0 && mode !== 'reply') { e.preventDefault(); void addImages(files); }
                   }}
-                  minRows={embedded ? 7 : 3}
+                  minRows={parts.length > 0 ? 1 : embedded ? 7 : 3}
                   maxRows={embedded ? 14 : undefined}
                   placeholder={mode === 'reply' ? '接着写…' : '有什么新鲜事？'}
                   className="w-full resize-none bg-transparent pt-1 text-[calc(17px*var(--font-scale))] leading-[1.65] outline-none placeholder:text-x-gray"
@@ -224,15 +253,58 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
                     ))}
                   </div>
                 )}
-
-                {xNote && (
-                  <p className={cn('mt-3 flex items-start gap-1 text-[12px] leading-snug', xNote.warn ? 'text-x-danger' : 'text-x-gray')}>
-                    <XLogo size={11} className="mt-px shrink-0" />
-                    <span>{xNote.text}</span>
-                  </p>
-                )}
               </div>
             </div>
+
+            {parts.map((part, i) => (
+              <div key={part.key} className="flex gap-3">
+                <div className="flex w-8 shrink-0 flex-col items-center">
+                  <Avatar src={profile.avatar} name={profile.displayName} size={32} />
+                  {i < parts.length - 1 && <div className="mt-1 w-0.5 flex-1 rounded-full bg-x-border" />}
+                </div>
+                <div className={cn('flex min-w-0 flex-1 items-start gap-2', i < parts.length - 1 && 'pb-3')}>
+                  <TextareaAutosize
+                    ref={(el) => { if (el) partRefs.current.set(part.key, el); else partRefs.current.delete(part.key); }}
+                    value={part.text}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setParts((current) => current.map((p) => (p.key === part.key ? { ...p, text: value } : p)));
+                    }}
+                    onFocus={() => setActiveKey(part.key)}
+                    minRows={1}
+                    placeholder="继续写…"
+                    className="min-w-0 flex-1 resize-none bg-transparent pt-1 text-[calc(17px*var(--font-scale))] leading-[1.65] outline-none placeholder:text-x-gray"
+                  />
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => removePart(part.key)}
+                    className="pressable -m-1 mt-1 p-1 text-x-gray"
+                    aria-label="删除这一条"
+                  >
+                    <Icon name="close" size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {mode === 'reply' && replyingTo && (
+              <div className={cn('mt-3 rounded-2xl border border-x-border px-3 py-2.5', !embedded && 'ml-11')}>
+                <div className="flex min-w-0 items-center gap-1.5 text-[14px]">
+                  <Avatar src={profile.avatar} name={profile.displayName} size={18} />
+                  <span className="truncate font-semibold">{profile.displayName}</span>
+                  <span className="shrink-0 text-x-gray">@{profile.username} · <PostTime date={replyingTo.createdAt} /></span>
+                </div>
+                <p className="mt-0.5 line-clamp-4 whitespace-pre-wrap break-words text-[calc(14px*var(--font-scale))] leading-[1.55]">{replyingTo.content}</p>
+              </div>
+            )}
+
+            {xNote && (
+              <p className={cn('mt-3 flex items-start gap-1 text-[12px] leading-snug', !embedded && 'ml-11', xNote.warn ? 'text-x-danger' : 'text-x-gray')}>
+                <XLogo size={11} className="mt-px shrink-0" />
+                <span>{xNote.text}</span>
+              </p>
+            )}
           </div>
         )}
 
@@ -248,6 +320,19 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
                 aria-label="添加图片"
               >
                 <Icon name="image" size={23} />
+              </button>
+            )}
+            {mode === 'new' && (
+              <button
+                type="button"
+                // Keep the keyboard up while moving it to the new field.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={addPart}
+                disabled={!lastText.trim()}
+                className="pressable -m-1 p-1 text-x-blue disabled:text-x-gray disabled:opacity-40"
+                aria-label="再写一条，作为串推"
+              >
+                <Icon name="plus" size={23} />
               </button>
             )}
             <input

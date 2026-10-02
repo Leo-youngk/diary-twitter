@@ -12,9 +12,9 @@ export function fitsOnX(text: string): boolean {
   return xWeightedLength(text) <= X_MAX_WEIGHT;
 }
 
-/** A new post goes to X when its switch is on and it fits. */
-export function postWillSyncToX(toX: boolean, content: string): boolean {
-  return toX && fitsOnX(content.trim());
+/** A new post goes to X when its switch is on and it, and every part of its thread, fits. */
+export function postWillSyncToX(toX: boolean, content: string, thread: string[] = []): boolean {
+  return toX && fitsOnX(content.trim()) && thread.every((part) => fitsOnX(part.trim()));
 }
 
 /** A reply goes to X when its post went there, the setting is on and it fits. */
@@ -27,20 +27,31 @@ export interface NewPost {
   images: string[];
   /** The compose screen's X switch. */
   toX: boolean;
+  /** Further parts written with +, saved as its 追加 and sent to X with it as one thread. */
+  thread?: string[];
 }
 
 export function addPost(input: NewPost): string {
   const id = generateId();
   const content = input.content.trim();
-  store.setRow('posts', id, {
-    entryType: 'thought',
-    category: '',
-    title: '',
-    content,
-    images: JSON.stringify(input.images),
-    createdAt: new Date().toISOString(),
-    isLiked: false,
-    xSync: postWillSyncToX(input.toX, content),
+  const thread = (input.thread ?? []).map((part) => part.trim()).filter(Boolean);
+  const xSync = postWillSyncToX(input.toX, content, thread);
+  const now = Date.now();
+  store.transaction(() => {
+    store.setRow('posts', id, {
+      entryType: 'thought',
+      category: '',
+      title: '',
+      content,
+      images: JSON.stringify(input.images),
+      createdAt: new Date(now).toISOString(),
+      isLiked: false,
+      xSync,
+    });
+    // A millisecond apart, so the parts keep their order.
+    thread.forEach((part, i) => store.setRow('replies', generateId(), {
+      postId: id, content: part, createdAt: new Date(now + i + 1).toISOString(), xSync, thread: true,
+    }));
   });
   return id;
 }

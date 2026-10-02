@@ -14,12 +14,14 @@ const newestFirst = (a: SortKey, b: SortKey) => String(b ?? '').localeCompare(St
 /**
  * Replies grouped by post and goals grouped by day, oldest first — a card or
  * a day's list re-renders only when its own slice changes. Bookmarked posts
- * sit in the one 'liked' slice, newest first.
+ * sit in the one 'liked' slice and stand-alone 追加 in 'quote', newest first.
  */
 export const indexes = createIndexes(store)
   .setIndexDefinition('repliesByPost', 'replies', 'postId', 'createdAt')
   .setIndexDefinition('goalsByDay', 'goals', 'day', 'createdAt')
-  .setIndexDefinition('likedPosts', 'posts', (getCell) => (getCell('isLiked') ? 'liked' : []), 'createdAt', undefined, newestFirst);
+  .setIndexDefinition('likedPosts', 'posts', (getCell) => (getCell('isLiked') ? 'liked' : []), 'createdAt', undefined, newestFirst)
+  // 追加 that stand on their own in the timeline; parts of a thread stay with their post.
+  .setIndexDefinition('quoteReplies', 'replies', (getCell) => (getCell('thread') ? [] : 'quote'), 'createdAt', undefined, newestFirst);
 
 export const ui = UiReact as UiReact.WithSchemas<Schemas>;
 

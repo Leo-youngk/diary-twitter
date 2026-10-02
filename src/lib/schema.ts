@@ -32,6 +32,8 @@ export interface ReplyRow {
   createdAt: string;
   /** Set once at creation: also publish to X as a quote of the post. */
   xSync: boolean;
+  /** Written with the post (the compose screen's +): goes to X with it as one thread, not as a quote. */
+  thread: boolean;
 }
 
 export type XState = 'queued' | 'sending' | 'publishing' | 'sent' | 'failed' | 'dismissed';
@@ -121,6 +123,7 @@ export const TABLES_SCHEMA = {
     content: { type: 'string', default: '' },
     createdAt: { type: 'string', default: '' },
     xSync: { type: 'boolean', default: false },
+    thread: { type: 'boolean', default: false },
   },
   xposts: {
     state: { type: 'string', default: 'queued' },

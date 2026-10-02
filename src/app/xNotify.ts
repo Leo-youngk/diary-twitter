@@ -17,6 +17,8 @@ export function announceXDeliveries(): () => void {
     states.set(rowId, row.state);
     if (row.state === previous || (row.state !== 'sent' && row.state !== 'failed')) return;
     if (!row.at || Date.now() - row.at > FRESH_MS) return;
+    // Parts of a thread share their post's outcome, which is announced once.
+    if (row.kind === 'reply' && store.getCell('replies', rowId, 'thread') === true) return;
     if (row.state === 'failed') {
       toast(`${row.kind === 'reply' ? '追加同步到 X 失败' : 'X 同步失败'}：${row.error || '请查看帖子下的同步状态'}`, 'error');
     } else {
