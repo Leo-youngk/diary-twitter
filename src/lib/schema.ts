@@ -55,6 +55,8 @@ export interface XTweetRow {
   text: string;
   /** ISO time it was posted. */
   createdAt: string;
+  /** 'reply' answers someone else's conversation; a thread of one's own is 'post'. */
+  kind: 'post' | 'reply';
   views: number;
   likes: number;
   replies: number;
@@ -131,6 +133,7 @@ export const TABLES_SCHEMA = {
   xtweets: {
     text: { type: 'string', default: '' },
     createdAt: { type: 'string', default: '' },
+    kind: { type: 'string', default: 'post' },
     views: { type: 'number', default: 0 },
     likes: { type: 'number', default: 0 },
     replies: { type: 'number', default: 0 },

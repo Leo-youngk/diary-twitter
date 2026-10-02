@@ -2,12 +2,12 @@
 import { createRequire } from 'node:module';
 import { createMergeableStore } from 'tinybase';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchChannelHandle } from './buffer';
-import { getMeta, migrateAppTables, setMeta } from './sql';
+import { fetchChannelHandle } from '../buffer';
+import { getMeta, setMeta } from '../d1';
 import { runXStats } from './xstats';
 
-vi.mock('./buffer', async (importOriginal) => ({
-  ...await importOriginal<typeof import('./buffer')>(),
+vi.mock('../buffer', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../buffer')>(),
   bufferConfigured: () => true,
   fetchOrganizationId: vi.fn().mockResolvedValue('org'),
   fetchChannelHandle: vi.fn().mockResolvedValue('me_on_x'),
@@ -40,7 +40,7 @@ const LATEST = [
   status('101', '2026-09-30T01:00:00Z'),
 ];
 
-let sql: SqlStorage;
+let sql: D1Database;
 let store: ReturnType<typeof createMergeableStore>;
 let routes: Record<string, { status: number; body?: unknown }>;
 const requested = () => vi.mocked(fetch).mock.calls.map(([url]) => String(url));
@@ -48,11 +48,19 @@ const kinds = () => Object.fromEntries(Object.entries(store.getTable('xtweets'))
 
 beforeEach(() => {
   const db = new DatabaseSync(':memory:');
-  sql = { exec: (query: string, ...bindings: SqlStorageValue[]) => {
-    const rows = db.prepare(query).all(...bindings);
-    return { toArray: () => rows };
-  } } as unknown as SqlStorage;
-  migrateAppTables(sql);
+  db.prepare('CREATE TABLE diary3_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)').all();
+  sql = {
+    prepare: (query: string) => {
+      let bindings: SqlStorageValue[] = [];
+      const statement = {
+        bind: (...values: SqlStorageValue[]) => { bindings = values; return statement; },
+        all: async () => ({ results: db.prepare(query).all(...bindings), success: true }),
+        run: async () => ({ results: db.prepare(query).all(...bindings), success: true }),
+        first: async (column: string) => db.prepare(query).all(...bindings)[0]?.[column] ?? null,
+      };
+      return statement;
+    },
+  } as unknown as D1Database;
   store = createMergeableStore();
   routes = {
     '/me_on_x': { status: 200, body: { code: 200, user: { followers: 17, following: 256, tweets: 50 } } },
@@ -104,7 +112,7 @@ describe('X stats', () => {
 
   it('reads the history once and walks it again a day later', async () => {
     await runXStats(sql, store, env, now);
-    expect(getMeta(sql, 'x_walked_at')).toBe(String(now));
+    expect((await getMeta(sql, 'x_walked_at'))).toBe(String(now));
     vi.mocked(fetch).mockClear();
     await runXStats(sql, store, env, now + 2 * HOUR);
     expect(requested().filter((url) => url.includes('cursor='))).toEqual([]);
@@ -155,7 +163,7 @@ describe('X stats', () => {
   });
 
   it('leaves Buffer alone while it is rate limited', async () => {
-    setMeta(sql, 'buffer_retry_at', String(now + 600_000));
+    await setMeta(sql, 'buffer_retry_at', String(now + 600_000));
     await runXStats(sql, store, env, now);
     expect(fetchChannelHandle).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
