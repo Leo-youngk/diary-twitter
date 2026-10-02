@@ -112,7 +112,10 @@ async function sync(): Promise<void> {
     controller = undefined;
     if (ownEpoch !== epoch && getToken()) schedule(0);
   }
-  const awaitingX = Object.values(store.getTable('xposts')).some(row => ['queued', 'sending', 'publishing'].includes(String(row.state)));
+  const recent = (createdAt: string | undefined) => Date.now() - Date.parse(createdAt ?? '') < 72 * 3600_000;
+  const awaitingX = Object.values(store.getTable('xposts')).some(row => ['queued', 'sending', 'publishing'].includes(String(row.state)))
+    || Object.entries(store.getTable('posts')).some(([id, row]) => row.xSync && row.entryType === 'thought' && recent(row.createdAt) && !store.hasRow('xposts', id))
+    || Object.entries(store.getTable('replies')).some(([id, row]) => row.xSync && recent(row.createdAt) && !store.hasRow('xposts', id));
   schedule(again ? 0 : awaitingX ? 3000 : 30_000);
 }
 

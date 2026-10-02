@@ -64,6 +64,11 @@ describe('HTTP offline synchronization',()=>{
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).records).toEqual([]);
   });
+  it('polls promptly while a new X post is still awaiting its server delivery row',async()=>{
+    local.setRow('posts','p',{content:'new',entryType:'thought',xSync:true,createdAt:new Date().toISOString()});
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it('catches up remote edits when returning from the background',async()=>{
     connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
     page.visibilityState='hidden'; page.dispatchEvent(new Event('visibilitychange'));

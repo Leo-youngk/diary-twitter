@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordContent, splitContent, encodeJson, decodeJson } from '../src/lib/sync';
 import { dirtyJobs, loadStore, pull, query, saveRecord, saveStore } from './d1';
 import { runJob } from './jobs';
-import { runX, insertLedgerRow } from './delivery/x';
+import { runX, insertLedgerRow, publishedDuplicate } from './delivery/x';
 import type { Env } from './env';
 import { migrateLegacy, type LegacySnapshot } from './migrate';
 import { d1Login } from './d1-login';
@@ -120,6 +120,23 @@ describe('D1 incremental CRDT persistence', () => {
 });
 
 describe('D1 X delivery safety and task leases', () => {
+  it('reconciles an existing live publication after a duplicate refusal without publishing again', async () => {
+    const now=Date.now(); const source=post().setRow('xtweets','123',{text:'test',createdAt:new Date(now).toISOString(),measuredAt:now});
+    await upload(source);
+    await insertLedgerRow(db,{id:'p',kind:'post',state:'failed',error:'already got this one scheduled; same thing twice'});
+    const loaded=await loadStore(db); vi.stubGlobal('fetch',vi.fn());
+    await runX(db,loaded.store,env(),now,()=>saveStore(db,loaded.store,loaded.baseline));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(loaded.store.getRow('xposts','p')).toMatchObject({state:'sent',link:'https://x.com/i/status/123',error:''});
+  });
+  it('does not reconcile ambiguous, unmeasured or deleted duplicate candidates', () => {
+    const now=Date.now(); const row={content:'test',createdAt:new Date(now).toISOString()};
+    const tweet={text:'test',createdAt:row.createdAt,measuredAt:now}; const error='same thing twice';
+    expect(publishedDuplicate(error,row,{'123':tweet,'456':tweet},now)).toBeNull();
+    expect(publishedDuplicate(error,row,{'123':{...tweet,measuredAt:0}},now)).toBeNull();
+    expect(publishedDuplicate(error,row,{'123':{...tweet,gone:true}},now)).toBeNull();
+    expect(publishedDuplicate('network timeout',row,{'123':tweet},now)).toBeNull();
+  });
   it('migrates the complete archive and deduplication ledger once before jobs are enabled', async () => {
     const source = post().setRow('replies','gone',{content:'deleted'}).setValue('displayName','my journal');
     source.delRow('replies','gone');

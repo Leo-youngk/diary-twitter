@@ -1,7 +1,7 @@
 import { createMergeableStore, type MergeableContent } from 'tinybase';
 import { splitContent, decodeJson, encodeJson } from '../src/lib/sync';
 import type { Env } from './env';
-import { execute, getMeta, loadStore, saveRecord, setMeta } from './d1';
+import { execute, getMeta, loadStore, setMeta } from './d1';
 
 export interface LegacySnapshot {
   content: MergeableContent;
@@ -33,13 +33,20 @@ export async function migrateLegacy(env: Env): Promise<void> {
   await env.DATA_KV.put(`diary-migration:${env.SPACE_ID}:d1-v3`, encodeJson(snapshot));
   // Deduplication is committed before any new delivery job can run.
   const tables = { x: 'diary3_x', meta: 'diary3_meta', obsidian: 'diary3_obsidian', login: 'diary3_login' };
+  const statements: D1PreparedStatement[] = [];
   for (const [name, table] of Object.entries(tables)) {
     for (const row of snapshot[name as keyof typeof tables]) {
       const columns = Object.keys(row);
-      await execute(env.DB, `INSERT OR IGNORE INTO ${table} (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`, ...Object.values(row));
+      statements.push(env.DB.prepare(`INSERT OR IGNORE INTO ${table} (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`).bind(...Object.values(row)));
     }
   }
-  for (const record of splitContent(snapshot.content)) await saveRecord(env.DB, record);
+  for (let offset=0;offset<statements.length;offset+=30) await env.DB.batch(statements.slice(offset,offset+30));
+  const records = splitContent(snapshot.content);
+  for (let offset=0;offset<records.length;offset+=30) {
+    await env.DB.batch(records.slice(offset,offset+30).map(record => env.DB.prepare(
+      'INSERT OR IGNORE INTO diary3_records(key,data,revision) VALUES(?,?,(SELECT revision+1 FROM diary3_clock WHERE id=1))',
+    ).bind(record.key,record.data)));
+  }
   const { store: target } = await loadStore(env.DB);
   if (JSON.stringify(source.getContent()) !== JSON.stringify(target.getContent())) {
     // Compare content independently of SQL row/object iteration order.

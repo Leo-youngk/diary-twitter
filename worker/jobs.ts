@@ -10,9 +10,10 @@ interface Job { name: string; generation: number }
 
 export async function runJob(env: Env, name: string): Promise<void> {
   const now = Date.now();
+  const lease = now + 5 * 60_000;
   // One owner per task, across Cron, devices and Worker instances. Lease expiry
   // recovers an interrupted invocation; the X sending ledger prevents resend.
-  const claimed = await query<Job>(env.DB, `UPDATE diary3_jobs SET lease_until=? WHERE name=? AND next_at<=? AND lease_until<=? RETURNING name,generation`, now + 5 * 60_000, name, now, now);
+  const claimed = await query<Job>(env.DB, `UPDATE diary3_jobs SET lease_until=? WHERE name=? AND next_at<=? AND lease_until<=? RETURNING name,generation`, lease, name, now, now);
   if (!claimed.length) return;
   let next = now + 60_000;
   try {
@@ -28,7 +29,7 @@ export async function runJob(env: Env, name: string): Promise<void> {
     console.error('[d1] task failed', { name, error: String(error) });
   } finally {
     // An edit arriving during execution must survive the old job's completion.
-    await execute(env.DB, 'UPDATE diary3_jobs SET next_at=CASE WHEN generation=? THEN ? ELSE 0 END,lease_until=0 WHERE name=?', claimed[0].generation, Number.isFinite(next) ? next : NEVER, name);
+    await execute(env.DB, 'UPDATE diary3_jobs SET next_at=CASE WHEN generation=? THEN ? ELSE 0 END,lease_until=0 WHERE name=? AND lease_until=?', claimed[0].generation, Number.isFinite(next) ? next : NEVER, name, lease);
   }
 }
 

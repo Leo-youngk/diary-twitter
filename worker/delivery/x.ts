@@ -64,6 +64,19 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/** A confirmed duplicate refusal can be reconciled against a uniquely
+ * matching published tweet already imported and measured by the server. */
+export function publishedDuplicate(error: string, post: Row, tweets: Record<string, Row>, now: number): string | null {
+  if (!/already got this one scheduled|same thing twice/i.test(error)) return null;
+  const created = Date.parse(str(post.createdAt));
+  if (!Number.isFinite(created) || !str(post.content).trim()) return null;
+  const matches = Object.entries(tweets).filter(([id, tweet]) => /^\d+$/.test(id)
+    && tweet.gone !== true && Number(tweet.measuredAt) > 0 && now - Number(tweet.measuredAt) < 24 * 3600_000
+    && str(tweet.text).trim() === str(post.content).trim()
+    && Math.abs(Date.parse(str(tweet.createdAt)) - created) < 24 * 3600_000);
+  return matches.length === 1 ? matches[0][0] : null;
+}
+
 /** New posts and replies that asked to go to X and have no ledger row yet. */
 export function findCandidates(
   posts: Record<string, Row>,
@@ -330,6 +343,13 @@ export async function runX(sql: D1Database, store: MergeableStore, env: BufferEn
   }
 
   for (const row of await readLedger(sql)) {
+    if (row.state === 'failed' && row.kind === 'post') {
+      const id = publishedDuplicate(row.error, store.getRow('posts', row.id), store.getTable('xtweets'), now);
+      if (id) {
+        await updateRow(sql, row.id, { state: 'sent', link: `https://x.com/i/status/${id}`, error: '', updated_at: now });
+        console.info('[x] reconciled published duplicate', { id: row.id, tweetId: id });
+      }
+    }
     if (row.state === 'sending' && now - row.updated_at >= SENDING_STALE_MS) {
       await updateRow(sql, row.id, { state: 'failed', error: MSG.interrupted, updated_at: now });
     }
