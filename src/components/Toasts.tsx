@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { dismissToast, useToasts } from '@/app/toast';
 import { cn } from '@/lib/utils';
-import PublishingNotice from './PublishingNotice';
 
 export default function Toasts() {
   const toasts = useToasts();
@@ -47,7 +46,6 @@ export default function Toasts() {
           )}
         </div>
       ))}
-      <PublishingNotice />
     </div>,
     document.body,
   );

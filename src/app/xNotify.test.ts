@@ -27,7 +27,7 @@ describe('X delivery notifications', () => {
   it('announces success even when the first server row is already sent', () => {
     stop = notify.announceXDeliveries();
     data.store.setRow('xposts', 'post', { state: 'sent', kind: 'post', at: now, link: 'https://x.com/me/status/1' });
-    expect(toast).toHaveBeenCalledWith('同步到 X 成功！🎉');
+    expect(toast).toHaveBeenCalledWith('已发到 X', 'success', { label: '查看', run: expect.any(Function) });
   });
 
   it('announces a first-row failure with the reason supplied by the server', () => {
@@ -40,7 +40,7 @@ describe('X delivery notifications', () => {
     data.store.setRow('xposts', 'reply', { state: 'publishing', kind: 'reply', at: now - 60_000 });
     stop = notify.announceXDeliveries();
     data.store.setPartialRow('xposts', 'reply', { state: 'sent', at: now, link: 'https://x.com/me/status/2' });
-    expect(toast).toHaveBeenCalledWith('追加已同步到 X！🎉');
+    expect(toast).toHaveBeenCalledWith('追加已发到 X', 'success', { label: '查看', run: expect.any(Function) });
   });
 
   it('announces a thread once, for its post, not again for each part', () => {

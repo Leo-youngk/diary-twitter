@@ -6,7 +6,7 @@ vi.mock('@/data/store', () => {
   const store = createMergeableStore().setSchema(TABLES_SCHEMA, VALUES_SCHEMA);
   return { store, indexes: createIndexes(store) };
 });
-vi.mock('@/data/connection', () => ({ getConnectionState: vi.fn(() => 'online') }));
+vi.mock('./publications', () => ({ trackPublication: vi.fn() }));
 vi.mock('@/data/actions', async (importOriginal) => {
   const actions = await importOriginal<typeof import('@/data/actions')>();
   return { ...actions, addPost: vi.fn(actions.addPost) };
@@ -15,29 +15,22 @@ vi.mock('./toast', () => ({ toast: vi.fn() }));
 
 import { store } from '@/data/store';
 import { addPost } from '@/data/actions';
-import { getConnectionState } from '@/data/connection';
+import { trackPublication } from './publications';
 import { toast } from './toast';
 import { publishPost, publishReply } from './publish';
 
 beforeEach(() => {
   vi.clearAllMocks();
   store.delTables().delValues();
-  vi.mocked(getConnectionState).mockReturnValue('online');
 });
 afterEach(() => vi.restoreAllMocks());
 
 describe('publication feedback', () => {
-  it('confirms saving separately from the pending X outcome', () => {
+  it('leaves a post on its way to X to the progress bar, without a toast', () => {
     const id = publishPost({ content: '今天的随想', images: [], toX: true })!;
     expect(store.getCell('posts', id, 'xSync')).toBe(true);
-    expect(toast).toHaveBeenCalledWith('已发布到日记本，正在同步到 X', 'success');
-  });
-
-  it('says that an offline post is waiting instead of implying it has reached X', () => {
-    vi.mocked(getConnectionState).mockReturnValue('offline');
-    const id = publishPost({ content: '离线随想', images: [], toX: true })!;
-    expect(store.getCell('posts', id, 'xSync')).toBe(true);
-    expect(toast).toHaveBeenCalledWith('已保存到本机，等待连接后同步到 X', 'info');
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('explicitly reports the existing length rule when an X-enabled post cannot sync', () => {
@@ -46,11 +39,12 @@ describe('publication feedback', () => {
     expect(toast).toHaveBeenCalledWith('已发布到日记本，超出 X 字数限制，未同步到 X', 'info');
   });
 
-  it('confirms a normal reply from both reply entry points', () => {
+  it('tracks a normal reply on the progress bar too', () => {
     store.setRow('posts', 'p', { content: '原帖', xSync: true });
     const id = publishReply('p', '追加')!;
     expect(store.getCell('replies', id, 'xSync')).toBe(true);
-    expect(toast).toHaveBeenCalledWith('追加已保存，正在同步到 X', 'success');
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'replies', requestedX: true, skippedX: false });
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('does not report success for a reply whose parent was deleted', () => {
