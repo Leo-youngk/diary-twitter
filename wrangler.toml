@@ -6,8 +6,8 @@ compatibility_date = "2026-08-04"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "diary-pwa-db"
-database_id = "709caf1f-c209-4d1a-a123-272b7860c543"
+database_name = "diary-twitter-db"
+database_id = "0c5ff6ce-2902-4e8a-ad97-6f7797c34878"
 migrations_dir = "migrations"
 
 [triggers]

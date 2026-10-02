@@ -44,9 +44,23 @@ describe('HTTP offline synchronization',()=>{
     connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
     expect(connection.useConnection()).toMatchObject({state:'offline',syncedAt:null});
     expect(local.getCell('posts','p','content')).toBe('offline draft');
+    expect(connection.rowIsSynced('posts','p')).toBe(false);
     await vi.advanceTimersByTimeAsync(1000);
     expect(connection.useConnection().state).toBe('online');
     expect((await remoteStore()).getCell('posts','p','content')).toBe('offline draft');
+    expect(connection.rowIsSynced('posts','p')).toBe(true);
+  });
+  it('acknowledges each exact row version rather than the last successful connection',async()=>{
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    expect(connection.useConnection().state).toBe('online');
+    local.setRow('posts','new',{content:'new post'});
+    expect(connection.rowIsSynced('posts','new')).toBe(false);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(connection.rowIsSynced('posts','new')).toBe(true);
+    local.setCell('posts','new','content','edited');
+    expect(connection.rowIsSynced('posts','new')).toBe(false);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(connection.rowIsSynced('posts','new')).toBe(true);
   });
   it('keeps edits made while a request is in flight in the outbox',async()=>{
     local.setRow('posts','p',{content:'first'});

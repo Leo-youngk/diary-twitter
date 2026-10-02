@@ -14,6 +14,11 @@ export async function setMeta(db: D1Database, key: string, value: string): Promi
   await execute(db, `INSERT INTO diary3_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE diary3_meta.value<>excluded.value`, key, value);
 }
 
+/** A retired database stays frozen even if an older binding is redeployed. */
+export async function databasePaused(db: D1Database): Promise<boolean> {
+  return await getMeta(db, 'maintenance') === '1';
+}
+
 /** Optimistic compare-and-swap: simultaneous devices cannot overwrite each other's cells. */
 export async function saveRecord(db: D1Database, record: SyncRecord): Promise<boolean> {
   for (let attempt = 0; attempt < 12; attempt++) {

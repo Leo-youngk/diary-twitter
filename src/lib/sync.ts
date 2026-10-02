@@ -25,14 +25,23 @@ function canonical(changes: MergeableChanges): string {
   return encodeJson(store.getMergeableContent());
 }
 
+/** One row's exact clocks, without canonicalizing every other row. */
+export function rowRecord(content: MergeableContent, table: string, id: string): SyncRecord | null {
+  const [tables, values] = content;
+  const rows = tables[0][table];
+  const row = rows?.[0][id];
+  if (!row) return null;
+  return { key: `r:${table}:${id}`, data: canonical([
+    [{ [table]: [{ [id]: [Object.fromEntries(Object.entries(row[0]).map(([cell, stamp]) => [cell, [stamp[0], stamp[1]]])), row[1]] }, rows[1]] }, tables[1]], [{}, values[1]], 1,
+  ]) };
+}
+
 export function splitContent(content: MergeableContent): SyncRecord[] {
   const [tables, values] = content;
   const records: SyncRecord[] = [];
   for (const [table, rows] of Object.entries(tables[0])) {
-    for (const [id, row] of Object.entries(rows[0])) {
-      records.push({ key: `r:${table}:${id}`, data: canonical([
-        [{ [table]: [{ [id]: [Object.fromEntries(Object.entries(row[0]).map(([cell, stamp]) => [cell, [stamp[0], stamp[1]]])), row[1]] }, rows[1]] }, tables[1]], [{}, values[1]], 1,
-      ]) });
+    for (const id of Object.keys(rows[0])) {
+      records.push(rowRecord(content, table, id)!);
     }
   }
   for (const [id, value] of Object.entries(values[0])) {

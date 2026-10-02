@@ -37,7 +37,7 @@ function ReplyItem({ id, last }: { id: string; last: boolean }) {
           <XMark x={x} />
         </div>
         <p className="mt-0.5 whitespace-pre-wrap break-words text-[calc(15px*var(--font-scale))] leading-[1.6]">{reply.content}</p>
-        <XDeliveryStatus id={id} requested={reply.xSync} x={x} />
+        <XDeliveryStatus id={id} requested={reply.xSync} x={x} table="replies" />
       </div>
     </div>
   );
