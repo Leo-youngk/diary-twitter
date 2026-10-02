@@ -102,12 +102,22 @@ describe('X stats', () => {
     expect(next).toBeGreaterThan(now);
   });
 
-  it('does not ask again before anything is due', async () => {
+  it('between full reads only looks for new tweets, and changes nothing when there are none', async () => {
     await runXStats(sql, store, env, now);
+    const before = JSON.stringify(store.getTables());
     vi.mocked(fetch).mockClear();
-    await runXStats(sql, store, env, now + 60_000);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(await runXStats(sql, store, env, now + 60_000)).toBe(now + 120_000);
+    expect(requested()).toEqual(['https://api.fxtwitter.com/2/profile/me_on_x/statuses?count=20&with_replies=1']);
+    expect(JSON.stringify(store.getTables())).toBe(before);
     expect(fetchChannelHandle).toHaveBeenCalledTimes(1);
+  });
+
+  it('adds a tweet posted on X within a minute without rewriting the others', async () => {
+    await runXStats(sql, store, env, now);
+    routes['/2/profile/me_on_x/statuses'] = page([status('107', '2026-09-30T08:00:30Z', { text: '刚在 X 上发的' }), ...LATEST], 'c1');
+    await runXStats(sql, store, env, now + 60_000);
+    expect(store.getRow('xtweets', '107')).toMatchObject({ text: '刚在 X 上发的', kind: 'post', measuredAt: now + 60_000 });
+    expect(store.getCell('xtweets', '106', 'measuredAt')).toBe(now);
   });
 
   it('reads the history once and walks it again a day later', async () => {

@@ -103,6 +103,15 @@ app.put('/api/blob/:hash', async (c) => {
   return c.json({ ok: true });
 });
 
+// An opened app asks for a look at X now instead of at the next minute.
+app.post('/api/x/check', async (c) => {
+  const settings = config(c.env);
+  if (!settings) return notConfigured(c);
+  if (!await verifyToken(settings.secret, bearer(c.req.header('authorization')))) return c.json({ error: '需要重新输入口令' }, 401);
+  await c.env.DIARY.get(c.env.DIARY.idFromName(settings.space)).checkX();
+  return c.body(null, 204);
+});
+
 // Anything else under /api belongs to an older version of the app (e.g. the
 // sync-code routes). A tab that is still open gets told to reload.
 app.all('/api/*', (c) => c.json({ error: '应用已更新，请重新打开' }, 410));

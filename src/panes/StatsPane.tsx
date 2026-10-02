@@ -1,10 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMainTab } from '@/app/mainTab';
 import { useScrollChrome } from '@/app/scrollChrome';
 import { useNav } from '@/app/nav';
 import { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
 import PaneLayout from '@/components/PaneLayout';
+import { checkX } from '@/data/connection';
 import { useGoalProgress, usePosts, useToday, useXAccount, useXPosts, useXTweets } from '@/data/hooks';
 import { store } from '@/data/store';
 import { tweetIdOfLink } from '@/lib/schema';
@@ -105,7 +106,9 @@ export default function StatsPane() {
   const [period, setPeriod] = useState<Period>(30);
   const scrollRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
-  useScrollChrome(scrollRef, headerRef, useMainTab() === 'stats');
+  const active = useMainTab() === 'stats';
+  useScrollChrome(scrollRef, headerRef, active);
+  useEffect(() => { if (active) checkX(); }, [active]);
 
   // Posting is counted from the tweets on X, wherever they were written.
   const tweetDays = useMemo(() => Object.values(xTweets)

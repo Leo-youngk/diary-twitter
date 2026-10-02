@@ -16,11 +16,14 @@ import { getMeta, setMeta } from '../d1';
  */
 
 const FX_API = 'https://api.fxtwitter.com';
-const USER_AGENT = 'diary-app personal stats (one account, hourly)';
+const USER_AGENT = 'diary-app personal stats (one account)';
 const HOUR = 3600_000;
 const ACCOUNT_EVERY_MS = HOUR;
 // The newest page brings new tweets and the numbers that still move.
 const LATEST_EVERY_MS = HOUR;
+// In between, a short look each minute adds tweets just posted on X and writes nothing else.
+const NEW_EVERY_MS = 60_000;
+const NEW_PAGE_SIZE = 20;
 // A walk down the whole timeline refreshes older tweets; the first one reads the history.
 const WALK_EVERY_MS = 24 * HOUR;
 const PAGE_SIZE = 100;
@@ -175,9 +178,9 @@ async function askHandle(sql: D1Database, env: BufferEnv, now: number): Promise<
 
 type Page = { ok: true; next: string } | { ok: false; message: string };
 
-/** One page of the account's timeline with replies; saves the account's own tweets. */
-async function readPage(store: MergeableStore, handle: string, cursor: string, now: number): Promise<Page> {
-  const query = new URLSearchParams({ count: String(PAGE_SIZE), with_replies: '1' });
+/** One page of the account's timeline with replies; saves the account's own tweets, or only new ones. */
+async function readPage(store: MergeableStore, handle: string, cursor: string, now: number, onlyNew = false): Promise<Page> {
+  const query = new URLSearchParams({ count: String(onlyNew ? NEW_PAGE_SIZE : PAGE_SIZE), with_replies: '1' });
   if (cursor) query.set('cursor', cursor);
   const result = await fx(`/2/profile/${encodeURIComponent(handle)}/statuses?${query}`);
   // FxTwitter also answers an empty timeline with 404.
@@ -188,7 +191,7 @@ async function readPage(store: MergeableStore, handle: string, cursor: string, n
   // The timeline also carries the tweets being replied to and reposts of others' tweets.
   const mine = results
     .map(parseStatus)
-    .filter((tweet): tweet is Tweet => tweet !== null && tweet.author === me && !tweet.repost)
+    .filter((tweet): tweet is Tweet => tweet !== null && tweet.author === me && !tweet.repost && !(onlyNew && store.hasRow('xtweets', tweet.id)))
     // Oldest first, so a reply's parent has its kind before the reply asks for it.
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (mine.length > 0) store.transaction(() => { for (const tweet of mine) save(store, tweet.id, tweet, now); });
@@ -234,14 +237,17 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
     }
   }
 
-  if (!failed && handle && now - (await metaTime('x_latest_at')) >= LATEST_EVERY_MS) {
-    const page = await readPage(store, handle, '', now);
+  if (!failed && handle) {
+    const full = now - (await metaTime('x_latest_at')) >= LATEST_EVERY_MS;
+    const page = await readPage(store, handle, '', now, !full);
     if (page.ok) {
-      await setMeta(sql, 'x_latest_at', String(now));
       refreshed = true;
-      if (!(await getMeta(sql, 'x_walk_cursor')) && now - (await metaTime('x_walked_at')) >= WALK_EVERY_MS) {
-        if (page.next) await setMeta(sql, 'x_walk_cursor', page.next);
-        else await setMeta(sql, 'x_walked_at', String(now));
+      if (full) {
+        await setMeta(sql, 'x_latest_at', String(now));
+        if (!(await getMeta(sql, 'x_walk_cursor')) && now - (await metaTime('x_walked_at')) >= WALK_EVERY_MS) {
+          if (page.next) await setMeta(sql, 'x_walk_cursor', page.next);
+          else await setMeta(sql, 'x_walked_at', String(now));
+        }
       }
     } else {
       fail(`${page.message}，推文数据暂时没有更新`);
@@ -289,11 +295,10 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
   }
 
   if (failed) return now + RETRY_MS;
+  // The look for new tweets is due every minute; each run also does whatever else has come due.
+  if (handle) return now + NEW_EVERY_MS;
   const next = Math.min(
-    (await getMeta(sql, 'x_walk_cursor')) ? now : Infinity,
-    handle
-      ? Math.min((await metaTime('x_latest_at')) + LATEST_EVERY_MS, count(store.getCell('xaccount', 'me', 'measuredAt')) + ACCOUNT_EVERY_MS)
-      : Math.max((await metaTime('x_handle_asked_at')) + HOUR, (await metaTime('buffer_retry_at'))),
+    Math.max((await metaTime('x_handle_asked_at')) + HOUR, (await metaTime('buffer_retry_at'))),
     ...Object.values(store.getTable('xtweets') as Record<string, TweetRow>).map((row) => dueAt(row, now)),
   );
   return Math.max(next, now + 60_000);

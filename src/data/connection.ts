@@ -124,6 +124,19 @@ async function sync(): Promise<void> {
   schedule(again ? 0 : awaitingX ? 3000 : 30_000);
 }
 
+const X_CHECK_EVERY_MS = 30_000;
+let xCheckedAt = 0;
+
+/** Ask the server to look at X now, then bring back what it found. */
+export function checkX(): void {
+  const token = getToken();
+  if (!token || !navigator.onLine || Date.now() - xCheckedAt < X_CHECK_EVERY_MS) return;
+  xCheckedAt = Date.now();
+  void fetch('/api/x/check', { method: 'POST', headers: { authorization: `Bearer ${token}` }, cache: 'no-store' })
+    .then(response => { if (response.ok) reconnect(); })
+    .catch(() => undefined);
+}
+
 function reconnect(): void {
   failures = 0;
   if (inflight) { again = true; return; }
@@ -146,10 +159,11 @@ export function startConnection(): void {
   window.addEventListener('offline', () => { controller?.abort(); clearTimeout(timer); setStatus({ state: 'offline' }); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') clearTimeout(timer);
-    else reconnect();
+    else { reconnect(); checkX(); }
   });
   window.addEventListener('focus', reconnect);
   void sync();
+  checkX();
 }
 
 export function whenSynced(): Promise<void> {
