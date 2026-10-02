@@ -20,7 +20,7 @@ function announceSaved(reply: boolean, requested: boolean, sending: boolean): vo
 export function publishPost(input: NewPost): string | null {
   try {
     const id = addPost(input);
-    const sending = postWillSyncToX(input.toX, input.content);
+    const sending = postWillSyncToX(input.toX, input.content, input.thread);
     trackPublication({ id, table: 'posts', requestedX: sending, skippedX: input.toX && !sending });
     announceSaved(false, input.toX, sending);
     return id;

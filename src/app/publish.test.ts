@@ -65,4 +65,15 @@ describe('publication feedback', () => {
     expect(publishPost({ content: '保留草稿', images: [], toX: true })).toBeNull();
     expect(toast).toHaveBeenCalledWith('发布失败，内容仍保留在输入框，请重试', 'error');
   });
+
+  it('saves the parts written with + as its thread, in order, and keeps the thread off X when one part is too long', () => {
+    const id = publishPost({ content: '第一条', images: [], toX: true, thread: ['第二条', '  ', '第三条'] })!;
+    const parts = Object.values(store.getTable('replies')).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    expect(parts.map((part) => [part.postId, part.content, part.thread, part.xSync])).toEqual([[id, '第二条', true, true], [id, '第三条', true, true]]);
+    expect(toast).toHaveBeenCalledWith('已发布到日记本，正在同步到 X', 'success');
+
+    const long = publishPost({ content: '短', images: [], toX: true, thread: ['长'.repeat(141)] })!;
+    expect(store.getCell('posts', long, 'xSync')).toBe(false);
+    expect(Object.values(store.getTable('replies')).find((part) => part.postId === long)?.xSync).toBe(false);
+  });
 });

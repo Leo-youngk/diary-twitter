@@ -58,10 +58,36 @@ const MSG = {
   parentFailed: '原帖还没有发到 X（见它的失败记录），处理好后再重试这条回复',
   plainRetweet: 'X 上只发出了纯转推，没有带上文字；请到 X 撤销这条转推，再决定是否重试',
   noLink: 'Buffer 没有返回原帖在 X 上的链接，这条回复无法发出',
+  threadParent: '这条和原帖作为串推一起发布；原帖没有发出，请重试原帖',
 };
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+const inThread = (store: MergeableStore, row: XRow) => row.kind === 'reply' && store.getCell('replies', row.id, 'thread') === true;
+
+/** The parts written with a post (its +), in order, which go to X in the same request. */
+function threadOf(store: MergeableStore, postId: string): string[] {
+  return Object.values(store.getTable('replies'))
+    .filter((reply) => reply.postId === postId && reply.thread === true && str(reply.content).trim())
+    .sort((a, b) => str(a.createdAt).localeCompare(str(b.createdAt)))
+    .map((reply) => str(reply.content).trim());
+}
+
+/** A thread part is never sent on its own: it shares its post's outcome and link. */
+async function followThreads(sql: D1Database, store: MergeableStore, now: number): Promise<void> {
+  const ledger = await readLedger(sql);
+  const byId = new Map(ledger.map((row) => [row.id, row]));
+  for (const row of ledger) {
+    if (row.state !== 'queued' || !inThread(store, row)) continue;
+    const parent = byId.get(row.parent);
+    if (parent?.state === 'sent') {
+      await updateRow(sql, row.id, { state: 'sent', link: parent.link, error: '', updated_at: now });
+    } else if (!parent || parent.state === 'failed' || parent.state === 'dismissed') {
+      await updateRow(sql, row.id, { state: 'failed', error: MSG.threadParent, updated_at: now });
+    }
+  }
 }
 
 /** A confirmed duplicate refusal can be reconciled against a uniquely
@@ -213,7 +239,8 @@ async function deliver(
     await updateRow(sql, row.id, { state: 'dismissed', error: MSG.deleted, updated_at: now });
     return;
   }
-  if (xWeightedLength(text) > X_MAX_WEIGHT) {
+  const thread = row.kind === 'post' ? threadOf(store, row.id) : [];
+  if ([text, ...thread].some((part) => xWeightedLength(part) > X_MAX_WEIGHT)) {
     await updateRow(sql, row.id, { state: 'failed', error: MSG.tooLong, updated_at: now });
     return;
   }
@@ -282,7 +309,7 @@ async function deliver(
   await updateRow(sql, row.id, { state: 'sending', text, updated_at: now });
   mirror(store, await readLedger(sql));
   await persist();
-  const result = await createBufferPost(env, text, quoteId);
+  const result = await createBufferPost(env, text, quoteId, thread);
   const done = Date.now();
 
   if (result.kind === 'ok') {
@@ -355,6 +382,7 @@ export async function runX(sql: D1Database, store: MergeableStore, env: BufferEn
     }
   }
 
+  await followThreads(sql, store, now);
   // Acknowledge receipt before any external request can hold up this pass.
   mirror(store, await readLedger(sql));
   await persist();
@@ -362,7 +390,7 @@ export async function runX(sql: D1Database, store: MergeableStore, env: BufferEn
   const cooldown = async () => Number(await getMeta(sql, 'buffer_retry_at') ?? 0);
   if (configured && (await cooldown()) <= now) {
     ledger = new Map((await readLedger(sql)).map((row) => [row.id, row]));
-    const due = [...ledger.values()].filter((row) => row.state === 'queued' && row.next_at <= now).slice(0, MAX_SEND_PER_RUN);
+    const due = [...ledger.values()].filter((row) => row.state === 'queued' && row.next_at <= now && !inThread(store, row)).slice(0, MAX_SEND_PER_RUN);
     for (const row of due) {
       if ((await cooldown()) > Date.now()) break;
       try {
@@ -389,6 +417,7 @@ export async function runX(sql: D1Database, store: MergeableStore, env: BufferEn
     }
   }
 
+  await followThreads(sql, store, Date.now());
   const rows = await readLedger(sql);
   mirror(store, rows);
   await persist();
@@ -396,6 +425,8 @@ export async function runX(sql: D1Database, store: MergeableStore, env: BufferEn
   if (!configured) return Infinity;
   let next = (await cooldown()) > now ? (await cooldown()) : Infinity;
   for (const row of rows) {
+    // Thread parts wait on their post, which keeps its own schedule.
+    if (inThread(store, row)) continue;
     if (row.state === 'queued' || row.state === 'publishing') next = Math.min(next, Math.max(row.next_at, (await cooldown()), now + 1000));
     if (row.state === 'sending') next = Math.min(next, Math.max(now + 1000, row.updated_at + SENDING_STALE_MS));
   }

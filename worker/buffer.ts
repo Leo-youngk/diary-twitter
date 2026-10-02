@@ -100,8 +100,11 @@ async function bufferRequest(
   }
 }
 
-/** Publish now. A quote needs the text both as the post and as the comment. */
-export async function createBufferPost(env: BufferEnv, text: string, quoteTweetId?: string): Promise<CreateResult> {
+/**
+ * Publish now. A quote needs the text both as the post and as the comment; a
+ * thread lists every part, the first one included, each replying to the one before.
+ */
+export async function createBufferPost(env: BufferEnv, text: string, quoteTweetId?: string, thread: string[] = []): Promise<CreateResult> {
   let status: number;
   let body: unknown;
   let retryAfterMs: number | undefined;
@@ -116,6 +119,7 @@ export async function createBufferPost(env: BufferEnv, text: string, quoteTweetI
         needsApproval: false,
         // Without `comment` Buffer publishes a plain retweet and drops `text`.
         ...(quoteTweetId ? { metadata: { twitter: { retweet: { id: quoteTweetId, comment: text } } } } : {}),
+        ...(!quoteTweetId && thread.length > 0 ? { metadata: { twitter: { thread: [text, ...thread].map((part) => ({ text: part })) } } } : {}),
       },
     }));
   } catch (error) {

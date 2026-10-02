@@ -43,6 +43,17 @@ describe('X delivery notifications', () => {
     expect(toast).toHaveBeenCalledWith('追加已同步到 X！🎉');
   });
 
+  it('announces a thread once, for its post, not again for each part', () => {
+    data.store.setRow('replies', 'part', { postId: 'post', content: '第二条', thread: true });
+    stop = notify.announceXDeliveries();
+    data.store.transaction(() => {
+      data.store.setRow('xposts', 'post', { state: 'sent', kind: 'post', at: now, link: 'https://x.com/me/status/1' });
+      data.store.setRow('xposts', 'part', { state: 'sent', kind: 'reply', at: now, link: 'https://x.com/me/status/1' });
+    });
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith('同步到 X 成功！🎉');
+  });
+
   it('does not repeat a terminal notification on metadata updates', () => {
     stop = notify.announceXDeliveries();
     data.store.setRow('xposts', 'post', { state: 'sent', kind: 'post', at: now });

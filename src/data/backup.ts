@@ -94,7 +94,7 @@ function parseV1(value: Record<string, unknown>): ParsedBackup | null {
     };
     for (const reply of Array.isArray(post.replies) ? post.replies : []) {
       if (!isRecord(reply) || !ROW_ID_PATTERN.test(str(reply.id))) continue;
-      replies[str(reply.id)] = { postId: str(post.id), content: str(reply.content), createdAt: str(reply.createdAt), xSync: reply.xSync === true };
+      replies[str(reply.id)] = { postId: str(post.id), content: str(reply.content), createdAt: str(reply.createdAt), xSync: reply.xSync === true, thread: false };
     }
   }
   const user = value.user;

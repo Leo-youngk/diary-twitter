@@ -51,4 +51,15 @@ describe('Buffer publishing failures', () => {
     const request = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(request.variables.input.metadata.twitter.retweet).toEqual({ id: '123', comment: '追加文字' });
   });
+
+  it('sends a thread as every part in order, the first one included', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: { createPost: {
+      __typename: 'PostActionSuccess', post: { id: 'b', status: 'sent', externalLink: 'https://x.com/me/status/789' },
+    } } }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await createBufferPost(env, '第一条', undefined, ['第二条', '第三条'])).toMatchObject({ kind: 'ok', status: 'sent' });
+    const input = JSON.parse(fetchMock.mock.calls[0][1].body).variables.input;
+    expect(input.text).toBe('第一条');
+    expect(input.metadata.twitter.thread).toEqual([{ text: '第一条' }, { text: '第二条' }, { text: '第三条' }]);
+  });
 });

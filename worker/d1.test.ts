@@ -202,4 +202,32 @@ describe('D1 X delivery safety and task leases', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect((await query<{next_at:number}>(db,"SELECT next_at FROM diary3_jobs WHERE name='x'"))[0].next_at).toBe(0);
   });
+
+  it('sends a post and the parts written with it as one X thread, and the parts share its outcome', async () => {
+    const at = Date.now();
+    const source = post()
+      .setRow('replies', 'b', { postId: 'p', content: '第三条', createdAt: new Date(at + 2).toISOString(), xSync: true, thread: true })
+      .setRow('replies', 'a', { postId: 'p', content: '第二条', createdAt: new Date(at + 1).toISOString(), xSync: true, thread: true });
+    await upload(source);
+    const loaded = await loadStore(db);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: { createPost: {
+      __typename: 'PostActionSuccess', post: { id: 'buffer', status: 'sent', externalLink: 'https://x.com/test/status/123' },
+    } } }))));
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const input = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body)).variables.input;
+    expect(input.metadata.twitter.thread).toEqual([{ text: 'test' }, { text: '第二条' }, { text: '第三条' }]);
+    for (const id of ['p', 'a', 'b']) expect(loaded.store.getRow('xposts', id)).toMatchObject({ state: 'sent', link: 'https://x.com/test/status/123' });
+  });
+  it('fails the parts of a thread with their post instead of sending them alone', async () => {
+    const source = post().setRow('replies', 'a', { postId: 'p', content: '第二条', createdAt: new Date(Date.now() + 1).toISOString(), xSync: true, thread: true });
+    await upload(source);
+    const loaded = await loadStore(db);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: { createPost: { __typename: 'InvalidInputError', message: 'bad' } } }))));
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(loaded.store.getCell('xposts', 'p', 'state')).toBe('failed');
+    expect(loaded.store.getRow('xposts', 'a')).toMatchObject({ state: 'failed', error: '这条和原帖作为串推一起发布；原帖没有发出，请重试原帖' });
+  });
 });

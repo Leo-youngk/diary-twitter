@@ -15,6 +15,7 @@ export interface Reply {
   content: string;
   createdAt: string;
   xSync: boolean;
+  thread: boolean;
 }
 
 export interface Goal {
@@ -75,8 +76,28 @@ export function usePosts(): Post[] {
   );
 }
 
+/**
+ * The home timeline, newest first, as on X: posts ('p:<id>') and each 追加
+ * on its own ('r:<id>'), quoting its post. Parts of a post's thread stay with the post.
+ */
+export function useFeedIds(): string[] {
+  const postIds = usePostIds();
+  const replyIds = ui.useSliceRowIds('quoteReplies', 'quote', indexes);
+  // createdAt is set once, so the ids alone say when the order can change.
+  return useMemo(() => [
+    ...postIds.map((id) => ({ key: `p:${id}`, at: String(store.getCell('posts', id, 'createdAt') ?? '') })),
+    ...replyIds.map((id) => ({ key: `r:${id}`, at: String(store.getCell('replies', id, 'createdAt') ?? '') })),
+  ].filter(({ at }) => at).sort((a, b) => b.at.localeCompare(a.at)).map(({ key }) => key), [postIds, replyIds]);
+}
+
 export function useReplyIds(postId: string): string[] {
   return ui.useSliceRowIds('repliesByPost', postId, indexes);
+}
+
+/** The parts written with a post (its +), oldest first. The flag is set once, at creation. */
+export function useThreadIds(postId: string): string[] {
+  const ids = useReplyIds(postId);
+  return useMemo(() => ids.filter((id) => store.getCell('replies', id, 'thread') === true), [ids]);
 }
 
 /** Every reply, newest first. */
@@ -87,7 +108,7 @@ export function useAllReplyIds(): string[] {
 export function useReply(id: string): Reply | null {
   const row = ui.useRow('replies', id, store);
   return useMemo(() => (row.createdAt
-    ? { id, postId: row.postId ?? '', content: row.content ?? '', createdAt: row.createdAt, xSync: row.xSync ?? false }
+    ? { id, postId: row.postId ?? '', content: row.content ?? '', createdAt: row.createdAt, xSync: row.xSync ?? false, thread: row.thread ?? false }
     : null), [id, row]);
 }
 

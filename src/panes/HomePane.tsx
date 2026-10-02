@@ -9,8 +9,10 @@ import Icon, { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
 import PaneLayout from '@/components/PaneLayout';
 import Timeline from '@/components/Timeline';
+import PostRow from '@/components/PostRow';
+import ReplyListItem from '@/components/ReplyListItem';
 import { useAwaitingFirstSync, useConnectionState } from '@/data/connection';
-import { usePostIds, useProfile } from '@/data/hooks';
+import { useFeedIds, useProfile } from '@/data/hooks';
 
 function ProfileButton() {
   const profile = useProfile();
@@ -32,9 +34,12 @@ function OfflineBadge() {
   );
 }
 
-/** Every post, newest first. */
+// A post, or a 追加 on its own quoting its post, as on X.
+const renderFeedRow = (key: string) => (key.startsWith('r:') ? <ReplyListItem id={key.slice(2)} /> : <PostRow id={key.slice(2)} />);
+
+/** Every post and 追加, newest first. */
 export default function HomePane() {
-  const ids = usePostIds();
+  const ids = useFeedIds();
   const awaitingFirstSync = useAwaitingFirstSync();
   const offline = useConnectionState() === 'offline';
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -74,7 +79,7 @@ export default function HomePane() {
         />
       )}
     >
-      <Timeline ids={ids} scrollRef={scrollRef} empty={empty} />
+      <Timeline ids={ids} scrollRef={scrollRef} empty={empty} renderRow={renderFeedRow} />
     </PaneLayout>
   );
 }
