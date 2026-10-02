@@ -20,7 +20,9 @@ export function announceXDeliveries(): () => void {
     if (row.state === 'failed') {
       toast(`${row.kind === 'reply' ? '追加同步到 X 失败' : 'X 同步失败'}：${row.error || '请查看帖子下的同步状态'}`, 'error');
     } else {
-      toast(row.kind === 'reply' ? '追加已同步到 X！🎉' : '同步到 X 成功！🎉');
+      const link = String(row.link ?? '');
+      toast(row.kind === 'reply' ? '追加已发到 X' : '已发到 X', 'success',
+        link ? { label: '查看', run: () => { window.open(link, '_blank', 'noopener'); } } : undefined);
     }
   });
   return () => store.delListener(listener);

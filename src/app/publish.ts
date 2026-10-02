@@ -1,20 +1,11 @@
 import { addPost, addReply, postWillSyncToX, replyWillSyncToX, type NewPost } from '@/data/actions';
-import { getConnectionState } from '@/data/connection';
 import { store } from '@/data/store';
 import { toast } from './toast';
 import { trackPublication } from './publications';
 
-/** Local saving and X publication are separate outcomes, in every compose UI. */
+/** The bar along the top shows the progress; only an X request that was dropped needs saying. */
 function announceSaved(reply: boolean, requested: boolean, sending: boolean): void {
-  const saved = reply ? '追加已保存' : '已发布到日记本';
-  if (sending) {
-    const online = getConnectionState() === 'online';
-    toast(online ? `${saved}，正在同步到 X` : '已保存到本机，等待连接后同步到 X', online ? 'success' : 'info');
-  } else if (requested) {
-    toast(`${saved}，超出 X 字数限制，未同步到 X`, 'info');
-  } else {
-    toast(`${saved}（未同步到 X）`);
-  }
+  if (requested && !sending) toast(`${reply ? '追加已保存' : '已发布到日记本'}，超出 X 字数限制，未同步到 X`, 'info');
 }
 
 export function publishPost(input: NewPost): string | null {

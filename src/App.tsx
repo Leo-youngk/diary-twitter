@@ -3,6 +3,7 @@ import { Stack } from '@/app/stack';
 import DesktopRail from '@/components/DesktopRail';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import LockScreen from '@/components/LockScreen';
+import PublishingBar from '@/components/PublishingBar';
 import Toasts from '@/components/Toasts';
 import { useSignedIn } from '@/data/auth';
 import { indexes, store } from '@/data/store';
@@ -22,6 +23,7 @@ export default function App() {
           <ErrorBoundary>
             <Stack />
           </ErrorBoundary>
+          <PublishingBar />
         </main>
       </div>
       <Toasts />

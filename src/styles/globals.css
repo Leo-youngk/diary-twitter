@@ -221,6 +221,16 @@ select {
     0% { transform: scale(0.7); }
     100% { transform: scale(1); }
   }
+
+  /* The publishing bar: eases towards the end of its stage and waits there. */
+  .publish-creep {
+    animation: publishCreep 1s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  }
+
+  @keyframes publishCreep {
+    from { transform: scaleX(var(--from)); }
+    to { transform: scaleX(var(--to)); }
+  }
 }
 
 /* The default focus ring is nearly invisible on the dark theme. Text fields
