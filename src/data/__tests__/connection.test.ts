@@ -13,6 +13,8 @@ let local: MergeableStore;
 let remote: Map<string, Required<SyncRecord>>;
 let revision: number;
 let fetchMock: ReturnType<typeof vi.fn>;
+// Unanswered by default, so the sync after a look at X stays out of the other tests.
+let xCheckStatus = 503;
 function respond(options: RequestInit) {
   const body = JSON.parse(String(options.body)) as { records: SyncRecord[]; cursor: number };
   for (const record of body.records) {
@@ -22,6 +24,7 @@ function respond(options: RequestInit) {
   const records = [...remote.values()].filter(record => record.revision > body.cursor).sort((a,b)=>a.revision-b.revision);
   return Response.json({ records, cursor: records.at(-1)?.revision ?? body.cursor, more:false });
 }
+const syncCalls = () => fetchMock.mock.calls.filter(([url]) => url === '/api/sync');
 async function remoteStore() {
   const store = createMergeableStore(); for (const record of remote.values()) store.applyMergeableChanges(recordContent(record)); return store;
 }
@@ -30,8 +33,8 @@ beforeEach(async () => {
   page = Object.assign(new EventTarget(), { visibilityState: 'visible' });
   vi.stubGlobal('document',page); vi.stubGlobal('window',new EventTarget());
   vi.stubGlobal('navigator',{onLine:true}); vi.stubGlobal('__BUILD_ID__','test build');
-  auth.token='test-token'; remote=new Map(); revision=0;
-  fetchMock=vi.fn(async (_url:unknown, options:RequestInit)=>respond(options)); vi.stubGlobal('fetch',fetchMock);
+  auth.token='test-token'; remote=new Map(); revision=0; xCheckStatus=503;
+  fetchMock=vi.fn(async (url:unknown, options:RequestInit)=>url==='/api/x/check'?new Response(null,{status:xCheckStatus}):respond(options)); vi.stubGlobal('fetch',fetchMock);
   local=createMergeableStore(); data.store=local;
   connection=await import('../connection');
 });
@@ -70,18 +73,18 @@ describe('HTTP offline synchronization',()=>{
     connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
     expect((await remoteStore()).getCell('posts','p','content')).toBe('second');
     expect(connection.useConnection().state).toBe('online');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(syncCalls()).toHaveLength(2);
   });
   it('does not reupload unchanged records during idle polling',async()=>{
     local.setRow('posts','p',{content:'saved'});
     connection.startConnection(); await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(30_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).records).toEqual([]);
+    expect(syncCalls()).toHaveLength(2);
+    expect(JSON.parse(syncCalls()[1][1].body).records).toEqual([]);
   });
   it('polls promptly while a new X post is still awaiting its server delivery row',async()=>{
     local.setRow('posts','p',{content:'new',entryType:'thought',xSync:true,createdAt:new Date().toISOString()});
     connection.startConnection(); await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(3000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(syncCalls()).toHaveLength(2);
   });
   it('catches up remote edits when returning from the background',async()=>{
     connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
@@ -102,5 +105,18 @@ describe('HTTP offline synchronization',()=>{
     connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
     const row=(await remoteStore()).getRow('xposts','p');
     expect(row).toEqual({command:'retry'});
+  });
+  it('asks the server to look at X when opened, at most every 30 seconds, then pulls what it found',async()=>{
+    xCheckStatus=204;
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    const checks = () => fetchMock.mock.calls.filter(([url]) => url === '/api/x/check');
+    expect(checks()).toHaveLength(1);
+    expect(checks()[0][1].headers).toEqual({ authorization: 'Bearer test-token' });
+    expect(syncCalls()).toHaveLength(2);
+    connection.checkX(); await vi.advanceTimersByTimeAsync(0);
+    expect(checks()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    connection.checkX(); await vi.advanceTimersByTimeAsync(0);
+    expect(checks()).toHaveLength(2);
   });
 });

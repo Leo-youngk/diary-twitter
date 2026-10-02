@@ -3,9 +3,9 @@ import { createMergeableStore } from 'tinybase';
 import { TABLES_SCHEMA, VALUES_SCHEMA, ROW_ID_PATTERN } from '../src/lib/schema';
 import { recordContent, splitContent, encodeJson, type SyncRecord } from '../src/lib/sync';
 import type { Env } from './env';
-import { databasePaused, dirtyJobs, pull, saveRecord } from './d1';
+import { databasePaused, dirtyJobs, execute, pull, saveRecord } from './d1';
 import { migrateLegacy } from './migrate';
-import { runJobs } from './jobs';
+import { runJob, runJobs } from './jobs';
 import type { LoginOutcome } from './login';
 import { d1Login } from './d1-login';
 
@@ -57,6 +57,16 @@ export class D1Diary extends DurableObject<Env> {
     if (await databasePaused(this.env.DB)) return;
     await this.ensureReady();
     await runJobs(this.env);
+  }
+
+  /** Look at X now rather than at the next minute; at most once every 20 seconds. */
+  async checkX(): Promise<void> {
+    if (await databasePaused(this.env.DB)) return;
+    await this.ensureReady();
+    // A run sets its next look a minute ahead, so a due time over 40s away means one ran under 20s ago.
+    // Failing or unconfigured stats keep their longer wait.
+    await execute(this.env.DB, `UPDATE diary3_jobs SET next_at=0 WHERE name='xstats' AND next_at>0 AND next_at<=?`, Date.now() + 40_000);
+    await runJob(this.env, 'xstats');
   }
 
   async signIn(ip: string, correct: boolean): Promise<LoginOutcome> {
