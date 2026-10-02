@@ -4,6 +4,15 @@ account_id = "8f92f605a9c8c7e4872d8869c72e1a59"
 main = "./worker/index.ts"
 compatibility_date = "2026-08-04"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "diary-pwa-db"
+database_id = "709caf1f-c209-4d1a-a123-272b7860c543"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["* * * * *"]
+
 [assets]
 # The client is a single-page app; unknown paths fall back to index.html.
 not_found_handling = "single-page-application"
@@ -18,6 +27,14 @@ class_name = "DiarySpace"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["DiarySpace"]
+
+[[durable_objects.bindings]]
+name = "DIARY"
+class_name = "D1Diary"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["D1Diary"]
 
 # Images and daily backups.
 [[kv_namespaces]]
