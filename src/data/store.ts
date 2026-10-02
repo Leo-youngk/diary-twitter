@@ -33,3 +33,11 @@ export function loadLocal(): Promise<void> {
   loaded ??= persister.startAutoPersisting().then(() => undefined);
   return loaded;
 }
+
+/** Write this device's copy now, without waiting for the automatic save. */
+export async function saveLocal(): Promise<void> {
+  // Saving before the copy has loaded would overwrite it with an empty store.
+  if (!loaded) return;
+  await loaded;
+  await persister.save();
+}
