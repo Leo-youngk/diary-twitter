@@ -13,7 +13,7 @@ import { imageSrc, storeImage } from '@/data/blobs';
 import { getDeviceId } from '@/data/auth';
 import { useConnection } from '@/data/connection';
 import { useDevices, useProfile, useXPosts } from '@/data/hooks';
-import { store } from '@/data/store';
+import { saveLocal, store } from '@/data/store';
 import { AVATAR_OPTS, BANNER_OPTS, compressImage } from '@/lib/image';
 import type { ProfileValues } from '@/lib/schema';
 import { cn } from '@/lib/utils';
@@ -194,6 +194,17 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
     }
   };
 
+  const changeTheme = async (theme: Theme) => {
+    if (theme === prefs.theme) return;
+    setPreference('theme', theme);
+    // iOS colours a home-screen app's status bar once, at load; only a reload repaints it.
+    if ((navigator as Navigator & { standalone?: boolean }).standalone !== true) return;
+    // A tap on iOS does not blur the profile field being edited, and it saves on blur.
+    (document.activeElement as HTMLElement | null)?.blur();
+    await saveLocal().catch(() => undefined);
+    location.reload();
+  };
+
   const syncText = connection.state === 'online'
     ? `已连接${connection.syncedAt ? ` · ${new Date(connection.syncedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 同步` : ''}`
     : connection.state === 'connecting' ? '正在连接…' : '离线，改动保存在本机，联网后自动同步';
@@ -205,7 +216,7 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
         <div data-scroll-root className="relative flex-1 overflow-y-auto pb-16">
           <Section title="外观">
             <Row label="主题">
-              <Segmented<Theme> value={prefs.theme} onChange={(v) => setPreference('theme', v)} options={[['zen', '禅'], ['light', '浅色'], ['dark', '深色']]} />
+              <Segmented<Theme> value={prefs.theme} onChange={(v) => { void changeTheme(v); }} options={[['zen', '禅'], ['light', '浅色'], ['dark', '深色']]} />
             </Row>
             <Row label="字体">
               <Segmented<FontFamily> value={prefs.font} onChange={(v) => setPreference('font', v)} options={[['system', '苹方'], ['noto', '思源'], ['song', '宋体']]} />
