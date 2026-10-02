@@ -3,10 +3,11 @@ import { createMergeableStore } from 'tinybase';
 import { TABLES_SCHEMA, VALUES_SCHEMA, ROW_ID_PATTERN } from '../src/lib/schema';
 import { recordContent, splitContent, encodeJson, type SyncRecord } from '../src/lib/sync';
 import type { Env } from './env';
-import { dirtyJobs, execute, pull, query, saveRecord } from './d1';
+import { dirtyJobs, pull, saveRecord } from './d1';
 import { migrateLegacy } from './migrate';
 import { runJobs } from './jobs';
-import { ALL_LIMIT, ALL_LOCK_MS, ALL_WINDOW_MS, IP_LIMIT, IP_LOCK_MS, type LoginOutcome } from './login';
+import type { LoginOutcome } from './login';
+import { d1Login } from './d1-login';
 
 /** Compute coordinator only. All durable data lives in D1; no DO storage writes. */
 export class D1Diary extends DurableObject<Env> {
@@ -58,26 +59,6 @@ export class D1Diary extends DurableObject<Env> {
 
   async signIn(ip: string, correct: boolean): Promise<LoginOutcome> {
     await this.ensureReady();
-    const now = Date.now();
-    const keys = [`ip:${ip}`, 'all'];
-    const locked = await query<{ locked_until: number }>(this.env.DB, 'SELECT locked_until FROM diary3_login WHERE key IN (?,?) AND locked_until>?', ...keys, now);
-    if (locked.length) return { result: 'locked', retryAfterMs: Math.max(...locked.map(row => row.locked_until)) - now };
-    if (correct) {
-      await execute(this.env.DB, 'DELETE FROM diary3_login WHERE key=?', keys[0]);
-      return { result: 'ok' };
-    }
-    await this.env.DB.batch(keys.map((key, index) => {
-      const window = index === 0 ? IP_LOCK_MS : ALL_WINDOW_MS;
-      const limit = index === 0 ? IP_LIMIT : ALL_LIMIT;
-      const lock = index === 0 ? IP_LOCK_MS : ALL_LOCK_MS;
-      return this.env.DB.prepare(`INSERT INTO diary3_login(key,failures,window_start,locked_until) VALUES(?,1,?,0)
-        ON CONFLICT(key) DO UPDATE SET
-        locked_until=CASE WHEN diary3_login.window_start+?>? AND diary3_login.failures+1>=? THEN ? ELSE diary3_login.locked_until END,
-        failures=CASE WHEN diary3_login.window_start+?>? THEN diary3_login.failures+1 ELSE 1 END,
-        window_start=CASE WHEN diary3_login.window_start+?>? THEN diary3_login.window_start ELSE ? END
-        WHERE diary3_login.locked_until<=?`).bind(key, now, window, now, limit, now+lock, window, now, window, now, now, now);
-    }));
-    const after = await query<{ locked_until: number }>(this.env.DB, 'SELECT locked_until FROM diary3_login WHERE key IN (?,?) AND locked_until>?', ...keys, now);
-    return after.length ? { result: 'locked', retryAfterMs: Math.max(...after.map(row => row.locked_until)) - now } : { result: 'wrong' };
+    return d1Login(this.env.DB, ip, correct);
   }
 }

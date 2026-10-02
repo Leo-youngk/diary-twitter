@@ -13,8 +13,21 @@ export interface LegacySnapshot {
 
 /** Only callable through a private Cloudflare binding; no admin HTTP route. */
 export async function migrateLegacy(env: Env): Promise<void> {
-  if (await getMeta(env.DB, 'migration_complete') === '1') return;
-  if (!env.SPACE_ID) throw new Error('缺少日记空间配置');
+  if (!env.SPACE_ID || !env.SESSION_SECRET) throw new Error('缺少日记空间配置');
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env.SESSION_SECRET));
+  const owner = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2,'0')).join('');
+  if (await getMeta(env.DB, 'migration_complete') === '1') {
+    // The initial D1 deployment may finish importing before this ownership
+    // guard is rolled out. Bind that import only to its existing space.
+    if (await getMeta(env.DB, 'owner_auth') === null && await getMeta(env.DB, 'code') === env.SPACE_ID) {
+      await setMeta(env.DB, 'owner_space', env.SPACE_ID);
+      await setMeta(env.DB, 'owner_auth', owner);
+    }
+    if (await getMeta(env.DB, 'owner_space') !== env.SPACE_ID || await getMeta(env.DB, 'owner_auth') !== owner) {
+      throw new Error('当前部署与 D1 日记空间不匹配');
+    }
+    return;
+  }
   const snapshot = decodeJson<LegacySnapshot>(await env.SPACES.get(env.SPACES.idFromName(env.SPACE_ID)).exportForMigration());
   const source = createMergeableStore().setMergeableContent(snapshot.content);
   await env.DATA_KV.put(`diary-migration:${env.SPACE_ID}:d1-v3`, encodeJson(snapshot));
@@ -44,6 +57,8 @@ export async function migrateLegacy(env: Env): Promise<void> {
   for (const name of ['x', 'obsidian', 'xstats', 'backup']) {
     await execute(env.DB, 'INSERT OR IGNORE INTO diary3_jobs(name) VALUES(?)', name);
   }
+  await setMeta(env.DB, 'owner_space', env.SPACE_ID);
+  await setMeta(env.DB, 'owner_auth', owner);
   await setMeta(env.DB, 'migration_complete', '1');
   console.info('[d1] migration complete', { posts: source.getRowCount('posts'), replies: source.getRowCount('replies'), xLedger: snapshot.x.length });
 }

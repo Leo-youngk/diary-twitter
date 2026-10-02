@@ -9,6 +9,7 @@ import { runJob } from './jobs';
 import { runX, insertLedgerRow } from './delivery/x';
 import type { Env } from './env';
 import { migrateLegacy, type LegacySnapshot } from './migrate';
+import { d1Login } from './d1-login';
 
 interface Database {
   prepare(sql: string): { all(...bindings: unknown[]): Record<string, unknown>[]; run(...bindings: unknown[]): { changes: number } };
@@ -54,9 +55,24 @@ async function upload(store: ReturnType<typeof createMergeableStore>) {
 }
 
 function post() { return createMergeableStore().setRow('posts', 'p', { content: 'test', entryType: 'thought', xSync: true, createdAt: new Date().toISOString() }); }
-const env = () => ({ DB: db, BUFFER_API_KEY: 'test', BUFFER_CHANNEL_ID: 'test', SPACE_ID: 'test' }) as Env;
+const env = () => ({ DB: db, BUFFER_API_KEY: 'test', BUFFER_CHANNEL_ID: 'test', SPACE_ID: 'test', SESSION_SECRET:'test-session' }) as Env;
 
 describe('D1 incremental CRDT persistence', () => {
+  it('preserves per-address login limits and expires the lock', async () => {
+    const now=Date.now();
+    for(let i=0;i<4;i++) expect(await d1Login(db,'one',false,now)).toEqual({result:'wrong'});
+    expect(await d1Login(db,'one',false,now)).toMatchObject({result:'locked'});
+    expect(await d1Login(db,'one',true,now)).toMatchObject({result:'locked'});
+    expect(await d1Login(db,'two',true,now)).toEqual({result:'ok'});
+    expect(await d1Login(db,'one',true,now+16*60_000)).toEqual({result:'ok'});
+  });
+  it('preserves the global login limit across different addresses', async () => {
+    const now=Date.now();
+    for(let i=0;i<29;i++) expect(await d1Login(db,String(i),false,now)).toEqual({result:'wrong'});
+    expect(await d1Login(db,'last',false,now)).toMatchObject({result:'locked'});
+    expect(await d1Login(db,'new',true,now)).toMatchObject({result:'locked'});
+    expect(await d1Login(db,'new',true,now+61*60_000)).toEqual({result:'ok'});
+  });
   it('preserves merge metadata, profile values and deletion tombstones in JSON', async () => {
     const source = post().setValue('displayName', 'journal').setRow('replies', 'r', { content: 'reply' });
     source.delRow('replies', 'r');
@@ -123,6 +139,7 @@ describe('D1 X delivery safety and task leases', () => {
     expect(await query(db,'SELECT buffer_id FROM diary3_x')).toEqual([{buffer_id:'existing-buffer'}]);
     expect(await query(db,'SELECT value FROM diary3_meta WHERE key=?','migration_complete')).toEqual([{value:'1'}]);
     expect(decodeJson<LegacySnapshot>(put.mock.calls[0][1]).content).toEqual(source.getMergeableContent());
+    await expect(migrateLegacy({...migrationEnv,SESSION_SECRET:'other-site'})).rejects.toThrow('不匹配');
   });
   it('commits sending before the external request and commits its final link', async () => {
     const source = post(); await upload(source);

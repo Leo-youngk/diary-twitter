@@ -14,7 +14,7 @@ D1 free writes also have a 100,000-row daily limit. This migration reduces write
 
 ## Migration and delivery
 
-The first private `D1Diary` call exports the frozen legacy store, waits for any in-progress legacy delivery, closes old sync sockets, saves a full KV checkpoint, copies X/Obsidian/login ledgers, and copies all stamped diary/profile records. It verifies content before marking migration complete or allowing new tasks to execute. Interrupted imports are repeatable; they never reset existing delivery IDs. The original DO data is retained.
+The first private `D1Diary` call exports the frozen legacy store, waits for any in-progress legacy delivery, closes old sync sockets, saves a full KV checkpoint, copies X/Obsidian/login ledgers, and copies all stamped diary/profile records. It verifies content before marking migration complete or allowing new tasks to execute. Interrupted imports are repeatable; they never reset existing delivery IDs. The original DO data is retained. The imported database is bound to its space and the hash of its session signing key, so other deployment targets cannot attach a different authentication configuration to it.
 
 X delivery commits and awaits the D1 `sending` state before contacting Buffer. Ambiguous outcomes require user review and are never automatically resent. Migrated Buffer IDs and sent links are retained. Devices can submit retry/dismiss commands, while delivery outcomes and metrics remain server-owned.
 
