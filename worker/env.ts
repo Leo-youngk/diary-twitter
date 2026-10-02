@@ -1,6 +1,9 @@
 import type { DiarySpace } from './space';
+import type { D1Diary } from './d1-space';
 
 export interface Env {
+  DB: D1Database;
+  DIARY: DurableObjectNamespace<D1Diary>;
   SPACES: DurableObjectNamespace<DiarySpace>;
   /** Images and daily backups. */
   DATA_KV: KVNamespace;

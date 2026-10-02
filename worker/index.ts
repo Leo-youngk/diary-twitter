@@ -1,9 +1,11 @@
 import { Hono, type Context } from 'hono';
 import { BLOB_HASH_PATTERN } from '../src/lib/schema';
-import { bearer, issueToken, passphraseMatches, SYNC_PROTOCOL, tokenFromProtocols, verifyToken } from './auth';
+import { bearer, issueToken, passphraseMatches, verifyToken } from './auth';
+import type { SyncRecord } from '../src/lib/sync';
 import type { Env } from './env';
 
 export { DiarySpace } from './space';
+export { D1Diary } from './d1-space';
 
 const MAX_BLOB_BYTES = 8 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -30,7 +32,7 @@ app.post('/api/session', async (c) => {
   const body = await c.req.json<{ passphrase?: unknown }>().catch(() => ({ passphrase: undefined }));
   const given = typeof body.passphrase === 'string' ? body.passphrase : '';
   if (!given) return c.json({ error: '口令不对' }, 401);
-  const stub = c.env.SPACES.get(c.env.SPACES.idFromName(settings.space));
+  const stub = c.env.DIARY.get(c.env.DIARY.idFromName(settings.space));
   const outcome = await stub.signIn(c.req.header('cf-connecting-ip') ?? 'unknown', await passphraseMatches(settings.passphrase, given));
   if (outcome.result === 'locked') {
     const minutes = Math.ceil(outcome.retryAfterMs / 60_000);
@@ -49,29 +51,22 @@ app.get('/api/session', async (c) => {
     : c.json({ error: '需要重新输入口令' }, 401);
 });
 
-app.get('/api/sync', async (c) => {
+app.post('/api/sync', async (c) => {
   const settings = config(c.env);
   if (!settings) return notConfigured(c);
-  if (c.req.header('upgrade')?.toLowerCase() !== 'websocket') {
-    return c.json({ error: 'Expected a WebSocket upgrade' }, 426);
-  }
-  const deviceId = await verifyToken(settings.secret, tokenFromProtocols(c.req.header('sec-websocket-protocol') ?? null));
+  const deviceId = await verifyToken(settings.secret, bearer(c.req.header('authorization')));
   if (!deviceId) return c.json({ error: '需要重新输入口令' }, 401);
 
-  const stub = c.env.SPACES.get(c.env.SPACES.idFromName(settings.space));
-  await stub.ensureReady(settings.space, {
+  const text = await c.req.text();
+  if (text.length > 2_000_000) return c.json({ error: '本次同步内容过多' }, 413);
+  const body = JSON.parse(text) as { records: SyncRecord[]; cursor: number; name?: string; build?: string };
+  if (!Array.isArray(body.records)) return c.json({ error: '无效同步请求' }, 400);
+  const stub = c.env.DIARY.get(c.env.DIARY.idFromName(settings.space));
+  return c.json(await stub.sync(body.records, body.cursor, {
     id: deviceId,
-    name: (c.req.query('name') ?? '').slice(0, 60),
-    build: (c.req.query('build') ?? '').slice(0, 60),
-  });
-  // TinyBase's Durable Object routes on the path.
-  const url = new URL(c.req.url);
-  url.pathname = `/${settings.space}`;
-  url.search = '';
-  const response = await stub.fetch(new Request(url.toString(), c.req.raw));
-  if (response.status !== 101 || !response.webSocket) return response;
-  // The browser drops the connection unless the chosen subprotocol is echoed.
-  return new Response(null, { status: 101, webSocket: response.webSocket, headers: { 'sec-websocket-protocol': SYNC_PROTOCOL } });
+    name: String(body.name ?? '').slice(0, 60),
+    build: String(body.build ?? '').slice(0, 60),
+  }), 200, { 'cache-control': 'no-store' });
 });
 
 // Images are content-addressed: a URL names exactly one image, and only
@@ -112,4 +107,14 @@ app.put('/api/blob/:hash', async (c) => {
 // sync-code routes). A tab that is still open gets told to reload.
 app.all('/api/*', (c) => c.json({ error: '应用已更新，请重新打开' }, 410));
 
-export default app;
+app.onError((error, c) => {
+  console.error('[api] request failed', String(error));
+  return c.json({ error: '服务器暂时不可用，本机保存的内容会稍后同步' }, 503);
+});
+
+export default {
+  fetch: app.fetch,
+  scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (env.SPACE_ID) ctx.waitUntil(env.DIARY.get(env.DIARY.idFromName(env.SPACE_ID)).tasks());
+  },
+};

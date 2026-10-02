@@ -8,6 +8,8 @@ import { runObsidian } from './obsidian';
 import { getMeta, migrateAppTables, setMeta } from './sql';
 import { runX } from './x';
 import { runXStats } from './xstats';
+import type { LegacySnapshot } from './migrate';
+import { encodeJson } from '../src/lib/sync';
 
 // Changes are batched: one pass runs shortly after the first pending edit.
 const RECONCILE_DELAY_MS = 2000;
@@ -33,6 +35,24 @@ export class DiarySpace extends WsServerDurableObject<Env> {
   // a class field would be reset to undefined once that constructor returns.
   declare private store: MergeableStore | undefined;
   declare private reconcileScheduling: Promise<void> | undefined;
+  declare private migrationFrozen: boolean | undefined;
+  declare private alarmRunning: Promise<void> | undefined;
+
+  /** Private binding RPC: freeze the old copy before the D1 migration reads it. */
+  async exportForMigration() {
+    this.migrationFrozen = true;
+    for (const socket of this.ctx.getWebSockets()) socket.close(1012, '应用已更新，请重新打开');
+    if (this.alarmRunning) await this.alarmRunning;
+    // With D1 bound, the legacy persister and alarm are read-only. Exporting
+    // must also work when the old DO's daily write quota is exhausted.
+    const read = (table: string) => this.ctx.storage.sql.exec(`SELECT * FROM ${table}`).toArray();
+    if (!this.store) throw new Error('旧日记未加载，迁移已停止');
+    const snapshot = {
+      content: this.store.getMergeableContent(),
+      meta: read('app_meta'), x: read('app_x'), obsidian: read('app_obsidian'), login: read('app_login'),
+    } as LegacySnapshot;
+    return encodeJson(snapshot);
+  }
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -58,7 +78,7 @@ export class DiarySpace extends WsServerDurableObject<Env> {
     store.addCellListener('xposts', null, 'command', (_store, _table, _row, _cell, command) => {
       if (command === 'retry' || command === 'dismiss') changed();
     });
-    return persister;
+    return this.env.DB ? { ...persister, startAutoSave: async () => persister } : persister;
   }
 
   // Phones behind slow networks need more than the one-second default.
@@ -91,6 +111,7 @@ export class DiarySpace extends WsServerDurableObject<Env> {
   }
 
   private requestReconcile(): Promise<void> {
+    if (this.env.DB || this.migrationFrozen || getMeta(this.ctx.storage.sql, 'd1_frozen') === '1') return Promise.resolve();
     // Coalesce only concurrent storage operations. A later edit or reconnect
     // must check the persisted alarm again, including recovery from a lost one.
     return this.reconcileScheduling ??= (async () => {
@@ -106,6 +127,12 @@ export class DiarySpace extends WsServerDurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
+    if (this.env.DB || this.migrationFrozen || getMeta(this.ctx.storage.sql, 'd1_frozen') === '1') return;
+    this.alarmRunning = this.reconcile();
+    try { await this.alarmRunning; } finally { this.alarmRunning = undefined; }
+  }
+
+  private async reconcile(): Promise<void> {
     console.info('[space] reconcile alarm');
     const sql = this.ctx.storage.sql;
     const store = this.store;

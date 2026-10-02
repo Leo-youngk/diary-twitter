@@ -65,6 +65,7 @@ beforeEach(() => {
       setAlarm: vi.fn(async (at: number) => { alarmAt = at; }),
     },
     waitUntil: (promise: Promise<unknown>) => { pending.push(promise); },
+    getWebSockets: () => [],
     blockConcurrencyWhile: (callback: () => Promise<unknown>) => {
       initialized = callback();
       return initialized;
@@ -93,6 +94,19 @@ function storeOf(space: DiarySpace): MergeableStore {
 }
 
 describe('background reconciliation scheduling', () => {
+  it('exports the legacy store read-only when D1 is bound, even on object initialization', async () => {
+    const seed = createMergeableStore().setRow('posts', 'p', { content: 'archive', xSync: false });
+    const persister = createDurableObjectSqlStoragePersister(seed, sql, { mode: 'fragmented', storagePrefix: 'tb_' });
+    await persister.save();
+    const space = new DiarySpace(ctx, { DB: {} } as ConstructorParameters<typeof DiarySpace>[1]);
+    await initialized; await flush();
+    const before = sql.exec<{ n: number }>('SELECT total_changes() AS n').toArray()[0].n;
+    const snapshot = JSON.parse(await space.exportForMigration());
+    expect(snapshot.content[0][0].posts[0].p[0].content[0]).toBe('archive');
+    await space.alarm(); await space.exportForMigration();
+    expect(sql.exec<{ n: number }>('SELECT total_changes() AS n').toArray()[0].n).toBe(before);
+    expect(ctx.storage.setAlarm).not.toHaveBeenCalled();
+  });
   it('does not schedule another alarm from an empty delivery pass', async () => {
     const space = await open();
     await space.ensureReady('test-space', device);
