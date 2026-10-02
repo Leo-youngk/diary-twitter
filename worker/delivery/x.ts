@@ -80,12 +80,17 @@ async function followThreads(sql: D1Database, store: MergeableStore, now: number
   const ledger = await readLedger(sql);
   const byId = new Map(ledger.map((row) => [row.id, row]));
   for (const row of ledger) {
-    if (row.state !== 'queued' || !inThread(store, row)) continue;
+    if (!['queued', 'failed'].includes(row.state) || !inThread(store, row)) continue;
     const parent = byId.get(row.parent);
     if (parent?.state === 'sent') {
       await updateRow(sql, row.id, { state: 'sent', link: parent.link, error: '', updated_at: now });
     } else if (!parent || parent.state === 'failed' || parent.state === 'dismissed') {
-      await updateRow(sql, row.id, { state: 'failed', error: MSG.threadParent, updated_at: now });
+      if (row.state !== 'failed' || row.error !== MSG.threadParent) {
+        await updateRow(sql, row.id, { state: 'failed', error: MSG.threadParent, updated_at: now });
+      }
+    } else if (row.state === 'failed') {
+      // A retry of the root resumes its parts too; they still never send alone.
+      await updateRow(sql, row.id, { state: 'queued', error: '', updated_at: now });
     }
   }
 }
@@ -168,12 +173,15 @@ async function applyCommands(sql: D1Database, store: MergeableStore, ledger: Map
   for (const [id, row] of Object.entries(xposts)) {
     const command = str(row.command);
     if (!command) continue;
-    const entry = ledger.get(id);
+    const requested = ledger.get(id);
+    // The retry button on a thread part retries the same Buffer publication.
+    const entry = command === 'retry' && requested && inThread(store, requested)
+      ? ledger.get(requested.parent) : requested;
     if (command === 'retry' && entry && (entry.state === 'failed' || entry.state === 'dismissed') && !configured) {
       // Nothing here could ever send it; a queued row would wait forever.
-      await updateRow(sql, id, { state: 'failed', error: MSG.notConfigured, updated_at: now });
+      await updateRow(sql, entry.id, { state: 'failed', error: MSG.notConfigured, updated_at: now });
     } else if (command === 'retry' && entry && (entry.state === 'failed' || entry.state === 'dismissed')) {
-      await updateRow(sql, id, {
+      await updateRow(sql, entry.id, {
         state: 'queued', attempts: 0, next_at: 0, error: '', updated_at: now,
         // Only this explicit retry acknowledges that the user undid the plain retweet.
         ...(entry.error === MSG.plainRetweet ? { buffer_id: '' } : {}),

@@ -60,6 +60,6 @@ describe('Buffer publishing failures', () => {
     expect(await createBufferPost(env, '第一条', undefined, ['第二条', '第三条'])).toMatchObject({ kind: 'ok', status: 'sent' });
     const input = JSON.parse(fetchMock.mock.calls[0][1].body).variables.input;
     expect(input.text).toBe('第一条');
-    expect(input.metadata.twitter.thread).toEqual([{ text: '第一条' }, { text: '第二条' }, { text: '第三条' }]);
+    expect(input.metadata.twitter.thread).toEqual([{ text: '第一条', assets: [] }, { text: '第二条', assets: [] }, { text: '第三条', assets: [] }]);
   });
 });

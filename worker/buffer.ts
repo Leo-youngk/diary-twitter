@@ -119,7 +119,7 @@ export async function createBufferPost(env: BufferEnv, text: string, quoteTweetI
         needsApproval: false,
         // Without `comment` Buffer publishes a plain retweet and drops `text`.
         ...(quoteTweetId ? { metadata: { twitter: { retweet: { id: quoteTweetId, comment: text } } } } : {}),
-        ...(!quoteTweetId && thread.length > 0 ? { metadata: { twitter: { thread: [text, ...thread].map((part) => ({ text: part })) } } } : {}),
+        ...(!quoteTweetId && thread.length > 0 ? { metadata: { twitter: { thread: [text, ...thread].map((part) => ({ text: part, assets: [] })) } } } : {}),
       },
     }));
   } catch (error) {

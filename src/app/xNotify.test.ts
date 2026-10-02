@@ -51,7 +51,7 @@ describe('X delivery notifications', () => {
       data.store.setRow('xposts', 'part', { state: 'sent', kind: 'reply', at: now, link: 'https://x.com/me/status/1' });
     });
     expect(toast).toHaveBeenCalledTimes(1);
-    expect(toast).toHaveBeenCalledWith('同步到 X 成功！🎉');
+    expect(toast).toHaveBeenCalledWith('已发到 X', 'success', { label: '查看', run: expect.any(Function) });
   });
 
   it('does not repeat a terminal notification on metadata updates', () => {

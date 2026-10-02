@@ -40,6 +40,14 @@ export function outgoingRecords(): SyncRecord[] {
     for (const cell of Object.keys(cells)) if (cell !== 'command') delete cells[cell];
     const onlyCommand = createMergeableStore().applyMergeableChanges(content);
     return splitContent(onlyCommand.getMergeableContent());
+  }).sort((a, b) => {
+    // The server may publish as soon as it sees a root. Send its thread parts
+    // first, including when the durable outbox needs several HTTP batches.
+    const priority = (record: SyncRecord) => {
+      const [, table, id] = record.key.split(':');
+      return table === 'replies' && store.getCell('replies', id, 'thread') === true ? 0 : 1;
+    };
+    return priority(a) - priority(b);
   });
 }
 
