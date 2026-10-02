@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createMergeableStore } from 'tinybase';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordContent, splitContent, encodeJson, decodeJson } from '../src/lib/sync';
-import { dirtyJobs, loadStore, pull, query, saveRecord, saveStore } from './d1';
+import { databasePaused, dirtyJobs, loadStore, pull, query, saveRecord, saveStore, setMeta } from './d1';
 import { runJob } from './jobs';
 import { runX, insertLedgerRow, publishedDuplicate } from './delivery/x';
 import type { Env } from './env';
@@ -58,6 +58,15 @@ function post() { return createMergeableStore().setRow('posts', 'p', { content: 
 const env = () => ({ DB: db, BUFFER_API_KEY: 'test', BUFFER_CHANNEL_ID: 'test', SPACE_ID: 'test', SESSION_SECRET:'test-session' }) as Env;
 
 describe('D1 incremental CRDT persistence', () => {
+  it('keeps a retired database frozen without writing on maintenance checks', async () => {
+    expect(await databasePaused(db)).toBe(false);
+    await setMeta(db, 'maintenance', '1');
+    const before = changes();
+    expect(await databasePaused(db)).toBe(true);
+    expect(changes()).toBe(before);
+    await setMeta(db, 'maintenance', '0');
+    expect(await databasePaused(db)).toBe(false);
+  });
   it('preserves per-address login limits and expires the lock', async () => {
     const now=Date.now();
     for(let i=0;i<4;i++) expect(await d1Login(db,'one',false,now)).toEqual({result:'wrong'});

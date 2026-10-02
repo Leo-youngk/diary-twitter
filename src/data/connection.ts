@@ -1,13 +1,13 @@
 import { useSyncExternalStore } from 'react';
 import { createMergeableStore } from 'tinybase';
-import { recordContent, splitContent, type SyncRecord, type SyncResponse } from '@/lib/sync';
+import { recordContent, rowRecord, splitContent, type SyncRecord, type SyncResponse } from '@/lib/sync';
 import { deviceName, getToken, onTokenChange, signOut } from './auth';
 import { store } from './store';
 
 export type ConnectionState = 'connecting' | 'online' | 'offline';
-interface Status { state: ConnectionState; syncedAt: number | null }
+interface Status { state: ConnectionState; syncedAt: number | null; error: string }
 const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
-let status: Status = { state: 'connecting', syncedAt: null };
+let status: Status = { state: 'connecting', syncedAt: null, error: '' };
 const listeners = new Set<() => void>();
 const firstSync: Array<() => void> = [];
 const acknowledged = new Map<string, string>();
@@ -80,7 +80,10 @@ async function sync(): Promise<void> {
       } finally { clearTimeout(timeout); }
       if (ownEpoch !== epoch) return;
       if (response.status === 401) { signOut(); setStatus({ state: 'offline' }); return; }
-      if (!response.ok) throw new Error(`同步请求失败 (${response.status})`);
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(detail?.error || `同步请求失败 (${response.status})`);
+      }
       const body = await response.json() as SyncResponse;
       if (!Array.isArray(body.records) || !Number.isSafeInteger(body.cursor) || body.cursor < cursor) throw new Error('无效同步响应');
       // Acknowledge exactly what was sent. Edits made while awaiting the
@@ -95,16 +98,18 @@ async function sync(): Promise<void> {
       const local = new Map(outgoingRecords().map(record => [record.key, record.data]));
       for (const record of body.records) if (local.get(record.key) === record.data) acknowledged.set(record.key, record.data);
       cursor = body.cursor;
+      // Publish per-row acknowledgements even when another batch is pending.
+      setStatus({ state: 'online', error: '' });
       more = body.more || outgoingRecords().some(record => acknowledged.get(record.key) !== record.data);
     }
     if (ownEpoch !== epoch) return;
     failures = 0;
-    setStatus({ state: 'online', syncedAt: Date.now() });
+    setStatus({ state: 'online', syncedAt: Date.now(), error: '' });
     firstSync.splice(0).forEach(resolve => resolve());
   } catch (error) {
     if (ownEpoch !== epoch) return;
     console.warn('[sync] HTTP sync failed', error instanceof Error ? error.message : '连接异常');
-    setStatus({ state: 'offline' });
+    setStatus({ state: 'offline', error: error instanceof Error ? error.message : '连接异常' });
     schedule(BACKOFF_MS[Math.min(failures++, BACKOFF_MS.length - 1)]);
     return;
   } finally {
@@ -134,7 +139,7 @@ export function startConnection(): void {
   onTokenChange(() => {
     epoch++; controller?.abort(); clearTimeout(timer);
     cursor = 0; acknowledged.clear();
-    setStatus({ state: getToken() ? 'connecting' : 'offline', syncedAt: null });
+    setStatus({ state: getToken() ? 'connecting' : 'offline', syncedAt: null, error: '' });
     if (getToken()) reconnect();
   });
   window.addEventListener('online', reconnect);
@@ -154,4 +159,17 @@ function subscribe(listener: () => void): () => void { listeners.add(listener); 
 export function useConnection(): Status { return useSyncExternalStore(subscribe, () => status); }
 export function useConnectionState(): ConnectionState { return useSyncExternalStore(subscribe, () => status.state); }
 export function getConnectionState(): ConnectionState { return status.state; }
+export function rowIsSynced(table: 'posts' | 'replies', id: string): boolean {
+  const record = rowRecord(store.getMergeableContent(), table, id);
+  return !!record && acknowledged.get(record.key) === record.data;
+}
+/** A new row cannot borrow the success of an earlier connection. */
+export function useRowIsSynced(table: 'posts' | 'replies', id: string): boolean {
+  return useSyncExternalStore(listener => {
+    const stop = subscribe(listener);
+    const rowListener = store.addRowListener(table, id, listener);
+    return () => { stop(); store.delListener(rowListener); };
+  }, () => rowIsSynced(table, id));
+}
+export function retrySync(): void { reconnect(); }
 export function useAwaitingFirstSync(): boolean { return useSyncExternalStore(subscribe, () => status.syncedAt === null && status.state !== 'offline'); }

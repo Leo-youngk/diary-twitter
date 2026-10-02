@@ -17,7 +17,7 @@ export default function ReplyCard({ replyId, more }: { replyId: string; more: nu
         <span className="shrink-0 text-x-gray">@{profile.username} · <PostTime date={reply.createdAt} /></span>
       </div>
       <p className="mt-1 whitespace-pre-wrap break-words text-[calc(14px*var(--font-scale))] leading-[1.55] line-clamp-3">{reply.content}</p>
-      <XDeliveryStatus id={replyId} requested={reply.xSync} x={x} />
+      <XDeliveryStatus id={replyId} requested={reply.xSync} x={x} table="replies" />
       {more > 0 && <p className="mt-1 text-[13px] text-x-gray">还有 {more} 条追加</p>}
     </div>
   );

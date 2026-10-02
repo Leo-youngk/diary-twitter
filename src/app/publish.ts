@@ -2,6 +2,7 @@ import { addPost, addReply, postWillSyncToX, replyWillSyncToX, type NewPost } fr
 import { getConnectionState } from '@/data/connection';
 import { store } from '@/data/store';
 import { toast } from './toast';
+import { trackPublication } from './publications';
 
 /** Local saving and X publication are separate outcomes, in every compose UI. */
 function announceSaved(reply: boolean, requested: boolean, sending: boolean): void {
@@ -19,7 +20,9 @@ function announceSaved(reply: boolean, requested: boolean, sending: boolean): vo
 export function publishPost(input: NewPost): string | null {
   try {
     const id = addPost(input);
-    announceSaved(false, input.toX, postWillSyncToX(input.toX, input.content));
+    const sending = postWillSyncToX(input.toX, input.content);
+    trackPublication({ id, table: 'posts', requestedX: sending, skippedX: input.toX && !sending });
+    announceSaved(false, input.toX, sending);
     return id;
   } catch (error) {
     console.error('[post] save failed', error);
@@ -34,6 +37,7 @@ export function publishReply(postId: string, content: string): string | null {
     const sending = replyWillSyncToX(postId, content);
     const id = addReply(postId, content);
     if (!id) { toast('原帖已被删除，追加没有保存', 'error'); return null; }
+    trackPublication({ id, table: 'replies', requestedX: sending, skippedX: requested && !sending });
     announceSaved(true, requested, sending);
     return id;
   } catch (error) {

@@ -3,7 +3,7 @@ import { createMergeableStore } from 'tinybase';
 import { TABLES_SCHEMA, VALUES_SCHEMA, ROW_ID_PATTERN } from '../src/lib/schema';
 import { recordContent, splitContent, encodeJson, type SyncRecord } from '../src/lib/sync';
 import type { Env } from './env';
-import { dirtyJobs, pull, saveRecord } from './d1';
+import { databasePaused, dirtyJobs, pull, saveRecord } from './d1';
 import { migrateLegacy } from './migrate';
 import { runJobs } from './jobs';
 import type { LoginOutcome } from './login';
@@ -12,8 +12,9 @@ import { d1Login } from './d1-login';
 /** Compute coordinator only. All durable data lives in D1; no DO storage writes. */
 export class D1Diary extends DurableObject<Env> {
   private ready?: Promise<void>;
-  private ensureReady(): Promise<void> {
-    return this.ready ??= migrateLegacy(this.env).catch(error => { this.ready = undefined; throw error; });
+  private async ensureReady(): Promise<void> {
+    if (await databasePaused(this.env.DB)) throw new Error('日记数据库正在迁移，本机内容将在迁移后同步');
+    await (this.ready ??= migrateLegacy(this.env).catch(error => { this.ready = undefined; throw error; }));
   }
 
   async sync(records: SyncRecord[], cursor: number, device: { id: string; name: string; build: string }) {
@@ -53,6 +54,7 @@ export class D1Diary extends DurableObject<Env> {
   }
 
   async tasks(): Promise<void> {
+    if (await databasePaused(this.env.DB)) return;
     await this.ensureReady();
     await runJobs(this.env);
   }
