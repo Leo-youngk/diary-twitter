@@ -130,6 +130,24 @@ describe('background reconciliation scheduling', () => {
     expect(alarmAt).toBe(now + 2000);
   });
 
+  it('rearms an old overdue alarm left behind after an outage exhausted its retries', async () => {
+    const space = await open();
+    alarmAt = now - 2 * 24 * 60 * 60_000;
+    await space.ensureReady('test-space', device);
+    await flush();
+    expect(alarmAt).toBe(now + 2000);
+  });
+
+  it('allows a recently overdue alarm to execute or finish its normal retries', async () => {
+    const space = await open();
+    const delayed = now - 30_000;
+    alarmAt = delayed;
+    await space.ensureReady('test-space', device);
+    await flush();
+    expect(alarmAt).toBe(delayed);
+    expect(ctx.storage.setAlarm).not.toHaveBeenCalled();
+  });
+
   it('schedules real edits and retry commands, but ignores statistics and cleared commands', async () => {
     const space = await open();
     const store = storeOf(space);

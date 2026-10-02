@@ -11,6 +11,8 @@ import { runXStats } from './xstats';
 
 // Changes are batched: one pass runs shortly after the first pending edit.
 const RECONCILE_DELAY_MS = 2000;
+// Allow normal failover and alarm retries before recovering a stopped alarm.
+const OVERDUE_ALARM_MS = 5 * 60_000;
 
 export interface DeviceInfo {
   id: string;
@@ -92,9 +94,14 @@ export class DiarySpace extends WsServerDurableObject<Env> {
     // Coalesce only concurrent storage operations. A later edit or reconnect
     // must check the persisted alarm again, including recovery from a lost one.
     return this.reconcileScheduling ??= (async () => {
-      const soon = Date.now() + RECONCILE_DELAY_MS;
+      const now = Date.now();
+      const soon = now + RECONCILE_DELAY_MS;
       const current = await this.ctx.storage.getAlarm();
-      if (current === null || current > soon) await this.ctx.storage.setAlarm(soon);
+      // After the runtime exhausts its retries, a persisted past timestamp can
+      // remain. Preserving it forever prevents recovery after the outage ends.
+      if (current === null || current > soon || current < now - OVERDUE_ALARM_MS) {
+        await this.ctx.storage.setAlarm(soon);
+      }
     })().finally(() => { this.reconcileScheduling = undefined; });
   }
 
