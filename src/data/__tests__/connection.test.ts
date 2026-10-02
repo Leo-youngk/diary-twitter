@@ -106,6 +106,21 @@ describe('HTTP offline synchronization',()=>{
     const row=(await remoteStore()).getRow('xposts','p');
     expect(row).toEqual({command:'retry'});
   });
+  it('uploads all thread parts before their root can trigger publishing, even across batches', async () => {
+    local.setRow('posts', 'p', { content: 'root', entryType: 'thought', xSync: true });
+    for (let i = 0; i < 60; i++) local.setRow('replies', `part${i}`, { postId: 'p', content: `part ${i}`, thread: true, xSync: true });
+    fetchMock.mockImplementation(async (url: unknown, options: RequestInit) => {
+      if (url === '/api/x/check') return new Response(null, { status: 503 });
+      const response = respond(options);
+      const snapshot = await remoteStore();
+      if (snapshot.hasRow('posts', 'p')) expect(snapshot.getRowIds('replies')).toHaveLength(60);
+      return response;
+    });
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    expect(connection.useConnection().state).toBe('online');
+    expect(connection.rowIsSynced('posts', 'p')).toBe(true);
+    expect(syncCalls()).toHaveLength(2);
+  });
   it('asks the server to look at X when opened, at most every 30 seconds, then pulls what it found',async()=>{
     xCheckStatus=204;
     connection.startConnection(); await vi.advanceTimersByTimeAsync(0);

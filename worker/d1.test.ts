@@ -216,7 +216,7 @@ describe('D1 X delivery safety and task leases', () => {
     await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
     expect(fetch).toHaveBeenCalledTimes(1);
     const input = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body)).variables.input;
-    expect(input.metadata.twitter.thread).toEqual([{ text: 'test' }, { text: '第二条' }, { text: '第三条' }]);
+    expect(input.metadata.twitter.thread).toEqual([{ text: 'test', assets: [] }, { text: '第二条', assets: [] }, { text: '第三条', assets: [] }]);
     for (const id of ['p', 'a', 'b']) expect(loaded.store.getRow('xposts', id)).toMatchObject({ state: 'sent', link: 'https://x.com/test/status/123' });
   });
   it('fails the parts of a thread with their post instead of sending them alone', async () => {
@@ -229,5 +229,24 @@ describe('D1 X delivery safety and task leases', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(loaded.store.getCell('xposts', 'p', 'state')).toBe('failed');
     expect(loaded.store.getRow('xposts', 'a')).toMatchObject({ state: 'failed', error: '这条和原帖作为串推一起发布；原帖没有发出，请重试原帖' });
+  });
+  it.each(['p', 'a'])('retries the whole failed thread from %s and clears every part\'s failure', async (retryId) => {
+    const source = post().setRow('replies', 'a', { postId: 'p', content: '第二条', createdAt: new Date(Date.now() + 1).toISOString(), xSync: true, thread: true });
+    await upload(source);
+    const loaded = await loadStore(db);
+    const request = vi.fn()
+      .mockResolvedValueOnce(Response.json({ data: { createPost: { __typename: 'InvalidInputError', message: 'bad' } } }))
+      .mockResolvedValueOnce(Response.json({ data: { createPost: { __typename: 'PostActionSuccess', post: { id: 'buffer', status: 'sent', externalLink: 'https://x.com/test/status/123' } } } }));
+    vi.stubGlobal('fetch', request);
+    const persist = () => saveStore(db, loaded.store, loaded.baseline);
+    await runX(db, loaded.store, env(), Date.now(), persist);
+    expect(loaded.store.getCell('xposts', 'a', 'state')).toBe('failed');
+    loaded.store.setCell('xposts', retryId, 'command', 'retry');
+    await runX(db, loaded.store, env(), Date.now(), persist);
+    expect(request).toHaveBeenCalledTimes(2);
+    for (const id of ['p', 'a']) expect(loaded.store.getRow('xposts', id)).toMatchObject({ state: 'sent', error: '', link: 'https://x.com/test/status/123' });
+    expect(loaded.store.getCell('xposts', retryId, 'command')).toBe('');
+    await runX(db, loaded.store, env(), Date.now(), persist);
+    expect(request).toHaveBeenCalledTimes(2);
   });
 });
