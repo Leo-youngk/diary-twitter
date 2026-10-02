@@ -6,7 +6,7 @@ import { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
 import PaneLayout from '@/components/PaneLayout';
 import { useGoalProgress, usePosts, useToday, useXAccount, useXPosts, useXTweets } from '@/data/hooks';
-import { store, ui } from '@/data/store';
+import { store } from '@/data/store';
 import { tweetIdOfLink } from '@/lib/schema';
 import { goalTotals, perfectStreak } from '@/lib/goals';
 import { addDays, cn, daysBetween, parseDateKey, toLocalDateKey } from '@/lib/utils';
@@ -93,10 +93,9 @@ function dayLabel(key: string): string {
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
-/** What was written, how the goals went, and how the posts did on X. */
+/** What was posted on X, how the goals went, and how the posts did on X. */
 export default function StatsPane() {
   const posts = usePosts();
-  const replies = ui.useTable('replies', store);
   const xposts = useXPosts();
   const xTweets = useXTweets();
   const account = useXAccount();
@@ -108,16 +107,17 @@ export default function StatsPane() {
   const headerRef = useRef<HTMLElement>(null);
   useScrollChrome(scrollRef, headerRef, useMainTab() === 'stats');
 
+  // Posting is counted from the tweets on X, wherever they were written.
+  const tweetDays = useMemo(() => Object.values(xTweets)
+    .filter((t) => !t.gone && t.createdAt)
+    .map((t) => ({ key: toLocalDateKey(t.createdAt), reply: t.kind === 'reply' })), [xTweets]);
   const perDay = useMemo(() => {
     const map = new Map<string, number>();
-    for (const post of posts) {
-      const key = toLocalDateKey(post.createdAt);
-      map.set(key, (map.get(key) ?? 0) + 1);
-    }
+    for (const { key } of tweetDays) map.set(key, (map.get(key) ?? 0) + 1);
     return map;
-  }, [posts]);
-  const firstDay = posts.length > 0 ? toLocalDateKey(posts[posts.length - 1].createdAt) : today;
-  const from = period === 0 ? (firstDay < today ? firstDay : today) : addDays(today, -(period - 1));
+  }, [tweetDays]);
+  const firstDay = [...perDay.keys()].reduce((first, key) => (key < first ? key : first), today);
+  const from = period === 0 ? firstDay : addDays(today, -(period - 1));
   const spanDays = daysBetween(from, today) + 1;
 
   const writing = useMemo(() => {
@@ -130,10 +130,7 @@ export default function StatsPane() {
       activeDays += 1;
       if (!busiest || count > busiest.count) busiest = { key, count };
     }
-    const replyCount = Object.values(replies).filter((reply) => {
-      const key = reply.createdAt ? toLocalDateKey(String(reply.createdAt)) : '';
-      return key >= from && key <= today;
-    }).length;
+    const replyCount = tweetDays.filter(({ key, reply }) => reply && key >= from && key <= today).length;
     let streak = 0;
     for (let key = perDay.has(today) ? today : addDays(today, -1); perDay.has(key); key = addDays(key, -1)) streak += 1;
 
@@ -158,7 +155,22 @@ export default function StatsPane() {
       });
     }
     return { total, activeDays, busiest, replyCount, streak, bars };
-  }, [perDay, replies, from, today, period]);
+  }, [perDay, tweetDays, from, today, period]);
+
+  // Written in the diary but not on X: never synced, failed, still on its way, or deleted there.
+  const local = useMemo(() => {
+    let total = 0;
+    let only = 0;
+    for (const post of posts) {
+      const key = toLocalDateKey(post.createdAt);
+      if ((period !== 0 && key < from) || key > today) continue;
+      total += 1;
+      const row = xposts[post.id];
+      const tweetId = row?.state === 'sent' ? tweetIdOfLink(row.link) : null;
+      if (!tweetId || xTweets[tweetId]?.gone) only += 1;
+    }
+    return { total, only };
+  }, [posts, xposts, xTweets, period, from, today]);
 
   const goals = useMemo(() => ({
     range: goalTotals(progress, period === 0 ? '' : from, today),
@@ -174,8 +186,9 @@ export default function StatsPane() {
       if (!tweetId) continue;
       appPost.set(tweetId, row.kind === 'reply' ? String(store.getCell('replies', id, 'postId') ?? '') : id);
     }
+    // Replies are short and seen by few; they would drag the averages down.
     const live = Object.entries(xTweets)
-      .filter(([, t]) => !t.gone && t.createdAt && (period === 0 || toLocalDateKey(t.createdAt) >= from));
+      .filter(([, t]) => !t.gone && t.kind !== 'reply' && t.createdAt && (period === 0 || toLocalDateKey(t.createdAt) >= from));
     const measured = live.filter(([, t]) => t.measuredAt > 0);
     const sum = (key: 'views' | 'likes' | 'replies' | 'reposts' | 'quotes' | 'bookmarks') => measured.reduce((n, [, t]) => n + (t[key] ?? 0), 0);
     const totals = { views: sum('views'), likes: sum('likes'), replies: sum('replies'), reposts: sum('reposts'), quotes: sum('quotes'), bookmarks: sum('bookmarks') };
@@ -225,11 +238,17 @@ export default function StatsPane() {
     >
 
       <Section title="发帖">
+        <p className="mt-1 text-[13px] text-x-gray">
+          {tweetDays.length > 0 ? '以 X 上的推文为准，含回复' : '还没有读到 X 上的推文'}
+        </p>
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           <Tile label="今天" value={`${todayCount} 条`} note={`昨天 ${yesterdayCount} 条`} />
           <Tile label="平均每天" value={average >= 10 ? average.toFixed(0) : average.toFixed(1)} note={`${writing.activeDays} 天有发帖`} />
-          <Tile label={period === 0 ? '共发帖' : `${period} 天共发帖`} value={String(writing.total)} note={`另有 ${writing.replyCount} 条追加`} />
+          <Tile label={period === 0 ? '共发帖' : `${period} 天共发帖`} value={String(writing.total)} note={`其中回复 ${writing.replyCount} 条`} />
           <Tile label="连续发帖" value={`${writing.streak} 天`} note={writing.streak > 0 && todayCount === 0 ? '今天还没发' : undefined} />
+          <div className="col-span-2">
+            <Tile label="只在日记本" value={`${local.only} 条`} note={`没发到 X · 日记本里共写了 ${local.total} 条`} />
+          </div>
         </div>
         <div className="mt-5">
           <h3 className="text-[15px] font-semibold">{period === 0 ? '每月发帖' : '每天发帖'}</h3>
@@ -265,7 +284,7 @@ export default function StatsPane() {
         </p>
         {x.count > 0 && (
           <p className="text-[13px] text-x-gray">
-            {x.count} 条推文 · App 发出 {x.fromApp} 条{x.measuredAt > 0 && ` · ${time(x.measuredAt)} 更新`}
+            {x.count} 条推文（不含回复）· App 发出 {x.fromApp} 条{x.measuredAt > 0 && ` · ${time(x.measuredAt)} 更新`}
           </p>
         )}
         {account?.error && (

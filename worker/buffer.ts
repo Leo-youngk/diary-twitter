@@ -174,13 +174,6 @@ const CHANNELS = `query($org: OrganizationId!) {
   channels(input: { organizationId: $org }) { id name }
 }`;
 
-const SENT_POSTS = `query($org: OrganizationId!, $channel: ChannelId!, $after: String) {
-  posts(first: 100, after: $after, input: { organizationId: $org, filter: { channelIds: [$channel] } }) {
-    edges { node { status externalLink text sentAt createdAt } }
-    pageInfo { hasNextPage endCursor }
-  }
-}`;
-
 export async function fetchOrganizationId(env: BufferEnv): Promise<string | null> {
   try {
     const { body } = await bufferRequest(env, ORGANIZATIONS, {});
@@ -203,42 +196,6 @@ export async function fetchChannelHandle(env: BufferEnv, organizationId: string)
     return isRecord(channel) && typeof channel.name === 'string' && channel.name ? channel.name : null;
   } catch {
     return null;
-  }
-}
-
-export interface ChannelTweet {
-  tweetId: string;
-  text: string;
-  /** ISO time it went out. */
-  sentAt: string;
-}
-
-/**
- * Every tweet Buffer knows on the channel: those it published and those
- * posted on X directly, which it imports. Null when Buffer did not answer.
- */
-export async function fetchChannelTweets(env: BufferEnv, organizationId: string, maxPages = 5): Promise<ChannelTweet[] | null> {
-  const results: ChannelTweet[] = [];
-  let after: string | null = null;
-  try {
-    for (let page = 0; page < maxPages; page++) {
-      const { body } = await bufferRequest(env, SENT_POSTS, { org: organizationId, channel: env.BUFFER_CHANNEL_ID, after });
-      const posts = isRecord(body) && isRecord(body.data) && isRecord(body.data.posts) ? body.data.posts : null;
-      if (!posts || !Array.isArray(posts.edges)) return page === 0 ? null : results;
-      for (const edge of posts.edges) {
-        const node = isRecord(edge) && isRecord(edge.node) ? edge.node : null;
-        const tweetId = node && node.status === 'sent' && typeof node.externalLink === 'string' ? tweetIdOf(node.externalLink) : undefined;
-        if (!node || !tweetId) continue;
-        const sentAt = typeof node.sentAt === 'string' ? node.sentAt : typeof node.createdAt === 'string' ? node.createdAt : '';
-        results.push({ tweetId, text: typeof node.text === 'string' ? node.text : '', sentAt });
-      }
-      const info = isRecord(posts.pageInfo) ? posts.pageInfo : null;
-      if (!info?.hasNextPage || typeof info.endCursor !== 'string') break;
-      after = info.endCursor;
-    }
-    return results;
-  } catch {
-    return results.length > 0 ? results : null;
   }
 }
 
