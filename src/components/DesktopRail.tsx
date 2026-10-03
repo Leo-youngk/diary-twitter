@@ -1,4 +1,6 @@
 import { actions } from '@/app/stack';
+import { acquireNavigation } from '@/app/nav';
+import { openComposer } from '@/app/keyboard';
 import { isWideDesktop, returnToDesktopMain, writeOnDesktop } from '@/app/desktopPanel';
 import { setMainTab, useMainTab, type MainTab } from '@/app/mainTab';
 import { useProfile } from '@/data/hooks';
@@ -18,7 +20,7 @@ export default function DesktopRail() {
   const write = () => {
     if (isWideDesktop()) {
       if (writeOnDesktop() && location.pathname !== '/' && !returnToDesktopMain()) actions.replace('Main', {}, { animate: false });
-    } else actions.push('Compose', {});
+    } else if (acquireNavigation(150)) openComposer(() => actions.push('Compose', {}, { animate: false }));
   };
   return (
     <aside aria-label="主导航" className="hidden w-[88px] shrink-0 flex-col items-end gap-1 py-6 pr-4 md:flex lg:w-[184px] lg:items-stretch xl:w-[208px]">

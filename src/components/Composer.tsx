@@ -5,7 +5,7 @@ import type { InferActivityParams } from '@stackflow/config';
 import { guardDesktopPanel } from '@/app/desktopPanel';
 import { toast } from '@/app/toast';
 import { publishPost, publishReply } from '@/app/publish';
-import { releaseKeyboard, takeKeyboard } from '@/app/keyboard';
+import { releaseKeyboard } from '@/app/keyboard';
 import { useKeyboardViewport } from '@/app/useKeyboardViewport';
 import Avatar from '@/components/Avatar';
 import PostTime from '@/components/PostTime';
@@ -45,11 +45,11 @@ interface ComposerProps {
   params: InferActivityParams<'Compose'>;
   onClose: () => void;
   embedded?: boolean;
-  arrived?: boolean;
+  activityId?: string;
   focusRequest?: number;
 }
 
-export default function Composer({ params, onClose, embedded = false, arrived = false, focusRequest = 0 }: ComposerProps) {
+export default function Composer({ params, onClose, embedded = false, activityId, focusRequest = 0 }: ComposerProps) {
   const profile = useProfile();
   const editing = usePost(params.editId ?? '');
   const replyingTo = usePost(params.replyTo ?? '');
@@ -76,11 +76,12 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   useKeyboardViewport(hostRef, !embedded);
 
-  // The tap that opened this screen raised the keyboard on a proxy field
-  // (see app/keyboard.ts); take it over once the screen has slid into place.
-  useEffect(() => { if (!embedded && arrived) takeKeyboard(fieldRef.current); }, [arrived, embedded]);
   useEffect(() => { if (embedded && focusRequest) fieldRef.current?.focus(); }, [embedded, focusRequest]);
-  useEffect(() => { if (!embedded) return () => releaseKeyboard(); }, [embedded]);
+  useEffect(() => {
+    if (embedded) return;
+    const field = fieldRef.current;
+    return () => releaseKeyboard(field);
+  }, [embedded]);
 
   // Keep an unfinished new post across closes and reloads.
   useEffect(() => {
@@ -184,6 +185,7 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
   return (
       <div
         ref={hostRef}
+        data-compose-activity={activityId}
         className={cn('flex flex-col', embedded ? 'max-h-full min-h-0 overflow-hidden rounded-2xl border border-x-border' : 'h-full')}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); publish(); }
@@ -223,6 +225,7 @@ export default function Composer({ params, onClose, embedded = false, arrived = 
                 )}
                 <TextareaAutosize
                   ref={fieldRef}
+                  data-compose-input
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   onFocus={() => setActiveKey(-1)}

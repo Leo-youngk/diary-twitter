@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useActivity, useFlow } from '@stackflow/react';
 import type { InferActivityParams, RegisteredActivityName } from '@stackflow/config';
-import { primeKeyboard } from './keyboard';
+import { openComposer } from './keyboard';
 import { isWideDesktop, showDesktopPanel } from './desktopPanel';
 
 /**
@@ -11,13 +11,14 @@ import { isWideDesktop, showDesktopPanel } from './desktopPanel';
  */
 
 const LOCK_MS = 450; // a little longer than the 350ms transition
+const COMPOSE_LOCK_MS = 150; // the editor opens immediately, without a transition
 
 let lockedUntil = 0;
 
-export function acquireNavigation(): boolean {
+export function acquireNavigation(duration = LOCK_MS): boolean {
   const now = Date.now();
   if (now < lockedUntil) return false;
-  lockedUntil = now + LOCK_MS;
+  lockedUntil = now + duration;
   return true;
 }
 
@@ -42,12 +43,15 @@ export function useNav(): Nav {
           return;
         }
       }
-      if (!acquireNavigation()) return;
-      // Writing screens: raise the keyboard now, while this is still the tap.
-      if (name === 'Compose') primeKeyboard();
-      flow.push(name, params);
+      if (!acquireNavigation(name === 'Compose' ? COMPOSE_LOCK_MS : LOCK_MS)) return;
+      if (name === 'Compose') {
+        openComposer(() => flow.push(name, params, { animate: false }));
+      } else flow.push(name, params);
     },
     replace(name, params, options) { if (acquireNavigation()) flow.replace(name, params, options); },
-    pop() { if (acquireNavigation()) flow.pop(); },
+    pop() {
+      const composing = activity.name === 'Compose';
+      if (acquireNavigation(composing ? COMPOSE_LOCK_MS : LOCK_MS)) flow.pop({ animate: !composing });
+    },
   }), [flow, activity.name]);
 }
