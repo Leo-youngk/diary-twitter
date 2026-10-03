@@ -1,6 +1,6 @@
 import { defineConfig } from '@stackflow/config';
 import { stackflow } from '@stackflow/react';
-import { basicRendererPlugin } from '@stackflow/plugin-renderer-basic';
+import { immediateRendererPlugin } from './immediateRendererPlugin';
 import { basicUIPlugin } from '@stackflow/plugin-basic-ui';
 import { historySyncPlugin } from '@stackflow/plugin-history-sync';
 import MainActivity from '@/activities/MainActivity';
@@ -40,7 +40,7 @@ export const { Stack, actions } = stackflow({
     Settings: SettingsActivity,
   },
   plugins: [
-    basicRendererPlugin(),
+    immediateRendererPlugin(),
     basicUIPlugin({
       theme: 'cupertino',
       backgroundColor: 'var(--color-x-dark)',

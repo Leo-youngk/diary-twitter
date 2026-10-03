@@ -5,10 +5,10 @@ import Composer from '@/components/Composer';
 
 const ComposeActivity: ActivityComponentType<'Compose'> = ({ params }) => {
   const { pop } = useNav();
-  const { transitionState } = useActivity();
+  const { id } = useActivity();
   return (
     <AppScreen CUPERTINO_ONLY_modalPresentationStyle="fullScreen" preventSwipeBack>
-      <Composer params={params} onClose={pop} arrived={transitionState === 'enter-done'} />
+      <Composer params={params} onClose={pop} activityId={id} />
     </AppScreen>
   );
 };
