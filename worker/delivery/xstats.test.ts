@@ -78,6 +78,12 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); vi.useRealTimers(); });
 
 describe('X stats', () => {
+  it('initializes an upgraded account from its real prior reading even when the count is unchanged', async () => {
+    store.setRow('xaccount', 'me', { handle: 'me_on_x', followers: 17, following: 256, measuredAt: now - HOUR });
+    await runXStats(sql, store, env, now);
+    expect(store.getTable('xfollowers')).toEqual({ [String(now - HOUR)]: { followers: 17, following: 256, at: now - HOUR } });
+    expect(store.getCell('xaccount', 'me', 'measuredAt')).toBe(now);
+  });
   it('counts known self-replies at the checkpoint after saving the whole page', async () => {
     routes['/2/profile/me_on_x/statuses'] = page([
       status('301', new Date(now - HOUR / 2).toISOString(), { replies: 4 }),

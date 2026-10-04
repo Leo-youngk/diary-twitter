@@ -238,6 +238,17 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
   const metaTime = async (key: string) => Number((await getMeta(sql, key)) ?? 0);
   addSentTweets(store);
 
+  // An upgraded account already has a real profile observation. Preserve its
+  // actual time as the initial baseline, even if the next reading is unchanged.
+  const previousAccount = store.getRow('xaccount', 'me');
+  if (store.getRowCount('xfollowers') === 0 && count(previousAccount.measuredAt) > 0
+    && typeof previousAccount.followers === 'number' && Number.isFinite(previousAccount.followers) && previousAccount.followers >= 0
+    && typeof previousAccount.following === 'number' && Number.isFinite(previousAccount.following) && previousAccount.following >= 0) {
+    store.setRow('xfollowers', String(previousAccount.measuredAt), {
+      followers: previousAccount.followers, following: previousAccount.following, at: previousAccount.measuredAt,
+    });
+  }
+
   let failed = false;
   let refreshed = false;
   const fail = (message: string) => {
