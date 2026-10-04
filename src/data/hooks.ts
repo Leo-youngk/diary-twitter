@@ -2,6 +2,7 @@ import { useMemo, useSyncExternalStore } from 'react';
 import type { DayProgress } from '@/lib/goals';
 import {
   parseImages, tweetIdOfLink, type PostRow, type ProfileValues, type XAccountRow, type XFollowersRow, type XPostRow, type XTweetRow,
+  type XMetricRow, type XLabelRow, type XExperimentRow,
 } from '@/lib/schema';
 import { toLocalDateKey } from '@/lib/utils';
 import { indexes, store, ui } from './store';
@@ -156,9 +157,21 @@ export function useXAccount(): XAccountRow | null {
   return row.handle || row.error ? (row as XAccountRow) : null;
 }
 
-/** The follower count by UTC day, as the server has read it. */
+/** Timestamped follower observations, including the legacy daily rows. */
 export function useXFollowers(): Record<string, XFollowersRow> {
   return ui.useTable('xfollowers', store) as Record<string, XFollowersRow>;
+}
+
+export function useXMetrics(): Record<string, XMetricRow> {
+  return ui.useTable('xmetrics', store) as Record<string, XMetricRow>;
+}
+
+export function useXLabels(): Record<string, XLabelRow> {
+  return ui.useTable('xlabels', store) as Record<string, XLabelRow>;
+}
+
+export function useXExperiments(): Record<string, XExperimentRow> {
+  return ui.useTable('xexperiments', store) as Record<string, XExperimentRow>;
 }
 
 export interface Device {

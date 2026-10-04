@@ -6,7 +6,7 @@ import { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
 import PaneLayout from '@/components/PaneLayout';
 import { Bars, Section, Tile, type Bar } from '@/components/StatsParts';
-import { AlgorithmSection, FeedSection, TodaySection } from '@/components/XGrowth';
+import { FeedSection, GrowthDashboard } from '@/components/XGrowth';
 import { checkX } from '@/data/connection';
 import {
   useGoalProgress, useMinute, usePosts, useToday, useXAccount, useXFollowers, useXPosts, useXTweets,
@@ -14,7 +14,8 @@ import {
 import { store } from '@/data/store';
 import { tweetIdOfLink } from '@/lib/schema';
 import { goalTotals, perfectStreak } from '@/lib/goals';
-import { diagnose, followerTrend, myTweets, todayPlan } from '@/lib/growth';
+import { followerTrend, myTweets } from '@/lib/growth';
+import { hasMetric, type Metric } from '@/lib/xMetrics';
 import { addDays, cn, daysBetween, parseDateKey, toLocalDateKey } from '@/lib/utils';
 
 type Period = 7 | 30 | 0;
@@ -137,40 +138,44 @@ export default function StatsPane() {
     else window.open(`https://x.com/i/status/${id}`, '_blank', 'noopener');
   }, [appPost, push]);
 
-  // Measured as X's For You code ranks posts (src/lib/growth.ts).
+  // Public observations guide experiments; they cannot reconstruct X's per-viewer ranking.
   const mine = useMemo(() => myTweets(xTweets), [xTweets]);
-  const plan = useMemo(() => todayPlan(mine, today, now), [mine, today, now]);
-  const diagnosis = useMemo(() => diagnose(mine, period === 0 ? 0 : parseDateKey(from).getTime(), now), [mine, period, from, now]);
   const followers = useMemo(() => followerTrend(followerRows, today, now), [followerRows, today, now]);
 
   const x = useMemo(() => {
     // Replies are short and seen by few; they would drag the averages down.
     const live = Object.entries(xTweets)
-      .filter(([, t]) => !t.gone && t.kind !== 'reply' && t.createdAt && (period === 0 || toLocalDateKey(t.createdAt) >= from));
-    const measured = live.filter(([, t]) => t.measuredAt > 0);
-    const sum = (key: 'views' | 'likes' | 'replies' | 'reposts' | 'quotes' | 'bookmarks') => measured.reduce((n, [, t]) => n + (t[key] ?? 0), 0);
+      .filter(([, t]) => !t.gone && t.kind !== 'reply' && t.createdAt && toLocalDateKey(t.createdAt) <= today && (period === 0 || toLocalDateKey(t.createdAt) >= from));
+    const measured = live.filter(([, t]) => t.measuredAt > 0 && hasMetric(t, 'views'));
+    const sum = (key: Metric) => {
+      const known = measured.filter(([, t]) => hasMetric(t, key));
+      return known.length ? known.reduce((n, [, t]) => n + t[key], 0) : null;
+    };
     const totals = { views: sum('views'), likes: sum('likes'), replies: sum('replies'), reposts: sum('reposts'), quotes: sum('quotes'), bookmarks: sum('bookmarks') };
     const top = [...measured]
       .sort(([, a], [, b]) => (b.views - a.views) || (b.likes - a.likes))
       .slice(0, 5)
-      .map(([id, t]) => ({ id, text: t.text, views: t.views, likes: t.likes }));
+      .map(([id, t]) => ({ id, text: t.text, views: t.views, likes: hasMetric(t, 'likes') ? t.likes : null }));
     return {
       count: live.length,
       fromApp: live.filter(([id]) => appPost.has(id)).length,
       measuredCount: measured.length,
       totals,
+      complete: measured.filter(([, t]) => ['likes', 'replies', 'reposts', 'quotes'].every((key) => hasMetric(t, key as 'likes' | 'replies' | 'reposts' | 'quotes'))),
       measuredAt: Math.max(0, ...measured.map(([, t]) => t.measuredAt)),
       top,
     };
-  }, [xTweets, appPost, period, from]);
+  }, [xTweets, appPost, period, from, today]);
 
   const todayCount = perDay.get(today) ?? 0;
   const yesterdayCount = perDay.get(addDays(today, -1)) ?? 0;
   const average = writing.total / spanDays;
-  const engagements = x.totals.likes + x.totals.replies + x.totals.reposts + x.totals.quotes;
-  const rate = x.totals.views > 0 ? `${((engagements / x.totals.views) * 100).toFixed(1)}%` : '—';
+  const rateViews = x.complete.reduce((n, [, t]) => n + t.views, 0);
+  const engagements = x.complete.reduce((n, [, t]) => n + t.likes + t.replies + t.reposts + t.quotes, 0);
+  const rate = rateViews > 0 ? `${((engagements / rateViews) * 100).toFixed(1)}%` : '—';
   const time = (at: number) => new Date(at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const goalRate = goals.range.total > 0 ? `${Math.round((goals.range.done / goals.range.total) * 100)}%` : '—';
+  const metricNumber = (value: number | null) => value === null ? '—' : compact.format(value);
 
   return (
     <PaneLayout
@@ -195,7 +200,11 @@ export default function StatsPane() {
       )}
     >
 
-      <TodaySection plan={plan} followers={account?.handle ? account.followers : null} today={today} now={now} />
+      {account?.error && <p role="status" className="px-4 pt-4 text-[13px] text-x-danger">X 数据更新失败，当前建议使用上次记录：{account.error}</p>}
+      <GrowthDashboard tweets={mine} from={period === 0 ? 0 : parseDateKey(from).getTime()} now={now} />
+
+      <details className="mt-6">
+        <summary className="mx-4 cursor-pointer text-[15px] font-semibold">发帖记录与每日目标</summary>
 
       <Section title="发帖">
         <p className="mt-1 text-[13px] text-x-gray">
@@ -236,6 +245,8 @@ export default function StatsPane() {
         )}
       </Section>
 
+      </details>
+
       <Section title="X 上的表现" icon={<XLogo size={16} />}>
         <p className="mt-1 text-[13px] text-x-gray">
           {account?.handle
@@ -244,7 +255,7 @@ export default function StatsPane() {
         </p>
         {x.count > 0 && (
           <p className="text-[13px] text-x-gray">
-            {x.count} 条推文（不含回复）· App 发出 {x.fromApp} 条{x.measuredAt > 0 && ` · ${time(x.measuredAt)} 更新`}
+            {x.count} 条推文（含串推后续，不含对话回复）· App 发出 {x.fromApp} 条{x.measuredAt > 0 && ` · 最近有记录于 ${time(x.measuredAt)}`}
           </p>
         )}
         {account?.error && (
@@ -266,6 +277,7 @@ export default function StatsPane() {
                 signed
               />
             </div>
+            <p className="mt-1 text-[12px] text-x-gray">按观测到的净变化统计，约每小时读取。旧版按 UTC 日保存的历史值可能跨天，新记录保留每次变化。</p>
           </div>
         )}
 
@@ -275,16 +287,18 @@ export default function StatsPane() {
           <p className="mt-3 text-[13px] text-x-gray">正在读取这些推文的数据…</p>
         ) : (
           <div className="mt-3 grid grid-cols-2 gap-2.5">
-            <Tile label="浏览" value={compact.format(x.totals.views)} note={`平均每条 ${compact.format(Math.round(x.totals.views / x.measuredCount))}`} />
-            <Tile label="互动率" value={rate} note="互动 ÷ 浏览" />
-            <Tile label="点赞" value={compact.format(x.totals.likes)} note={`收藏 ${compact.format(x.totals.bookmarks)}`} />
-            <Tile label="回复" value={compact.format(x.totals.replies)} note={`转发 ${compact.format(x.totals.reposts)} · 引用 ${compact.format(x.totals.quotes)}`} />
+            <Tile label="浏览" value={metricNumber(x.totals.views)} note={`平均每条 ${compact.format(Math.round((x.totals.views ?? 0) / x.measuredCount))}`} />
+            <Tile label="互动率" value={rate} note="完整指标的互动 ÷ 浏览" />
+            <Tile label="点赞" value={metricNumber(x.totals.likes)} note={`收藏 ${metricNumber(x.totals.bookmarks)}`} />
+            <Tile label="回复" value={metricNumber(x.totals.replies)} note={`转发 ${metricNumber(x.totals.reposts)} · 引用 ${metricNumber(x.totals.quotes)}`} />
           </div>
         )}
 
+        {x.measuredCount > 0 && <p className="mt-2 text-[12px] leading-relaxed text-x-gray">上面是 {x.measuredCount}/{x.count} 条帖子最新的累计公开数据；缺失项不计入合计，不同帖龄不能用累计值比较优劣。</p>}
+
         {x.top.length > 0 && (
           <div className="mt-4">
-            <h3 className="mb-1 text-[15px] font-semibold">浏览最多</h3>
+            <h3 className="mb-1 text-[15px] font-semibold">累计浏览最多</h3>
             {x.top.map(({ id, text, views, likes }) => (
               <button
                 key={id}
@@ -294,7 +308,7 @@ export default function StatsPane() {
               >
                 <p className="min-w-0 flex-1 truncate text-[15px]">{text || '（无文字）'}</p>
                 <span className="shrink-0 text-right text-[13px] tabular-nums text-x-gray">
-                  {compact.format(views)} 浏览 · {compact.format(likes)} 赞
+                  {compact.format(views)} 浏览 · {metricNumber(likes)} 赞
                 </span>
               </button>
             ))}
@@ -302,7 +316,6 @@ export default function StatsPane() {
         )}
       </Section>
 
-      <AlgorithmSection diagnosis={diagnosis} onOpen={openTweet} />
       <FeedSection />
     </PaneLayout>
   );

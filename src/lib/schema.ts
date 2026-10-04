@@ -67,6 +67,10 @@ export interface XTweetRow {
   reposts: number;
   quotes: number;
   bookmarks: number;
+  /** Bitmask of metrics present in the last response; -1 is a pre-snapshot legacy row. */
+  metricMask: number;
+  /** Public attachment type, not inferred from the text. */
+  format: string;
   /** When these numbers were read (ms), 0 if not yet. */
   measuredAt: number;
   /** Deleted on X (or no longer public); left out of the numbers. */
@@ -86,14 +90,44 @@ export interface XAccountRow {
 }
 
 /**
- * The account's follower count over time, written by the server: one row per
- * UTC day (row id 'YYYY-MM-DD'), holding the last count read that day.
+ * Follower observations, written by the server. New rows use their timestamp
+ * as id, so a later change never overwrites a reading from another local day.
+ * Legacy UTC daily rows remain as approximate historical observations.
  */
 export interface XFollowersRow {
   followers: number;
   following: number;
   /** When this count was first read (ms); it changes only with the count. */
   at: number;
+}
+
+export interface XMetricRow {
+  tweetId: string;
+  stage: string;
+  at: number;
+  views: number;
+  likes: number;
+  replies: number;
+  reposts: number;
+  quotes: number;
+  bookmarks: number;
+  metricMask: number;
+  ownReplies: number;
+}
+
+/** Optional editorial context; never changes the actual post on X. */
+export interface XLabelRow {
+  topic: string;
+  reviewedReplies: number;
+  reviewedAt: number;
+}
+
+export interface XExperimentRow {
+  dimension: string;
+  a: string;
+  b: string;
+  startedAt: number;
+  endedAt: number;
 }
 
 /** One goal on one day's list (每日目标). */
@@ -157,6 +191,8 @@ export const TABLES_SCHEMA = {
     reposts: { type: 'number', default: 0 },
     quotes: { type: 'number', default: 0 },
     bookmarks: { type: 'number', default: 0 },
+    metricMask: { type: 'number', default: -1 },
+    format: { type: 'string', default: '' },
     measuredAt: { type: 'number', default: 0 },
     gone: { type: 'boolean', default: false },
   },
@@ -173,6 +209,31 @@ export const TABLES_SCHEMA = {
     followers: { type: 'number', default: 0 },
     following: { type: 'number', default: 0 },
     at: { type: 'number', default: 0 },
+  },
+  xmetrics: {
+    tweetId: { type: 'string', default: '' },
+    stage: { type: 'string', default: '' },
+    at: { type: 'number', default: 0 },
+    views: { type: 'number', default: 0 },
+    likes: { type: 'number', default: 0 },
+    replies: { type: 'number', default: 0 },
+    reposts: { type: 'number', default: 0 },
+    quotes: { type: 'number', default: 0 },
+    bookmarks: { type: 'number', default: 0 },
+    metricMask: { type: 'number', default: 0 },
+    ownReplies: { type: 'number', default: 0 },
+  },
+  xlabels: {
+    topic: { type: 'string', default: '' },
+    reviewedReplies: { type: 'number', default: 0 },
+    reviewedAt: { type: 'number', default: 0 },
+  },
+  xexperiments: {
+    dimension: { type: 'string', default: 'topic' },
+    a: { type: 'string', default: '' },
+    b: { type: 'string', default: '' },
+    startedAt: { type: 'number', default: 0 },
+    endedAt: { type: 'number', default: 0 },
   },
   goals: {
     day: { type: 'string', default: '' },

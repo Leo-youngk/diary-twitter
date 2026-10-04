@@ -1,150 +1,110 @@
 import { describe, expect, it } from 'vitest';
-import {
-  diagnose, followerTrend, myTweets, PRIOR_LIKE_RATE, scorePerThousand, todayPlan,
-} from '../growth';
-import type { XTweetRow } from '../schema';
+import { cohortPosts, experimentResult, followerTrend, groupCohorts, myTweets, replyQueue, suggestTopic, type CohortPost } from '../growth';
+import { dueStages, hasMetric, hotRefreshDue, parseMetrics, HOUR_MS } from '../xMetrics';
+import type { XMetricRow, XTweetRow } from '../schema';
 
-const HOUR = 3600_000;
-// Local times, so the day boundaries hold in any timezone the tests run in.
-const local = (day: number, hour: number, minute = 0) => new Date(2026, 9, day, hour, minute).getTime();
-const now = local(4, 12);
-const today = '2026-10-04';
-
-const tweet = (at: number, extra: Partial<XTweetRow> = {}): Partial<XTweetRow> => ({
-  text: 'x', createdAt: new Date(at).toISOString(), kind: 'post', inReplyTo: '',
-  views: 0, likes: 0, replies: 0, reposts: 0, quotes: 0, bookmarks: 0, measuredAt: at + 1, gone: false, ...extra,
+const now = new Date(2026, 9, 5, 12).getTime();
+const at = now - 48 * HOUR_MS;
+const row = (extra: Partial<XTweetRow> = {}): Partial<XTweetRow> => ({
+  text: '我的实践', createdAt: new Date(at).toISOString(), kind: 'post', inReplyTo: '',
+  views: 3000, likes: 30, replies: 4, reposts: 5, quotes: 2, bookmarks: 10,
+  measuredAt: now, metricMask: 63, format: '文字', gone: false, ...extra,
 });
-
-describe('myTweets', () => {
-  it("tells originals from thread parts and replies, and leaves one's own answers out of the replies", () => {
-    const tweets = myTweets({
-      root: tweet(local(4, 9), { replies: 4 }),
-      part: tweet(local(4, 9, 1), { inReplyTo: 'root' }),
-      answer: tweet(local(4, 10), { kind: 'reply', inReplyTo: 'someone' }),
-      gone: tweet(local(4, 8), { gone: true }),
-    });
-    expect(tweets.map((t) => [t.id, t.original, t.reply])).toEqual([
-      ['root', true, false], ['part', false, false], ['answer', false, true],
-    ]);
-    expect(tweets[0].replies).toBe(3);
-  });
+const snapshot = (extra: Partial<XMetricRow> = {}): Partial<XMetricRow> => ({
+  tweetId: 'p', stage: 'h24', at: at + 24 * HOUR_MS, views: 100, likes: 3, replies: 4,
+  reposts: 1, quotes: 0, bookmarks: 2, metricMask: 63, ownReplies: 1, ...extra,
 });
+const cohorts = () => cohortPosts(myTweets({ p: row() }), { s: snapshot() }, { p: { topic: '实践' } }, 'h24', 0, now);
 
-describe('todayPlan', () => {
-  it("counts today's originals and replies and follows the 2-hour window", () => {
-    const plan = todayPlan(myTweets({
-      yesterday: tweet(local(3, 23)),
-      morning: tweet(local(4, 8), { views: 40, likes: 2, replies: 1 }),
-      fresh: tweet(local(4, 11, 30), { views: 20, likes: 1 }),
-      unread: tweet(local(4, 11, 50), { measuredAt: 0 }),
-      reply: tweet(local(4, 9), { kind: 'reply', inReplyTo: 'other' }),
-    }), today, now);
-    expect(plan.originals).toBe(3);
-    expect(plan.replies).toBe(1);
-    expect(plan.inWindow.map((p) => [p.id, p.endsAt, p.likeRate])).toEqual([
-      ['unread', local(4, 13, 50), null],
-      ['fresh', local(4, 13, 30), 0.05],
-    ]);
-    expect(plan.answered).toEqual([{ id: 'morning', text: 'x', replies: 1 }]);
+describe('honest metric availability', () => {
+  it('keeps omitted, null, negative and non-finite metrics unknown, while zero is observed', () => {
+    const result = parseMetrics({ views: null, likes: 0, replies: -1, bookmarks: NaN, quotes: 2 });
+    expect(result.numbers).toEqual({ likes: 0, quotes: 2 });
+    expect(hasMetric({ metricMask: result.mask }, 'views')).toBe(false);
+    expect(hasMetric({ metricMask: result.mask }, 'likes')).toBe(true);
   });
-
-  it('stops pointing at replies once the post has left For You', () => {
-    const plan = todayPlan(myTweets({ old: tweet(now - 49 * HOUR, { replies: 9 }) }), today, now);
-    expect(plan.answered).toEqual([]);
+  it('reads legacy lifetime totals without inventing historical snapshots', () => {
+    expect(hasMetric({ measuredAt: now }, 'views')).toBe(true);
+    expect(cohortPosts(myTweets({ p: row() }), {}, {}, 'h24', 0, now)).toEqual([]);
+  });
+  it('only captures an actual observation shortly after the desired age', () => {
+    const createdAt = new Date(at).toISOString();
+    expect(dueStages(createdAt, at + 2 * HOUR_MS + 5 * 60_000).map((s) => s.key)).toEqual(['h2']);
+    expect(dueStages(createdAt, at + 3 * HOUR_MS)).toEqual([]);
+    expect(dueStages(createdAt, at + 25 * HOUR_MS + 1)).toEqual([]);
+  });
+  it('refreshes young metrics at five-minute intervals without rewriting every minute', () => {
+    const young = row({ createdAt: new Date(now - HOUR_MS).toISOString(), measuredAt: now - 60_000 });
+    expect(hotRefreshDue(young, now)).toBe(false);
+    expect(hotRefreshDue({ ...young, measuredAt: now - 5 * 60_000 }, now)).toBe(true);
   });
 });
 
-describe('scorePerThousand', () => {
-  it("weighs each action's rate as X weighs the predicted one", () => {
-    // (0.5 × 4 + 5 × 1 + 1 × 2 + 5 × 1) / 200 views × 1000
-    expect(scorePerThousand({ views: 200, likes: 4, replies: 1, reposts: 2, quotes: 1 })).toBe(70);
-    expect(scorePerThousand({ views: 0, likes: 1, replies: 0, reposts: 0, quotes: 0 })).toBeNull();
+describe('same-age comparisons', () => {
+  it('uses a 24-hour snapshot instead of a later cumulative total and subtracts only self-replies seen then', () => {
+    const result = cohorts();
+    expect(result[0]).toMatchObject({ views: 100, replies: 3, topic: '实践', observedAt: at + 24 * HOUR_MS });
+    expect(result[0].views).not.toBe(3000);
+  });
+  it('excludes thread parts, conversations, deleted posts, out-of-range posts and bad ages', () => {
+    const tweets = myTweets({ p: row(), part: row({ inReplyTo: 'p' }), reply: row({ kind: 'reply', inReplyTo: 'other' }), gone: row({ gone: true }) });
+    const metrics = { p: snapshot(), part: snapshot({ tweetId: 'part' }), reply: snapshot({ tweetId: 'reply' }), gone: snapshot({ tweetId: 'gone' }) };
+    expect(cohortPosts(tweets, metrics, {}, 'h24', 0, now).map((p) => p.id)).toEqual(['p']);
+    expect(cohortPosts(tweets, metrics, {}, 'h24', at + 1, now)).toEqual([]);
+    expect(cohortPosts(tweets, { p: snapshot({ at: at + 28 * HOUR_MS }) }, {}, 'h24', 0, now)).toEqual([]);
+    expect(cohortPosts(tweets, { p: snapshot({ metricMask: 62 }) }, {}, 'h24', 0, now)).toEqual([]);
+  });
+  it('uses medians, preserves missing numerator metrics and shows sample size', () => {
+    const base = cohorts()[0];
+    const posts = [base, { ...base, id: 'q', views: 200, bookmarks: 100, metricMask: 31 }, { ...base, id: 'r', views: 10000, bookmarks: 20 }];
+    const groups = groupCohorts(posts, 'topic');
+    expect(groups[0]).toMatchObject({ posts: 3, days: 1, medianViews: 200 });
+    expect(groups[0].bookmarksPerThousand).toBeCloseTo(22 / 10100 * 1000);
+    expect(groupCohorts([{ ...base, metricMask: 1 }], 'topic')[0].bookmarksPerThousand).toBeNull();
+  });
+  it('suggests a topic but requires a saved label for grouping', () => {
+    expect(suggestTopic('Codex 让我把 PWA 做好了')).toBe('AI / 产品实践');
+    expect(cohortPosts(myTweets({ p: row({ text: 'Codex' }) }), { p: snapshot() }, {}, 'h24', 0, now)[0].topic).toBe('未分类');
   });
 });
 
-describe('diagnose', () => {
-  const tweets = myTweets({
-    a: tweet(local(1, 9), { views: 100, likes: 1 }),
-    b: tweet(local(1, 10), { views: 300, likes: 9, replies: 2, bookmarks: 3 }),
-    c: tweet(local(2, 21), { views: 50, likes: 2, quotes: 1 }),
-    d: tweet(local(2, 22), { views: 10, likes: 1 }),
-    young: tweet(local(4, 2), { views: 500, likes: 50 }),
-    reply: tweet(local(2, 12), { kind: 'reply', inReplyTo: 'other', likes: 3 }),
+describe('experiments and reply review', () => {
+  it('does not declare a winner from tiny samples or old posts before enrollment', () => {
+    const base = cohorts()[0];
+    const experiment = { dimension: 'topic', a: 'A', b: 'B', startedAt: base.at - 1, endedAt: 0 };
+    const a = { ...base, topic: 'A' }, b = { ...base, id: 'b', topic: 'B', views: 10 };
+    expect(experimentResult(experiment, [a, b], [a, b], {}).winner).toBeNull();
+    expect(experimentResult({ ...experiment, startedAt: base.at + 1 }, [a, b], [a, b], {}).a.posts).toBe(0);
   });
-
-  it('compares only originals old enough to have settled', () => {
-    const result = diagnose(tweets, local(1, 0), now);
-    expect(result.originals).toBe(5);
-    expect(result.settled).toBe(4);
-    expect(result.views).toBe(460);
-    expect(result.likeRate).toBeCloseTo(13 / 460);
-    expect(result.replies).toBe(1);
-    expect(result.replyLikes).toBe(3);
+  it('counts an experiment independently of the view period and requires observations on multiple days', () => {
+    const base = cohorts()[0];
+    const posts: CohortPost[] = Array.from({ length: 10 }, (_, i) => ({ ...base, id: String(i), at: base.at + (i % 2) * 24 * HOUR_MS, topic: i < 5 ? 'A' : 'B', views: i < 5 ? 100 : 50 }));
+    const result = experimentResult({ dimension: 'topic', a: 'A', b: 'B', startedAt: base.at - 1, endedAt: now }, posts, posts, {});
+    expect(result).toMatchObject({ enough: true, winner: 'A' });
+    expect(experimentResult({ dimension: 'topic', a: 'A', b: 'B', startedAt: base.at - 1 }, posts, posts.map((p) => ({ ...p, at: base.at })), {}).winner).toBeNull();
   });
-
-  it('measures each post against the slot prior only with enough views', () => {
-    const result = diagnose(tweets, local(1, 0), now);
-    expect(PRIOR_LIKE_RATE).toBeCloseTo(0.015);
-    // a (1%) misses the prior; b (3%) and c (4%) beat it; d has too few views to judge.
-    expect(result.rated).toBe(3);
-    expect(result.beatPrior).toBe(2);
+  it('shows observed reply-count changes, and stops after manual review until the count increases', () => {
+    const tweets = myTweets({ p: row() });
+    expect(replyQueue(tweets, {}, now)).toHaveLength(1);
+    expect(replyQueue(tweets, { p: { reviewedReplies: 4, reviewedAt: now } }, now)).toEqual([]);
+    expect(replyQueue(myTweets({ p: row({ replies: 5 }) }), { p: { reviewedReplies: 4 } }, now)).toHaveLength(1);
   });
+});
 
-  it('splits the score by action and finds the posts the weights favour', () => {
-    const result = diagnose(tweets, local(1, 0), now);
-    // likes 13 × 0.5 = 6.5, replies 2 × 5 = 10, quotes 1 × 5 = 5
-    expect(result.scorePerThousand).toBeCloseTo((21.5 / 460) * 1000);
-    expect(result.mix.likes).toBeCloseTo(6.5 / 21.5);
-    expect(result.mix.replies).toBeCloseTo(10 / 21.5);
-    expect(result.mix.reposts).toBe(0);
-    expect(result.talkPerThousand).toBeCloseTo((3 / 460) * 1000);
-    expect(result.bookmarksPerThousand).toBeCloseTo((3 / 460) * 1000);
-    expect(result.best.map((p) => p.id)).toEqual(['c', 'b', 'a']);
-  });
-
-  it('counts originals posted within 2 hours of the one before', () => {
-    expect(diagnose(tweets, local(1, 0), now).crowded).toBe(2);
-    // The original before the range still counts as the one before.
-    expect(diagnose(tweets, local(1, 9, 30), now).crowded).toBe(2);
-    expect(diagnose(tweets, local(2, 0), now).crowded).toBe(1);
-  });
-
-  it('groups posting hours with at least two settled originals', () => {
-    expect(diagnose(tweets, local(1, 0), now).hours).toEqual([
-      { from: 8, to: 12, posts: 2, medianViews: 200, likeRate: 10 / 400 },
-      { from: 20, to: 24, posts: 2, medianViews: 30, likeRate: 3 / 60 },
+describe('follower observations', () => {
+  it('preserves both sides of a local midnight rather than overwriting the same UTC day', () => {
+    const local = (day: number, hour: number) => new Date(2026, 9, day, hour).getTime();
+    const points = {
+      first: { followers: 100, following: 10, at: local(1, 23) },
+      next: { followers: 110, following: 10, at: local(2, 18) },
+      last: { followers: 120, following: 10, at: local(3, 2) },
+    };
+    expect(followerTrend(points, '2026-10-03', local(3, 12), 3).days).toEqual([
+      { key: '2026-10-01', gain: null }, { key: '2026-10-02', gain: 10 }, { key: '2026-10-03', gain: 10 },
     ]);
   });
-});
-
-describe('followerTrend', () => {
-  it('turns daily readings into changes per local day', () => {
-    const trend = followerTrend({
-      '2026-10-01': { followers: 10, following: 5, at: local(1, 9) },
-      '2026-10-02': { followers: 13, following: 5, at: local(2, 9) },
-      '2026-10-03': { followers: 12, following: 5, at: local(3, 9) },
-      '2026-10-04': { followers: 20, following: 5, at: local(4, 9) },
-    }, today, now, 5);
-    expect(trend.days).toEqual([
-      { key: '2026-09-30', gain: null },
-      { key: '2026-10-01', gain: null },
-      { key: '2026-10-02', gain: 3 },
-      { key: '2026-10-03', gain: -1 },
-      { key: '2026-10-04', gain: 8 },
-    ]);
-    expect(trend.week).toEqual({ gain: 10, since: '2026-10-01' });
-  });
-
-  it('measures the week from its first day once the readings go back that far', () => {
-    const trend = followerTrend({
-      '2026-09-20': { followers: 3, following: 1, at: local(-10, 9) },
-      '2026-09-27': { followers: 7, following: 1, at: local(-3, 9) },
-      '2026-10-04': { followers: 9, following: 1, at: local(4, 9) },
-    }, today, now);
-    expect(trend.week).toEqual({ gain: 2, since: '2026-09-28' });
-  });
-
-  it('has nothing to say before the first reading', () => {
-    expect(followerTrend({}, today, now)).toMatchObject({ week: null });
+  it('does not turn absent history into zero growth', () => {
+    expect(followerTrend({}, '2026-10-05', now).week).toBeNull();
+    expect(followerTrend({ one: { followers: 10, at: now } }, '2026-10-05', now).days.at(-1)?.gain).toBeNull();
   });
 });

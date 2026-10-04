@@ -78,6 +78,16 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); vi.useRealTimers(); });
 
 describe('X stats', () => {
+  it('counts known self-replies at the checkpoint after saving the whole page', async () => {
+    routes['/2/profile/me_on_x/statuses'] = page([
+      status('301', new Date(now - HOUR / 2).toISOString(), { replies: 4 }),
+      status('302', new Date(now - 5 * 60_000).toISOString(), replyTo('me_on_x', '301')),
+      status('303', new Date(now - 4 * 60_000).toISOString(), { author: FRIEND, ...replyTo('me_on_x', '301') }),
+    ], '');
+    await runXStats(sql, store, env, now);
+    expect(store.getRow('xmetrics', '301-m30')).toMatchObject({ replies: 4, ownReplies: 1 });
+    expect(store.getRowIds('xmetrics')).toEqual(['301-m30']);
+  });
   it('times out a stalled stats request so the shared alarm can keep delivering posts', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
@@ -108,21 +118,47 @@ describe('X stats', () => {
     expect(parents).toEqual({ '050': '', 101: '', 102: '101', 103: '900', 104: '103', 106: '' });
   });
 
-  it("records the follower count once per day, and again only when it changes", async () => {
+  it("preserves each follower change and an unchanged daily boundary reading", async () => {
     await runXStats(sql, store, env, now);
-    expect(store.getTable('xfollowers')).toEqual({ '2026-09-30': { followers: 17, following: 256, at: now } });
-
+    expect(store.getTable('xfollowers')).toEqual({ [String(now)]: { followers: 17, following: 256, at: now } });
     await runXStats(sql, store, env, now + HOUR);
-    expect(store.getRow('xfollowers', '2026-09-30')).toEqual({ followers: 17, following: 256, at: now });
-
+    expect(Object.keys(store.getTable('xfollowers'))).toHaveLength(1);
     routes['/me_on_x'] = { status: 200, body: { code: 200, user: { followers: 19, following: 256, tweets: 51 } } };
     await runXStats(sql, store, env, now + 2 * HOUR);
-    expect(store.getRow('xfollowers', '2026-09-30')).toEqual({ followers: 19, following: 256, at: now + 2 * HOUR });
-
-    // The next UTC day starts its own row.
+    expect(store.getRow('xfollowers', String(now))).toEqual({ followers: 17, following: 256, at: now });
+    expect(store.getRow('xfollowers', String(now + 2 * HOUR))).toEqual({ followers: 19, following: 256, at: now + 2 * HOUR });
     await runXStats(sql, store, env, now + 17 * HOUR);
-    expect(Object.keys(store.getTable('xfollowers'))).toEqual(['2026-09-30', '2026-10-01']);
-    expect(store.getRow('xfollowers', '2026-10-01')).toEqual({ followers: 19, following: 256, at: now + 17 * HOUR });
+    expect(Object.keys(store.getTable('xfollowers'))).toHaveLength(3);
+  });
+
+  it('captures real age checkpoints, excludes old history, and never overwrites one with a later total', async () => {
+    await runXStats(sql, store, env, now);
+    expect(store.getRow('xmetrics', '106-h2')).toMatchObject({ tweetId: '106', stage: 'h2', views: 71, at: now });
+    expect(store.hasRow('xmetrics', '050-h24')).toBe(false);
+    routes['/2/profile/me_on_x/statuses'] = page([status('106', '2026-09-30T06:00:00Z', { views: 999 })], '');
+    await runXStats(sql, store, env, now + 5 * 60_000);
+    expect(store.getCell('xtweets', '106', 'views')).toBe(999);
+    expect(store.getCell('xmetrics', '106-h2', 'views')).toBe(71);
+  });
+
+  it('refreshes early metrics from the short timeline response after five minutes', async () => {
+    routes['/2/profile/me_on_x/statuses'] = page([status('800', '2026-09-30T07:30:00Z', { views: 10 })], '');
+    await runXStats(sql, store, env, now);
+    routes['/2/profile/me_on_x/statuses'] = page([status('800', '2026-09-30T07:30:00Z', { views: 40 })], '');
+    vi.mocked(fetch).mockClear();
+    await runXStats(sql, store, env, now + 5 * 60_000);
+    expect(requested()).toEqual(['https://api.fxtwitter.com/2/profile/me_on_x/statuses?count=20&with_replies=1']);
+    expect(store.getCell('xtweets', '800', 'views')).toBe(40);
+    expect(store.getCell('xmetrics', '800-m30', 'views')).toBe(10);
+  });
+
+  it('retains the last number when the provider omits a metric and marks the new observation incomplete', async () => {
+    await runXStats(sql, store, env, now);
+    routes['/2/profile/me_on_x/statuses'] = page([status('106', '2026-09-30T06:00:00Z', { views: null, bookmarks: null, likes: 2 })], '');
+    await runXStats(sql, store, env, now + HOUR);
+    expect(store.getCell('xtweets', '106', 'views')).toBe(71);
+    expect(Number(store.getCell('xtweets', '106', 'metricMask')) & 1).toBe(0);
+    expect(store.getCell('xtweets', '106', 'likes')).toBe(2);
   });
 
   it('between full reads only looks for new tweets, and changes nothing when there are none', async () => {

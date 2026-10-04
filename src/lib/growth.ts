@@ -1,61 +1,33 @@
-import type { XFollowersRow, XTweetRow } from './schema';
+import type { XExperimentRow, XFollowersRow, XLabelRow, XMetricRow, XTweetRow } from './schema';
 import { addDays, parseDateKey, toLocalDateKey } from './utils';
+import { hasMetric, HOUR_MS, STAGES, type Metric, type Stage } from './xMetrics';
 
-/**
- * What 统计 suggests doing each day, and how the posts did by the measure X
- * ranks them with. The numbers come from X's open-sourced For You code
- * (github.com/xai-org/x-algorithm, production values synced 2026-10-02); see
- * docs/2026-10-04-x-algorithm-growth.md for where each one lives.
- *
- * X scores a post for one reader as Σ weight × P(that reader takes the action).
- * FxTwitter shows only counts, so a post's rates (count ÷ views) stand in for
- * those probabilities: the weights multiply rates here, never raw counts.
- */
-
-const HOUR = 3600_000;
-
-/** ColdStartMaxPostAgeSecs: only an original this young can take the new-author slot. */
-export const COLD_START_WINDOW_MS = 2 * HOUR;
-/** ColdStartFollowerCap: an account with more followers no longer gets the slot. */
-export const COLD_START_FOLLOWER_CAP = 50_000;
-/** The slot's Thompson-sampling prior Beta(0.75, 49.25): the like rate it assumes of a post nobody has seen. */
-export const PRIOR_LIKE_RATE = 0.75 / (0.75 + 49.25);
-/** AgeFilter and Thunder's retention: For You stops showing a post 48 hours after it was posted. */
-export const FEED_LIFETIME_MS = 48 * HOUR;
-/** The weights of the actions FxTwitter counts (home-mixer/params/param.rs). */
-export const WEIGHTS = { likes: 0.5, replies: 5, reposts: 1, quotes: 5 } as const;
-export type WeightedAction = keyof typeof WEIGHTS;
-
-// Not X's numbers: a pace that keeps something of one's own in For You every
-// day without two originals competing for the same 2-hour window.
-export const DAILY_ORIGINALS = 2;
-export const DAILY_REPLIES = 5;
-/** Posts younger than this are still gathering most of their views; comparisons leave them out. */
-export const SETTLED_MS = 24 * HOUR;
-/** Below this many views a post's rates say little. */
-export const MIN_VIEWS = 30;
+export const MIN_COHORT = 5;
+export const TOPICS = ['AI / 产品实践', '读书 / 思考', '工作 / 行业', '生活记录'] as const;
+export const FORMATS = ['文字', '图文', '视频', '引用'] as const;
+export const HOURS = Array.from({ length: 6 }, (_, i) => `${i * 4}–${(i + 1) * 4} 点`);
+export type Dimension = 'topic' | 'format' | 'hour';
 
 export interface MyTweet {
   id: string;
   text: string;
   at: number;
-  /** Starts a conversation: the only kind For You recommends to non-followers and the slot can lift. */
   original: boolean;
-  /** Answers someone else's conversation. A later part of one's own thread is neither. */
   reply: boolean;
   measured: boolean;
+  measuredAt: number;
+  metricMask: number;
+  format: string;
   views: number;
   likes: number;
-  /** Readers' replies: one's own thread parts and answers are left out. */
   replies: number;
   reposts: number;
   quotes: number;
   bookmarks: number;
 }
 
-/** The account's live tweets, oldest first. */
+/** Cumulative public numbers; a total view is not a unique viewer or a Home impression. */
 export function myTweets(rows: Record<string, Partial<XTweetRow>>): MyTweet[] {
-  // X counts one's own direct answers (a thread's next part) among a tweet's replies.
   const ownAnswers = new Map<string, number>();
   for (const row of Object.values(rows)) {
     if (!row.gone && row.inReplyTo) ownAnswers.set(row.inReplyTo, (ownAnswers.get(row.inReplyTo) ?? 0) + 1);
@@ -63,204 +35,132 @@ export function myTweets(rows: Record<string, Partial<XTweetRow>>): MyTweet[] {
   return Object.entries(rows).flatMap(([id, row]) => {
     const at = Date.parse(row.createdAt ?? '');
     if (row.gone || !Number.isFinite(at)) return [];
-    const reply = row.kind === 'reply';
     return [{
-      id,
-      text: row.text ?? '',
-      at,
-      original: !reply && !row.inReplyTo,
-      reply,
-      measured: (row.measuredAt ?? 0) > 0,
-      views: row.views ?? 0,
-      likes: row.likes ?? 0,
+      id, text: row.text ?? '', at, original: row.kind !== 'reply' && !row.inReplyTo,
+      reply: row.kind === 'reply', measured: (row.measuredAt ?? 0) > 0,
+      measuredAt: row.measuredAt ?? 0, metricMask: row.metricMask ?? -1, format: row.format ?? '',
+      views: row.views ?? 0, likes: row.likes ?? 0,
       replies: Math.max(0, (row.replies ?? 0) - (ownAnswers.get(id) ?? 0)),
-      reposts: row.reposts ?? 0,
-      quotes: row.quotes ?? 0,
-      bookmarks: row.bookmarks ?? 0,
+      reposts: row.reposts ?? 0, quotes: row.quotes ?? 0, bookmarks: row.bookmarks ?? 0,
     }];
   }).sort((a, b) => a.at - b.at);
 }
 
-const rate = (count: number, views: number) => (views > 0 ? count / views : null);
-
-function weighted(t: Pick<MyTweet, WeightedAction>): number {
-  return WEIGHTS.likes * t.likes + WEIGHTS.replies * t.replies + WEIGHTS.reposts * t.reposts + WEIGHTS.quotes * t.quotes;
+/** Suggestions only: never silently classify a post on the user's behalf. */
+export function suggestTopic(text: string): string {
+  if (/\b(ai|llm|agent|gpt|claude|codex|pwa|openwebui|vllm)\b|人工智能|大模型|编程|开源|产品|部署/i.test(text)) return TOPICS[0];
+  if (/读书|阅读|小说|哲学|罗素|庄子|幸福|人生|存在主义|《/.test(text)) return TOPICS[1];
+  if (/压缩机|热泵|制冷|研发|汽车|工厂|行业|基金|投资|财报/.test(text)) return TOPICS[2];
+  return TOPICS[3];
 }
 
-/** Σ weight × rate, per 1000 views: what X's score would be if every reader acted at these rates. */
-export function scorePerThousand(t: Pick<MyTweet, WeightedAction | 'views'>): number | null {
-  return t.views > 0 ? (weighted(t) / t.views) * 1000 : null;
+export interface CohortPost extends MyTweet {
+  observedAt: number;
+  topic: string;
+  hour: string;
 }
 
-export interface WindowPost {
-  id: string;
-  text: string;
-  at: number;
-  endsAt: number;
-  views: number;
-  likes: number;
-  likeRate: number | null;
+/** Same-age observations only. Missing historical checkpoints are intentionally unknown. */
+export function cohortPosts(tweets: MyTweet[], metrics: Record<string, Partial<XMetricRow>>, labels: Record<string, Partial<XLabelRow>>,
+  stage: Stage, from: number, now: number): CohortPost[] {
+  const checkpoint = STAGES.find((s) => s.key === stage)!;
+  const eligible = new Map(tweets.filter((t) => t.original && t.at >= from && t.at <= now).map((t) => [t.id, t]));
+  const chosen = new Map<string, CohortPost>();
+  for (const row of Object.values(metrics)) {
+    const t = eligible.get(row.tweetId ?? '');
+    if (!t || row.stage !== stage || !hasMetric(row, 'views') || typeof row.views !== 'number' || !Number.isFinite(row.views) || row.views < 0) continue;
+    const at = row.at ?? 0;
+    const age = at - t.at;
+    if (at > now || age < checkpoint.age || age > checkpoint.age + checkpoint.grace) continue;
+    if (chosen.has(t.id) && chosen.get(t.id)!.observedAt <= at) continue;
+    chosen.set(t.id, {
+      ...t, measured: true, observedAt: at, metricMask: row.metricMask ?? 0,
+      views: row.views, likes: row.likes ?? 0, replies: Math.max(0, (row.replies ?? 0) - (row.ownReplies ?? 0)),
+      reposts: row.reposts ?? 0, quotes: row.quotes ?? 0, bookmarks: row.bookmarks ?? 0,
+      topic: labels[t.id]?.topic?.trim() || '未分类', format: t.format || '未识别',
+      hour: HOURS[Math.floor(new Date(t.at).getHours() / 4)],
+    });
+  }
+  return [...chosen.values()].sort((a, b) => b.at - a.at);
 }
 
-export interface TodayPlan {
-  originals: number;
-  replies: number;
-  /** Originals still inside their 2-hour window, newest first. */
-  inWindow: WindowPost[];
-  /** Originals still in For You that readers replied to, most replied first. */
-  answered: Array<{ id: string; text: string; replies: number }>;
-}
-
-export function todayPlan(tweets: MyTweet[], today: string, now: number): TodayPlan {
-  const posted = tweets.filter((t) => t.at <= now);
-  const isToday = (t: MyTweet) => toLocalDateKey(t.at) === today;
-  return {
-    originals: posted.filter((t) => t.original && isToday(t)).length,
-    replies: posted.filter((t) => t.reply && isToday(t)).length,
-    inWindow: posted
-      .filter((t) => t.original && now - t.at < COLD_START_WINDOW_MS)
-      .reverse()
-      .map((t) => ({
-        id: t.id,
-        text: t.text,
-        at: t.at,
-        endsAt: t.at + COLD_START_WINDOW_MS,
-        views: t.views,
-        likes: t.likes,
-        likeRate: t.measured ? rate(t.likes, t.views) : null,
-      })),
-    answered: posted
-      .filter((t) => t.original && t.replies > 0 && now - t.at < FEED_LIFETIME_MS)
-      .sort((a, b) => b.replies - a.replies || b.at - a.at)
-      .slice(0, 3)
-      .map(({ id, text, replies }) => ({ id, text, replies })),
-  };
-}
-
-export interface HourBucket {
-  /** Local hours [from, to). */
-  from: number;
-  to: number;
-  posts: number;
-  medianViews: number;
-  likeRate: number | null;
-}
-
-export interface RankedPost {
-  id: string;
-  text: string;
-  views: number;
-  score: number;
-  likeRate: number;
-}
-
-export interface Diagnosis {
-  /** Originals posted in the range. */
-  originals: number;
-  /** Of those, posted under 2 hours after the original before. */
-  crowded: number;
-  /** Originals in the range at least a day old, which the rest compares. */
-  settled: number;
-  views: number;
-  likeRate: number | null;
-  /** Settled originals with enough views to judge, and how many of them beat the slot's prior. */
-  rated: number;
-  beatPrior: number;
-  scorePerThousand: number | null;
-  /** The share of the score each action brought. */
-  mix: Record<WeightedAction, number>;
-  /** Readers' replies and quotes per 1000 views. */
-  talkPerThousand: number | null;
-  bookmarksPerThousand: number | null;
-  /** Posting hours with at least two settled originals. */
-  hours: HourBucket[];
-  /** The settled originals X's weights favour most. */
-  best: RankedPost[];
-  /** Replies in others' conversations. */
-  replies: number;
-  replyLikes: number;
-}
-
-const BUCKET_HOURS = 4;
-
-function median(values: number[]): number {
+export function median(values: number[]): number {
+  if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/** The originals and replies posted from `from` (ms) to now. */
-export function diagnose(tweets: MyTweet[], from: number, now: number): Diagnosis {
-  const originals = tweets.filter((t) => t.original && t.at <= now);
-  const inRange = originals.filter((t) => t.at >= from);
-  let crowded = 0;
-  originals.forEach((t, i) => {
-    if (i > 0 && t.at >= from && t.at - originals[i - 1].at < COLD_START_WINDOW_MS) crowded += 1;
-  });
+export interface CohortGroup {
+  key: string;
+  posts: number;
+  days: number;
+  medianViews: number;
+  likesPerThousand: number | null;
+  bookmarksPerThousand: number | null;
+  repostsPerThousand: number | null;
+  repliesPerThousand: number | null;
+}
 
-  const settled = inRange.filter((t) => t.measured && now - t.at >= SETTLED_MS);
-  const sum = (key: 'views' | 'bookmarks' | WeightedAction) => settled.reduce((n, t) => n + t[key], 0);
-  const totals = { views: sum('views'), likes: sum('likes'), replies: sum('replies'), reposts: sum('reposts'), quotes: sum('quotes'), bookmarks: sum('bookmarks') };
-  const total = weighted(totals);
-  const perThousand = (count: number) => (totals.views > 0 ? (count / totals.views) * 1000 : null);
+/** The numerator and denominator use the same posts; omitted counts never become zeros. */
+function perThousand(posts: CohortPost[], metric: Metric): number | null {
+  const known = posts.filter((p) => hasMetric(p, metric));
+  const views = known.reduce((sum, p) => sum + p.views, 0);
+  return views > 0 ? known.reduce((sum, p) => sum + p[metric], 0) / views * 1000 : null;
+}
 
-  const rated = settled.filter((t) => t.views >= MIN_VIEWS);
-  const hours: HourBucket[] = [];
-  for (let hour = 0; hour < 24; hour += BUCKET_HOURS) {
-    const posts = settled.filter((t) => Math.floor(new Date(t.at).getHours() / BUCKET_HOURS) * BUCKET_HOURS === hour);
-    if (posts.length < 2) continue;
-    const views = posts.reduce((n, t) => n + t.views, 0);
-    hours.push({
-      from: hour,
-      to: hour + BUCKET_HOURS,
-      posts: posts.length,
-      medianViews: median(posts.map((t) => t.views)),
-      likeRate: rate(posts.reduce((n, t) => n + t.likes, 0), views),
-    });
+export function groupCohorts(posts: CohortPost[], dimension: Dimension): CohortGroup[] {
+  const groups = new Map<string, CohortPost[]>();
+  for (const post of posts) {
+    const key = post[dimension];
+    const group = groups.get(key) ?? [];
+    group.push(post);
+    groups.set(key, group);
   }
+  return [...groups].map(([key, group]) => ({
+    key, posts: group.length, days: new Set(group.map((p) => toLocalDateKey(p.at))).size,
+    medianViews: median(group.map((p) => p.views)),
+    likesPerThousand: perThousand(group, 'likes'), bookmarksPerThousand: perThousand(group, 'bookmarks'),
+    repostsPerThousand: perThousand(group, 'reposts'), repliesPerThousand: perThousand(group, 'replies'),
+  })).sort((a, b) => b.medianViews - a.medianViews || b.posts - a.posts);
+}
 
-  const replies = tweets.filter((t) => t.reply && t.at >= from && t.at <= now);
-  return {
-    originals: inRange.length,
-    crowded,
-    settled: settled.length,
-    views: totals.views,
-    likeRate: rate(totals.likes, totals.views),
-    rated: rated.length,
-    beatPrior: rated.filter((t) => t.likes / t.views > PRIOR_LIKE_RATE).length,
-    scorePerThousand: scorePerThousand(totals),
-    mix: {
-      likes: total > 0 ? (WEIGHTS.likes * totals.likes) / total : 0,
-      replies: total > 0 ? (WEIGHTS.replies * totals.replies) / total : 0,
-      reposts: total > 0 ? (WEIGHTS.reposts * totals.reposts) / total : 0,
-      quotes: total > 0 ? (WEIGHTS.quotes * totals.quotes) / total : 0,
-    },
-    talkPerThousand: perThousand(totals.replies + totals.quotes),
-    bookmarksPerThousand: perThousand(totals.bookmarks),
-    hours,
-    best: rated
-      .map((t) => ({ id: t.id, text: t.text, views: t.views, score: scorePerThousand(t) ?? 0, likeRate: t.likes / t.views }))
-      .filter((t) => t.score > 0)
-      .sort((a, b) => b.score - a.score || b.views - a.views)
-      .slice(0, 3),
-    replies: replies.length,
-    replyLikes: replies.reduce((n, t) => n + t.likes, 0),
-  };
+export function experimentResult(experiment: Partial<XExperimentRow>, tweets: MyTweet[], cohorts: CohortPost[], labels: Record<string, Partial<XLabelRow>>) {
+  const dimension = experiment.dimension as Dimension;
+  const start = experiment.startedAt ?? Infinity;
+  const end = experiment.endedAt || Infinity;
+  const inRange = (t: MyTweet) => t.original && t.at >= start && t.at <= end;
+  const matching = cohorts.filter(inRange);
+  const groups = groupCohorts(matching, dimension);
+  const group = (key: string) => groups.find((g) => g.key === key) ?? { key, posts: 0, days: 0, medianViews: 0, likesPerThousand: null, bookmarksPerThousand: null, repostsPerThousand: null, repliesPerThousand: null };
+  const posted = (key: string) => tweets.filter(inRange).filter((t) => {
+    const value = dimension === 'topic' ? labels[t.id]?.topic : dimension === 'format' ? t.format : HOURS[Math.floor(new Date(t.at).getHours() / 4)];
+    return value === key;
+  }).length;
+  const a = group(experiment.a ?? '');
+  const b = group(experiment.b ?? '');
+  // Five is an operational minimum, not statistical significance or an X algorithm rule.
+  const enough = a.posts >= MIN_COHORT && b.posts >= MIN_COHORT && a.days >= 2 && b.days >= 2;
+  const winner = enough && a.medianViews !== b.medianViews ? (a.medianViews > b.medianViews ? a : b).key : null;
+  return { a, b, postedA: posted(a.key), postedB: posted(b.key), enough, winner };
+}
+
+export function replyQueue(tweets: MyTweet[], labels: Record<string, Partial<XLabelRow>>, now: number) {
+  return tweets.filter((t) => t.original && now - t.at <= 14 * 24 * HOUR_MS && hasMetric(t, 'replies')
+    && t.replies > (labels[t.id]?.reviewedReplies ?? 0))
+    .sort((a, b) => b.at - a.at).slice(0, 3);
 }
 
 export interface FollowerTrend {
-  /** The change over the last 7 days, or since counting began if that was later. */
   week: { gain: number; since: string } | null;
-  /** The change on each of the last days, oldest first; null before counting began. */
   days: Array<{ key: string; gain: number | null }>;
 }
 
-/** Follower changes per local day, from the server's daily readings. */
+/** Net change between observed counts. This cannot attribute new followers to a single post. */
 export function followerTrend(rows: Record<string, Partial<XFollowersRow>>, today: string, now: number, span = 14): FollowerTrend {
   const points = Object.values(rows)
-    .filter((row): row is XFollowersRow => (row.at ?? 0) > 0 && typeof row.followers === 'number')
+    .filter((row): row is XFollowersRow => (row.at ?? 0) > 0 && typeof row.followers === 'number' && Number.isFinite(row.followers))
     .sort((a, b) => a.at - b.at);
-  // The count as of a moment: the last reading at or before it.
   const at = (time: number): number | null => {
     let value: number | null = null;
     for (const point of points) {
@@ -279,10 +179,7 @@ export function followerTrend(rows: Record<string, Partial<XFollowersRow>>, toda
   if (latest === null) return { week: null, days };
   const weekStart = addDays(today, -6);
   const base = at(parseDateKey(weekStart).getTime());
-  return {
-    week: base === null
-      ? { gain: latest - points[0].followers, since: toLocalDateKey(points[0].at) }
-      : { gain: latest - base, since: weekStart },
-    days,
-  };
+  return { week: base === null
+    ? { gain: latest - points[0].followers, since: toLocalDateKey(points[0].at) }
+    : { gain: latest - base, since: weekStart }, days };
 }

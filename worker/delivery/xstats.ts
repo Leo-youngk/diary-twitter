@@ -1,6 +1,8 @@
 import type { MergeableStore } from 'tinybase';
 import { bufferConfigured, fetchChannelHandle, fetchOrganizationId, tweetIdOf, type BufferEnv } from '../buffer';
 import { getMeta, setMeta } from '../d1';
+import { dueStages, hasMetric, hotRefreshDue, METRICS, parseMetrics, type Metric } from '../../src/lib/xMetrics';
+import type { XTweetRow } from '../../src/lib/schema';
 
 /**
  * How the X account is doing, for 统计 and the numbers under each post.
@@ -12,7 +14,7 @@ import { getMeta, setMeta } from '../d1';
  * and bookmarks, 100 to a request. Buffer only supplies the account's handle.
  *
  * Synced tables: `xtweets` (one row per tweet id), `xaccount` (row 'me') and
- * `xfollowers` (the follower count, one row per UTC day).
+ * `xfollowers` (timestamped follower observations) and `xmetrics` (age checkpoints).
  * A failed refresh keeps the last numbers and says so in `xaccount.error`.
  */
 
@@ -22,7 +24,7 @@ const HOUR = 3600_000;
 const ACCOUNT_EVERY_MS = HOUR;
 // The newest page brings new tweets and the numbers that still move.
 const LATEST_EVERY_MS = HOUR;
-// In between, a short look each minute adds tweets just posted on X and writes nothing else.
+// In between, reuse the minute look for new tweets to refresh hot posts every five minutes.
 const NEW_EVERY_MS = 60_000;
 const NEW_PAGE_SIZE = 20;
 // A walk down the whole timeline refreshes older tweets; the first one reads the history.
@@ -54,7 +56,9 @@ interface Tweet {
   replyTo: { author: string; id: string } | null;
   text: string;
   createdAt: string;
-  numbers: { views: number; likes: number; replies: number; reposts: number; quotes: number; bookmarks: number };
+  numbers: Partial<Record<Metric, number>>;
+  metricMask: number;
+  format: string;
 }
 
 type FxResult =
@@ -94,6 +98,10 @@ function parseStatus(value: unknown): Tweet | null {
   if (!isRecord(value) || typeof value.id !== 'string') return null;
   const reply = isRecord(value.replying_to) ? value.replying_to : null;
   const created = count(value.created_timestamp);
+  const metrics = parseMetrics(value);
+  const media = isRecord(value.media) ? value.media : null;
+  const video = media && ((Array.isArray(media.videos) && media.videos.length > 0) || media.broadcast || media.external);
+  const photo = media && Array.isArray(media.photos) && media.photos.length > 0;
   return {
     id: value.id,
     author: lower(isRecord(value.author) ? value.author.screen_name : ''),
@@ -101,14 +109,9 @@ function parseStatus(value: unknown): Tweet | null {
     replyTo: reply && typeof reply.status === 'string' ? { author: lower(reply.screen_name), id: reply.status } : null,
     text: typeof value.text === 'string' ? value.text : '',
     createdAt: created ? new Date(created * 1000).toISOString() : '',
-    numbers: {
-      views: count(value.views),
-      likes: count(value.likes),
-      replies: count(value.replies),
-      reposts: count(value.reposts),
-      quotes: count(value.quotes),
-      bookmarks: count(value.bookmarks),
-    },
+    numbers: metrics.numbers,
+    metricMask: metrics.mask,
+    format: video ? '视频' : photo ? '图文' : isRecord(value.quote) ? '引用' : '文字',
   };
 }
 
@@ -126,9 +129,27 @@ function save(store: MergeableStore, id: string, tweet: Tweet, now: number): voi
     kind: kindOf(store, tweet),
     inReplyTo: tweet.replyTo?.id ?? '',
     ...tweet.numbers,
+    metricMask: tweet.metricMask,
+    format: tweet.format,
     measuredAt: now,
     gone: false,
   });
+}
+
+/** Save the first real observation near each checkpoint, never backfill from a later lifetime total. */
+function snapshot(store: MergeableStore, id: string, now: number): void {
+  const row = store.getRow('xtweets', id) as Partial<XTweetRow>;
+  if (row.gone || row.kind === 'reply' || row.inReplyTo || !row.createdAt || !hasMetric(row, 'views')) return;
+  const ownReplies = Object.values(store.getTable('xtweets'))
+    .filter((part) => !part.gone && part.inReplyTo === id && Date.parse(String(part.createdAt ?? '')) <= now).length;
+  for (const stage of dueStages(row.createdAt, now)) {
+    const key = `${id}-${stage.key}`;
+    if (store.hasRow('xmetrics', key)) continue;
+    store.setRow('xmetrics', key, {
+      tweetId: id, stage: stage.key, at: now, metricMask: row.metricMask ?? 0, ownReplies,
+      ...Object.fromEntries(METRICS.map((metric) => [metric, row[metric] ?? 0])),
+    });
+  }
 }
 
 function dueAt(row: TweetRow, now: number): number {
@@ -136,7 +157,8 @@ function dueAt(row: TweetRow, now: number): number {
   if (row.gone) return measured + GONE_EVERY_MS;
   const created = Date.parse(row.createdAt ?? '');
   const young = !Number.isFinite(created) || now - created < YOUNG_MS;
-  return measured + (young ? YOUNG_EVERY_MS : OLD_EVERY_MS);
+  const hot = Number.isFinite(created) && now - created <= 2 * HOUR + 10 * 60_000;
+  return measured + (hot ? 5 * 60_000 : young ? YOUNG_EVERY_MS : OLD_EVERY_MS);
 }
 
 function recordError(store: MergeableStore, message: string, now: number): void {
@@ -159,7 +181,7 @@ function addSentTweets(store: MergeableStore): void {
   store.transaction(() => {
     for (const [tweetId, text, createdAt, inReplyTo] of sent) {
       store.setRow('xtweets', tweetId, {
-        text, createdAt, kind: 'post', inReplyTo, views: 0, likes: 0, replies: 0, reposts: 0, quotes: 0, bookmarks: 0, measuredAt: 0, gone: false,
+        text, createdAt, kind: 'post', inReplyTo, views: 0, likes: 0, replies: 0, reposts: 0, quotes: 0, bookmarks: 0, metricMask: 0, format: '', measuredAt: 0, gone: false,
       });
     }
   });
@@ -195,10 +217,15 @@ async function readPage(store: MergeableStore, handle: string, cursor: string, n
   // The timeline also carries the tweets being replied to and reposts of others' tweets.
   const mine = results
     .map(parseStatus)
-    .filter((tweet): tweet is Tweet => tweet !== null && tweet.author === me && !tweet.repost && !(onlyNew && store.hasRow('xtweets', tweet.id)))
+    .filter((tweet): tweet is Tweet => tweet !== null && tweet.author === me && !tweet.repost && !(onlyNew && store.hasRow('xtweets', tweet.id)
+      && !hotRefreshDue(store.getRow('xtweets', tweet.id) as Partial<XTweetRow>, now)))
     // Oldest first, so a reply's parent has its kind before the reply asks for it.
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  if (mine.length > 0) store.transaction(() => { for (const tweet of mine) save(store, tweet.id, tweet, now); });
+  if (mine.length > 0) store.transaction(() => {
+    for (const tweet of mine) save(store, tweet.id, tweet, now);
+    // Parents and thread parts have all been saved before counting self-replies.
+    for (const tweet of mine) snapshot(store, tweet.id, now);
+  });
   const bottom = isRecord(result.body.cursor) && typeof result.body.cursor.bottom === 'string' ? result.body.cursor.bottom : '';
   // An empty page is the end, even when X offers another cursor.
   return { ok: true, next: results.length > 0 && bottom !== cursor ? bottom : '' };
@@ -227,15 +254,17 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
   if (!failed && handle && now - count(store.getCell('xaccount', 'me', 'measuredAt')) >= ACCOUNT_EVERY_MS) {
     const result = await fx(`/${encodeURIComponent(handle)}`);
     const user = result.kind === 'ok' && isRecord(result.body.user) ? result.body.user : null;
-    if (user) {
+    if (user && typeof user.followers === 'number' && Number.isFinite(user.followers) && user.followers >= 0
+      && typeof user.following === 'number' && Number.isFinite(user.following) && user.following >= 0) {
       const followers = count(user.followers);
       const following = count(user.following);
-      store.setPartialRow('xaccount', 'me', { handle, followers, following, tweets: count(user.tweets), measuredAt: now });
-      // The day's row is written when the count changes, not at every hourly read.
+      const previous = store.getRow('xaccount', 'me');
       const day = new Date(now).toISOString().slice(0, 10);
-      const row = store.getRow('xfollowers', day);
-      if (row.followers !== followers || row.following !== following) {
-        store.setRow('xfollowers', day, { followers, following, at: now });
+      const previousDay = new Date(count(previous.measuredAt)).toISOString().slice(0, 10);
+      store.setPartialRow('xaccount', 'me', { handle, followers, following, tweets: count(user.tweets), measuredAt: now });
+      // Keep every observed change, plus one unchanged boundary reading per UTC day.
+      if (previous.followers !== followers || previous.following !== following || previousDay !== day) {
+        store.setRow('xfollowers', String(now), { followers, following, at: now });
       }
       refreshed = true;
     } else {
@@ -277,7 +306,8 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
 
   const rows = Object.entries(store.getTable('xtweets') as Record<string, TweetRow>);
   const due = rows.filter(([, row]) => dueAt(row, now) <= now)
-    .sort(([, a], [, b]) => (a.measuredAt ?? 0) - (b.measuredAt ?? 0))
+    .sort(([, a], [, b]) => Number(dueStages(b.createdAt ?? '', now).length > 0) - Number(dueStages(a.createdAt ?? '', now).length > 0)
+      || (a.measuredAt ?? 0) - (b.measuredAt ?? 0))
     .slice(0, MAX_FETCHES_PER_RUN);
   for (const [id] of due) {
     // This shares an alarm with X publication. Give newly arrived posts a turn
@@ -291,6 +321,7 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
       refreshed = true;
     } else if (tweet) {
       save(store, id, tweet, now);
+      snapshot(store, id, now);
       refreshed = true;
     } else {
       fail(`${failure(result)}，推文数据暂时没有更新`);

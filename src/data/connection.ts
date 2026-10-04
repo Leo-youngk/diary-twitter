@@ -31,7 +31,7 @@ function setStatus(next: Partial<Status>): void {
 export function outgoingRecords(): SyncRecord[] {
   return splitContent(store.getMergeableContent()).flatMap(record => {
     const [, table] = record.key.split(':');
-    if (record.key.startsWith('v:') || ['posts', 'replies', 'goals'].includes(table)) return [record];
+    if (record.key.startsWith('v:') || ['posts', 'replies', 'goals', 'xlabels', 'xexperiments'].includes(table)) return [record];
     if (table !== 'xposts') return [];
     const content = recordContent(record);
     const id = record.key.split(':')[2];

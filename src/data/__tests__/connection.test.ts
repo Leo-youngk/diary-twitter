@@ -106,6 +106,25 @@ describe('HTTP offline synchronization',()=>{
     const row=(await remoteStore()).getRow('xposts','p');
     expect(row).toEqual({command:'retry'});
   });
+  it('syncs classifications, reviewed replies and experiments while keeping observations server-owned', async () => {
+    local.setRow('xlabels', '123', { topic: 'AI / 产品实践', reviewedReplies: 2, reviewedAt: Date.now() });
+    local.setRow('xexperiments', 'experiment', { dimension: 'topic', a: 'AI / 产品实践', b: '读书 / 思考', startedAt: Date.now(), endedAt: 0 });
+    local.setRow('xmetrics', '123-h24', { tweetId: '123', stage: 'h24', views: 99999 });
+    local.setRow('xtweets', '123', { views: 99999 });
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    const server = await remoteStore();
+    expect(server.getRow('xlabels', '123')).toEqual(local.getRow('xlabels', '123'));
+    expect(server.getRow('xexperiments', 'experiment')).toEqual(local.getRow('xexperiments', 'experiment'));
+    expect(server.hasTable('xmetrics')).toBe(false);
+    expect(server.hasTable('xtweets')).toBe(false);
+    // The same record arrives on another device, including a later close of the experiment.
+    local.setCell('xexperiments', 'experiment', 'endedAt', Date.now() + 1);
+    await vi.advanceTimersByTimeAsync(150);
+    const otherDevice = createMergeableStore();
+    for (const record of remote.values()) otherDevice.applyMergeableChanges(recordContent(record));
+    expect(otherDevice.getCell('xlabels', '123', 'reviewedReplies')).toBe(2);
+    expect(otherDevice.getCell('xexperiments', 'experiment', 'endedAt')).toBe(local.getCell('xexperiments', 'experiment', 'endedAt'));
+  });
   it('uploads all thread parts before their root can trigger publishing, even across batches', async () => {
     local.setRow('posts', 'p', { content: 'root', entryType: 'thought', xSync: true });
     for (let i = 0; i < 60; i++) local.setRow('replies', `part${i}`, { postId: 'p', content: `part ${i}`, thread: true, xSync: true });
