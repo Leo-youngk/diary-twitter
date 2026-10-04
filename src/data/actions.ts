@@ -129,6 +129,34 @@ export function sendXCommand(id: string, command: Exclude<XCommand, ''>): void {
   store.setCell('xposts', id, 'command', command);
 }
 
+export function labelXTweet(id: string, topic: string): void {
+  if (store.hasRow('xtweets', id)) store.setCell('xlabels', id, 'topic', topic.trim().slice(0, 30));
+}
+
+/** Acknowledge the count we saw, not an unverifiable claim that every reply was answered. */
+export function reviewXReplies(id: string, replies: number): void {
+  if (store.hasRow('xtweets', id)) store.setPartialRow('xlabels', id, { reviewedReplies: Math.max(0, replies), reviewedAt: Date.now() });
+}
+
+export function startXExperiment(dimension: string, a: string, b: string): string | null {
+  const left = a.trim().slice(0, 30);
+  const right = b.trim().slice(0, 30);
+  if (!['topic', 'format', 'hour'].includes(dimension) || !left || !right || left === right) return null;
+  const id = generateId();
+  const now = Date.now();
+  store.transaction(() => {
+    for (const [key, row] of Object.entries(store.getTable('xexperiments'))) {
+      if (!row.endedAt) store.setCell('xexperiments', key, 'endedAt', now);
+    }
+    store.setRow('xexperiments', id, { dimension, a: left, b: right, startedAt: now, endedAt: 0 });
+  });
+  return id;
+}
+
+export function endXExperiment(id: string): void {
+  if (store.hasRow('xexperiments', id)) store.setCell('xexperiments', id, 'endedAt', Date.now());
+}
+
 // ── 每日目标 ────────────────────────────────────────────────────────────────
 
 export const MAX_GOAL_LENGTH = 200;
@@ -139,6 +167,18 @@ export function addGoal(day: string, text: string): string | null {
   const id = generateId();
   store.setRow('goals', id, { day, text: value, done: false, createdAt: new Date().toISOString() });
   return id;
+}
+
+/** Add several goals to a day, listed in the order given. */
+export function addGoals(day: string, texts: string[]): number {
+  const values = texts.map((text) => text.trim().slice(0, MAX_GOAL_LENGTH)).filter(Boolean);
+  const base = Date.now();
+  store.transaction(() => {
+    values.forEach((text, i) => {
+      store.setRow('goals', generateId(), { day, text, done: false, createdAt: new Date(base + i).toISOString() });
+    });
+  });
+  return values.length;
 }
 
 export function renameGoal(id: string, text: string): void {
