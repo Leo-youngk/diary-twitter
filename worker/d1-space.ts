@@ -30,7 +30,7 @@ export class D1Diary extends DurableObject<Env> {
       const fragments = splitContent(parsed.getMergeableContent());
       if (fragments.length !== 1 || fragments[0].key !== record.key) throw new Error('Invalid sync content');
       // Delivery state is server-owned. Devices may only request retry/dismiss.
-      if (kind === 'r' && ['xtweets','xaccount','devices'].includes(table)) continue;
+      if (kind === 'r' && ['xtweets','xaccount','xfollowers','devices'].includes(table)) continue;
       if (kind === 'r' && table === 'xposts') {
         const cells = recordContent(record)[0][0].xposts[0][id][0];
         for (const cell of Object.keys(cells)) if (cell !== 'command') delete cells[cell];

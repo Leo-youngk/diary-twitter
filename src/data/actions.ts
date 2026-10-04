@@ -141,6 +141,18 @@ export function addGoal(day: string, text: string): string | null {
   return id;
 }
 
+/** Add several goals to a day, listed in the order given. */
+export function addGoals(day: string, texts: string[]): number {
+  const values = texts.map((text) => text.trim().slice(0, MAX_GOAL_LENGTH)).filter(Boolean);
+  const base = Date.now();
+  store.transaction(() => {
+    values.forEach((text, i) => {
+      store.setRow('goals', generateId(), { day, text, done: false, createdAt: new Date(base + i).toISOString() });
+    });
+  });
+  return values.length;
+}
+
 export function renameGoal(id: string, text: string): void {
   const value = text.trim().slice(0, MAX_GOAL_LENGTH);
   if (!value || !store.hasRow('goals', id) || store.getCell('goals', id, 'text') === value) return;

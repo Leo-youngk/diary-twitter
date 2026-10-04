@@ -11,7 +11,8 @@ import { getMeta, setMeta } from '../d1';
  * or posted on X directly — with its views, likes, replies, reposts, quotes
  * and bookmarks, 100 to a request. Buffer only supplies the account's handle.
  *
- * Synced tables: `xtweets` (one row per tweet id) and `xaccount` (row 'me').
+ * Synced tables: `xtweets` (one row per tweet id), `xaccount` (row 'me') and
+ * `xfollowers` (the follower count, one row per UTC day).
  * A failed refresh keeps the last numbers and says so in `xaccount.error`.
  */
 
@@ -123,6 +124,7 @@ function save(store: MergeableStore, id: string, tweet: Tweet, now: number): voi
     text: tweet.text,
     ...(tweet.createdAt ? { createdAt: tweet.createdAt } : {}),
     kind: kindOf(store, tweet),
+    inReplyTo: tweet.replyTo?.id ?? '',
     ...tweet.numbers,
     measuredAt: now,
     gone: false,
@@ -144,18 +146,20 @@ function recordError(store: MergeableStore, message: string, now: number): void 
 
 /** Tweets the app sent count at once, before the next page of the timeline shows them. */
 function addSentTweets(store: MergeableStore): void {
-  const sent: Array<[string, string, string]> = [];
+  const sent: Array<[string, string, string, string]> = [];
   for (const [id, row] of Object.entries(store.getTable('xposts'))) {
     const tweetId = row.state === 'sent' ? tweetIdOf(String(row.link ?? '')) : undefined;
     if (!tweetId || store.hasRow('xtweets', tweetId)) continue;
     const source = store.getRow(row.kind === 'reply' ? 'replies' : 'posts', id);
-    sent.push([tweetId, String(source.content ?? ''), new Date(count(row.at)).toISOString()]);
+    // A thread's later part answers its post (the timeline later names the exact part); an 追加 quotes it instead.
+    const parent = source.thread ? tweetIdOf(String(store.getCell('xposts', String(source.postId ?? ''), 'link') ?? '')) ?? '' : '';
+    sent.push([tweetId, String(source.content ?? ''), new Date(count(row.at)).toISOString(), parent]);
   }
   if (sent.length === 0) return;
   store.transaction(() => {
-    for (const [tweetId, text, createdAt] of sent) {
+    for (const [tweetId, text, createdAt, inReplyTo] of sent) {
       store.setRow('xtweets', tweetId, {
-        text, createdAt, kind: 'post', views: 0, likes: 0, replies: 0, reposts: 0, quotes: 0, bookmarks: 0, measuredAt: 0, gone: false,
+        text, createdAt, kind: 'post', inReplyTo, views: 0, likes: 0, replies: 0, reposts: 0, quotes: 0, bookmarks: 0, measuredAt: 0, gone: false,
       });
     }
   });
@@ -224,13 +228,15 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
     const result = await fx(`/${encodeURIComponent(handle)}`);
     const user = result.kind === 'ok' && isRecord(result.body.user) ? result.body.user : null;
     if (user) {
-      store.setPartialRow('xaccount', 'me', {
-        handle,
-        followers: count(user.followers),
-        following: count(user.following),
-        tweets: count(user.tweets),
-        measuredAt: now,
-      });
+      const followers = count(user.followers);
+      const following = count(user.following);
+      store.setPartialRow('xaccount', 'me', { handle, followers, following, tweets: count(user.tweets), measuredAt: now });
+      // The day's row is written when the count changes, not at every hourly read.
+      const day = new Date(now).toISOString().slice(0, 10);
+      const row = store.getRow('xfollowers', day);
+      if (row.followers !== followers || row.following !== following) {
+        store.setRow('xfollowers', day, { followers, following, at: now });
+      }
       refreshed = true;
     } else {
       fail(result.kind === 'gone' ? `X 上找不到 @${handle}` : `${failure(result)}，粉丝数暂时没有更新`);

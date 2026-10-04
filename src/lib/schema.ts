@@ -59,6 +59,8 @@ export interface XTweetRow {
   createdAt: string;
   /** 'reply' answers someone else's conversation; a thread of one's own is 'post'. */
   kind: 'post' | 'reply';
+  /** The tweet it answers, '' when it starts a conversation: a thread's later parts are posts that have one. */
+  inReplyTo: string;
   views: number;
   likes: number;
   replies: number;
@@ -81,6 +83,17 @@ export interface XAccountRow {
   /** Why the last refresh failed ('' when it did not); the numbers are then older. */
   error: string;
   errorAt: number;
+}
+
+/**
+ * The account's follower count over time, written by the server: one row per
+ * UTC day (row id 'YYYY-MM-DD'), holding the last count read that day.
+ */
+export interface XFollowersRow {
+  followers: number;
+  following: number;
+  /** When this count was first read (ms); it changes only with the count. */
+  at: number;
 }
 
 /** One goal on one day's list (每日目标). */
@@ -137,6 +150,7 @@ export const TABLES_SCHEMA = {
     text: { type: 'string', default: '' },
     createdAt: { type: 'string', default: '' },
     kind: { type: 'string', default: 'post' },
+    inReplyTo: { type: 'string', default: '' },
     views: { type: 'number', default: 0 },
     likes: { type: 'number', default: 0 },
     replies: { type: 'number', default: 0 },
@@ -154,6 +168,11 @@ export const TABLES_SCHEMA = {
     measuredAt: { type: 'number', default: 0 },
     error: { type: 'string', default: '' },
     errorAt: { type: 'number', default: 0 },
+  },
+  xfollowers: {
+    followers: { type: 'number', default: 0 },
+    following: { type: 'number', default: 0 },
+    at: { type: 'number', default: 0 },
   },
   goals: {
     day: { type: 'string', default: '' },

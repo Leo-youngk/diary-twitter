@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMainTab } from '@/app/mainTab';
 import { useScrollChrome } from '@/app/scrollChrome';
 import { useNav } from '@/app/nav';
 import { XLogo } from '@/components/Icon';
 import PaneHeader from '@/components/PaneHeader';
 import PaneLayout from '@/components/PaneLayout';
+import { Bars, Section, Tile, type Bar } from '@/components/StatsParts';
+import { AlgorithmSection, FeedSection, TodaySection } from '@/components/XGrowth';
 import { checkX } from '@/data/connection';
-import { useGoalProgress, usePosts, useToday, useXAccount, useXPosts, useXTweets } from '@/data/hooks';
+import {
+  useGoalProgress, useMinute, usePosts, useToday, useXAccount, useXFollowers, useXPosts, useXTweets,
+} from '@/data/hooks';
 import { store } from '@/data/store';
 import { tweetIdOfLink } from '@/lib/schema';
 import { goalTotals, perfectStreak } from '@/lib/goals';
+import { diagnose, followerTrend, myTweets, todayPlan } from '@/lib/growth';
 import { addDays, cn, daysBetween, parseDateKey, toLocalDateKey } from '@/lib/utils';
 
 type Period = 7 | 30 | 0;
@@ -22,86 +27,21 @@ const MIN_MONTHS = 12;
 const MAX_MONTHS = 24;
 const compact = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 });
 
-function Tile({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="rounded-2xl bg-x-darker px-4 py-3">
-      <p className="text-[13px] text-x-gray">{label}</p>
-      <p className="mt-1 text-[24px] font-semibold leading-tight tabular-nums">{value}</p>
-      {note && <p className="mt-0.5 truncate text-[12px] text-x-gray">{note}</p>}
-    </div>
-  );
-}
-
-function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="px-4 pt-6">
-      <div className="flex items-center gap-2">
-        {icon}
-        <h2 className="text-[17px] font-semibold">{title}</h2>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-interface Bar {
-  key: string;
-  label: string;
-  count: number;
-}
-
-/** One series of counts; tap (or hover) a bar to read it, the latest is shown by default. */
-function Bars({ bars, label }: { bars: Bar[]; label: string }) {
-  const [picked, setPicked] = useState<string | null>(null);
-  const max = Math.max(1, ...bars.map((bar) => bar.count));
-  const shown = bars.find((bar) => bar.key === picked) ?? bars[bars.length - 1];
-  return (
-    <div>
-      <p className="h-5 text-[13px] text-x-gray">
-        {shown.label} · <span className="font-semibold text-x-fg">{shown.count}</span> 条
-      </p>
-      <div className="mt-2 flex h-28 items-end gap-[2px] border-b border-x-border" role="img" aria-label={label}>
-        {bars.map((bar) => (
-          <button
-            key={bar.key}
-            type="button"
-            onPointerEnter={() => setPicked(bar.key)}
-            onClick={() => setPicked(bar.key)}
-            className="flex h-full min-w-0 flex-1 items-end justify-center"
-            aria-label={`${bar.label} ${bar.count} 条`}
-          >
-            <span
-              className="block w-full max-w-[28px] rounded-t-[4px] transition-opacity"
-              style={{
-                height: bar.count === 0 ? 2 : `${Math.max(6, (bar.count / max) * 100)}%`,
-                background: bar.count === 0 ? 'var(--color-x-border)' : 'var(--chart-bar)',
-                opacity: picked === null || bar.key === shown.key ? 1 : 0.5,
-              }}
-            />
-          </button>
-        ))}
-      </div>
-      <div className="mt-1 flex justify-between text-[11px] text-x-gray">
-        <span>{bars[0].label}</span>
-        <span>{bars[bars.length - 1].label}</span>
-      </div>
-    </div>
-  );
-}
-
 function dayLabel(key: string): string {
   const date = parseDateKey(key);
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
-/** What was posted on X, how the goals went, and how the posts did on X. */
+/** What to do on X today, what was posted, how the goals went, and how the posts did on X. */
 export default function StatsPane() {
   const posts = usePosts();
   const xposts = useXPosts();
   const xTweets = useXTweets();
   const account = useXAccount();
+  const followerRows = useXFollowers();
   const progress = useGoalProgress();
   const today = useToday();
+  const now = useMinute() * 60_000;
   const { push } = useNav();
   const [period, setPeriod] = useState<Period>(30);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -181,14 +121,29 @@ export default function StatsPane() {
     streak: perfectStreak(progress, today),
   }), [progress, period, from, today]);
 
-  const x = useMemo(() => {
-    // Tweets sent from the app open their post here; the rest open on X.
-    const appPost = new Map<string, string>();
+  // Tweets sent from the app open their post here; the rest open on X.
+  const appPost = useMemo(() => {
+    const map = new Map<string, string>();
     for (const [id, row] of Object.entries(xposts)) {
       const tweetId = row.state === 'sent' ? tweetIdOfLink(row.link) : null;
       if (!tweetId) continue;
-      appPost.set(tweetId, row.kind === 'reply' ? String(store.getCell('replies', id, 'postId') ?? '') : id);
+      map.set(tweetId, row.kind === 'reply' ? String(store.getCell('replies', id, 'postId') ?? '') : id);
     }
+    return map;
+  }, [xposts]);
+  const openTweet = useCallback((id: string) => {
+    const postId = appPost.get(id);
+    if (postId) push('Post', { postId });
+    else window.open(`https://x.com/i/status/${id}`, '_blank', 'noopener');
+  }, [appPost, push]);
+
+  // Measured as X's For You code ranks posts (src/lib/growth.ts).
+  const mine = useMemo(() => myTweets(xTweets), [xTweets]);
+  const plan = useMemo(() => todayPlan(mine, today, now), [mine, today, now]);
+  const diagnosis = useMemo(() => diagnose(mine, period === 0 ? 0 : parseDateKey(from).getTime(), now), [mine, period, from, now]);
+  const followers = useMemo(() => followerTrend(followerRows, today, now), [followerRows, today, now]);
+
+  const x = useMemo(() => {
     // Replies are short and seen by few; they would drag the averages down.
     const live = Object.entries(xTweets)
       .filter(([, t]) => !t.gone && t.kind !== 'reply' && t.createdAt && (period === 0 || toLocalDateKey(t.createdAt) >= from));
@@ -198,7 +153,7 @@ export default function StatsPane() {
     const top = [...measured]
       .sort(([, a], [, b]) => (b.views - a.views) || (b.likes - a.likes))
       .slice(0, 5)
-      .map(([id, t]) => ({ id, text: t.text, views: t.views, likes: t.likes, postId: appPost.get(id) ?? '' }));
+      .map(([id, t]) => ({ id, text: t.text, views: t.views, likes: t.likes }));
     return {
       count: live.length,
       fromApp: live.filter(([id]) => appPost.has(id)).length,
@@ -207,7 +162,7 @@ export default function StatsPane() {
       measuredAt: Math.max(0, ...measured.map(([, t]) => t.measuredAt)),
       top,
     };
-  }, [xTweets, xposts, period, from]);
+  }, [xTweets, appPost, period, from]);
 
   const todayCount = perDay.get(today) ?? 0;
   const yesterdayCount = perDay.get(addDays(today, -1)) ?? 0;
@@ -239,6 +194,8 @@ export default function StatsPane() {
           </PaneHeader>
       )}
     >
+
+      <TodaySection plan={plan} followers={account?.handle ? account.followers : null} today={today} now={now} />
 
       <Section title="发帖">
         <p className="mt-1 text-[13px] text-x-gray">
@@ -294,6 +251,24 @@ export default function StatsPane() {
           <p className="mt-1 text-[13px] text-x-danger">最近一次更新失败：{account.error}{x.measuredAt > 0 && '，下面是较早的数据'}</p>
         )}
 
+        {followers.week && (
+          <div className="mt-4">
+            <h3 className="text-[15px] font-semibold">粉丝变化</h3>
+            <p className="mt-0.5 text-[13px] text-x-gray">
+              {followers.week.since === addDays(today, -6) ? '近 7 天' : `${dayLabel(followers.week.since)}开始记录，至今`}
+              {' '}<span className="font-semibold text-x-fg">{followers.week.gain > 0 ? `+${followers.week.gain}` : followers.week.gain}</span>
+            </p>
+            <div className="mt-2">
+              <Bars
+                bars={followers.days.map(({ key, gain }) => ({ key, label: dayLabel(key), count: gain }))}
+                label="每天粉丝变化"
+                unit="人"
+                signed
+              />
+            </div>
+          </div>
+        )}
+
         {x.count === 0 ? (
           <p className="mt-3 text-[13px] text-x-gray">这段时间没有推文。</p>
         ) : x.measuredCount === 0 ? (
@@ -310,11 +285,11 @@ export default function StatsPane() {
         {x.top.length > 0 && (
           <div className="mt-4">
             <h3 className="mb-1 text-[15px] font-semibold">浏览最多</h3>
-            {x.top.map(({ id, text, views, likes, postId }) => (
+            {x.top.map(({ id, text, views, likes }) => (
               <button
                 key={id}
                 type="button"
-                onClick={() => (postId ? push('Post', { postId }) : window.open(`https://x.com/i/status/${id}`, '_blank', 'noopener'))}
+                onClick={() => openTweet(id)}
                 className="flex w-full items-center gap-3 border-b border-x-border py-2.5 text-left active:bg-x-hover"
               >
                 <p className="min-w-0 flex-1 truncate text-[15px]">{text || '（无文字）'}</p>
@@ -326,6 +301,9 @@ export default function StatsPane() {
           </div>
         )}
       </Section>
+
+      <AlgorithmSection diagnosis={diagnosis} onOpen={openTweet} />
+      <FeedSection />
     </PaneLayout>
   );
 }

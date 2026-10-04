@@ -102,6 +102,29 @@ describe('X stats', () => {
     expect(next).toBeGreaterThan(now);
   });
 
+  it('keeps which tweet each one answers, so a thread can be told from its first post', async () => {
+    await runXStats(sql, store, env, now);
+    const parents = Object.fromEntries(Object.entries(store.getTable('xtweets')).map(([id, row]) => [id, row.inReplyTo]));
+    expect(parents).toEqual({ '050': '', 101: '', 102: '101', 103: '900', 104: '103', 106: '' });
+  });
+
+  it("records the follower count once per day, and again only when it changes", async () => {
+    await runXStats(sql, store, env, now);
+    expect(store.getTable('xfollowers')).toEqual({ '2026-09-30': { followers: 17, following: 256, at: now } });
+
+    await runXStats(sql, store, env, now + HOUR);
+    expect(store.getRow('xfollowers', '2026-09-30')).toEqual({ followers: 17, following: 256, at: now });
+
+    routes['/me_on_x'] = { status: 200, body: { code: 200, user: { followers: 19, following: 256, tweets: 51 } } };
+    await runXStats(sql, store, env, now + 2 * HOUR);
+    expect(store.getRow('xfollowers', '2026-09-30')).toEqual({ followers: 19, following: 256, at: now + 2 * HOUR });
+
+    // The next UTC day starts its own row.
+    await runXStats(sql, store, env, now + 17 * HOUR);
+    expect(Object.keys(store.getTable('xfollowers'))).toEqual(['2026-09-30', '2026-10-01']);
+    expect(store.getRow('xfollowers', '2026-10-01')).toEqual({ followers: 19, following: 256, at: now + 17 * HOUR });
+  });
+
   it('between full reads only looks for new tweets, and changes nothing when there are none', async () => {
     await runXStats(sql, store, env, now);
     const before = JSON.stringify(store.getTables());
@@ -151,6 +174,20 @@ describe('X stats', () => {
     routes['/2/status/777'] = { status: 200, body: { code: 200, status: status('777', '2026-09-30T07:59:00Z', { text: '从日记本发的', views: 3 }) } };
     await runXStats(sql, store, env, now + 15 * 60_000);
     expect(store.getRow('xtweets', '777')).toMatchObject({ createdAt: '2026-09-30T07:59:00.000Z', views: 3, measuredAt: now + 15 * 60_000 });
+  });
+
+  it("counts a thread's later part the app sent as answering its post, and an 追加 as a post of its own", async () => {
+    store.setRow('posts', 'p1', { content: '第一段', createdAt: '2026-09-30T07:58:00Z' });
+    store.setRow('replies', 'r1', { postId: 'p1', content: '第二段', thread: true });
+    store.setRow('replies', 'r2', { postId: 'p1', content: '后来的追加', thread: false });
+    store.setRow('xposts', 'p1', { state: 'sent', kind: 'post', link: 'https://x.com/me_on_x/status/777', at: now - 60_000 });
+    store.setRow('xposts', 'r1', { state: 'sent', kind: 'reply', link: 'https://x.com/me_on_x/status/778', at: now - 60_000 });
+    store.setRow('xposts', 'r2', { state: 'sent', kind: 'reply', link: 'https://x.com/me_on_x/status/779', at: now - 30_000 });
+    routes['/2/status/777'] = routes['/2/status/778'] = routes['/2/status/779'] = { status: 503 };
+    await runXStats(sql, store, env, now);
+    expect(store.getRow('xtweets', '777')).toMatchObject({ kind: 'post', inReplyTo: '' });
+    expect(store.getRow('xtweets', '778')).toMatchObject({ kind: 'post', inReplyTo: '777', text: '第二段' });
+    expect(store.getRow('xtweets', '779')).toMatchObject({ kind: 'post', inReplyTo: '' });
   });
 
   it('marks a tweet gone once it leaves the timeline and X no longer has it', async () => {
