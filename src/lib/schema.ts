@@ -71,6 +71,9 @@ export interface XTweetRow {
   metricMask: number;
   /** Public attachment type, not inferred from the text. */
   format: string;
+  /** For a reply: the follower count of the account answered and when its tweet was posted (-1 / '' unknown). */
+  parentFollowers: number;
+  parentAt: string;
   /** When these numbers were read (ms), 0 if not yet. */
   measuredAt: number;
   /** Deleted on X (or no longer public); left out of the numbers. */
@@ -193,6 +196,8 @@ export const TABLES_SCHEMA = {
     bookmarks: { type: 'number', default: 0 },
     metricMask: { type: 'number', default: -1 },
     format: { type: 'string', default: '' },
+    parentFollowers: { type: 'number', default: -1 },
+    parentAt: { type: 'string', default: '' },
     measuredAt: { type: 'number', default: 0 },
     gone: { type: 'boolean', default: false },
   },

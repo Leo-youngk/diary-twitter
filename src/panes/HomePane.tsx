@@ -34,6 +34,16 @@ function OfflineBadge() {
   );
 }
 
+/** The diary by day lives behind this; it used to be a tab of its own. */
+function CalendarButton() {
+  const { push } = useNav();
+  return (
+    <button type="button" onClick={() => push('Calendar', {})} className="pressable -mr-1 p-1 text-x-gray" aria-label="日历">
+      <Icon name="calendar" size={22} />
+    </button>
+  );
+}
+
 // A post, or a 追加 on its own quoting its post, as on X.
 const renderFeedRow = (key: string) => (key.startsWith('r:') ? <ReplyListItem id={key.slice(2)} /> : <PostRow id={key.slice(2)} />);
 
@@ -74,7 +84,7 @@ export default function HomePane() {
         <PaneHeader
           title={<><XLogo size={24} className="md:hidden" /><span className="hidden md:block">全部随想</span></>}
           left={<ProfileButton />}
-          right={<OfflineBadge />}
+          right={<span className="flex items-center gap-2"><OfflineBadge /><CalendarButton /></span>}
           ref={headerRef}
         />
       )}
