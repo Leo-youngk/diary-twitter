@@ -78,6 +78,40 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); vi.useRealTimers(); });
 
 describe('X stats', () => {
+  it('keeps missing or invalid parent follower counts unknown and preserves an observed zero', async () => {
+    const createdAt = new Date(now - HOUR).toISOString();
+    const results = [undefined, null, -1, Infinity].flatMap((followers, i) => [
+      status(`parent-${i}`, createdAt, { author: { ...FRIEND, followers } }),
+      status(`reply-${i}`, createdAt, replyTo('friend', `parent-${i}`)),
+    ]);
+    results.push(status('zero-parent', createdAt, { author: { ...FRIEND, followers: 0 } }),
+      status('zero-reply', createdAt, replyTo('friend', 'zero-parent')));
+    routes['/2/profile/me_on_x/statuses'] = page(results, '');
+    await runXStats(sql, store, env, now);
+    for (let i = 0; i < 4; i++) {
+      expect(store.getCell('xtweets', `reply-${i}`, 'parentFollowers')).toBeUndefined();
+      expect(store.getCell('xtweets', `reply-${i}`, 'parentAt')).toBe(createdAt);
+    }
+    expect(store.getCell('xtweets', 'zero-reply', 'parentFollowers')).toBe(0);
+  });
+
+  it('keeps the first known reply context when refreshing later views and follower counts', async () => {
+    const createdAt = new Date(now - HOUR).toISOString();
+    const updatePage = (followers: number | undefined, views: number) => {
+      routes['/2/profile/me_on_x/statuses'] = page([
+        status('parent', createdAt, { author: { ...FRIEND, followers } }),
+        status('reply', createdAt, { ...replyTo('friend', 'parent'), views }),
+      ], '');
+    };
+    updatePage(21, 10);
+    await runXStats(sql, store, env, now);
+    updatePage(999, 50);
+    await runXStats(sql, store, env, now + HOUR);
+    expect(store.getRow('xtweets', 'reply')).toMatchObject({ parentFollowers: 21, parentAt: createdAt, views: 50 });
+    updatePage(undefined, 88);
+    await runXStats(sql, store, env, now + 2 * HOUR);
+    expect(store.getRow('xtweets', 'reply')).toMatchObject({ parentFollowers: 21, parentAt: createdAt, views: 88 });
+  });
   it('initializes an upgraded account from its real prior reading even when the count is unchanged', async () => {
     store.setRow('xaccount', 'me', { handle: 'me_on_x', followers: 17, following: 256, measuredAt: now - HOUR });
     await runXStats(sql, store, env, now);

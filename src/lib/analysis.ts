@@ -269,7 +269,7 @@ export function review(rows: Rows, metrics: Metrics, followerRows: FollowerRows,
   const found = patterns(points24, from);
   const actions: string[] = [];
   if (tweets.length > 0 && !tweets.some((t) => t.original && now - t.at < 2 * DAY && t.at <= now)) {
-    actions.push('近 48 小时没有原创。推荐流只收 48 小时内的帖子，关注你的人这时刷不到你的新内容。');
+    actions.push('近 48 小时没有原创。可以记录一件最近亲自经历或解决的事，给读者一个新的交流话题。');
   }
   const top = outliers(points24, from)[0];
   if (top) actions.push(`${quoteOf(top.text)}24 小时的浏览是之前帖子中位数的 ${times(top.ratio)} 倍：这个题目有人看，接着写一条，或展开成串文。`);

@@ -71,7 +71,7 @@ export interface XTweetRow {
   metricMask: number;
   /** Public attachment type, not inferred from the text. */
   format: string;
-  /** For a reply: the follower count of the account answered and when its tweet was posted (-1 / '' unknown). */
+  /** For a reply: the first observed follower count of the account answered and its post time (-1 / '' unknown). */
   parentFollowers: number;
   parentAt: string;
   /** When these numbers were read (ms), 0 if not yet. */

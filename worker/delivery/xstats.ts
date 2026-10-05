@@ -104,10 +104,11 @@ function parseStatus(value: unknown): Tweet | null {
   const media = isRecord(value.media) ? value.media : null;
   const video = media && ((Array.isArray(media.videos) && media.videos.length > 0) || media.broadcast || media.external);
   const photo = media && Array.isArray(media.photos) && media.photos.length > 0;
+  const followers = isRecord(value.author) ? value.author.followers : undefined;
   return {
     id: value.id,
     author: lower(isRecord(value.author) ? value.author.screen_name : ''),
-    followers: isRecord(value.author) ? count(value.author.followers) : 0,
+    followers: typeof followers === 'number' && Number.isFinite(followers) && followers >= 0 ? followers : -1,
     repost: isRecord(value.reposted_by),
     replyTo: reply && typeof reply.status === 'string' ? { author: lower(reply.screen_name), id: reply.status } : null,
     text: typeof value.text === 'string' ? value.text : '',
@@ -131,12 +132,16 @@ function kindOf(store: MergeableStore, tweet: Tweet): 'post' | 'reply' {
  * recover later (accounts grow; the parent is not ours to re-read).
  */
 function save(store: MergeableStore, id: string, tweet: Tweet, now: number, parent?: Tweet): void {
+  const externalParent = parent && parent.author !== tweet.author;
+  const recordedFollowers = store.getCell('xtweets', id, 'parentFollowers');
   store.setPartialRow('xtweets', id, {
     text: tweet.text,
     ...(tweet.createdAt ? { createdAt: tweet.createdAt } : {}),
     kind: kindOf(store, tweet),
     inReplyTo: tweet.replyTo?.id ?? '',
-    ...(parent?.createdAt && parent.author !== tweet.author ? { parentFollowers: parent.followers, parentAt: parent.createdAt } : {}),
+    ...(externalParent && parent.followers >= 0 && (typeof recordedFollowers !== 'number' || recordedFollowers < 0)
+      ? { parentFollowers: parent.followers } : {}),
+    ...(externalParent && parent.createdAt && !store.getCell('xtweets', id, 'parentAt') ? { parentAt: parent.createdAt } : {}),
     ...tweet.numbers,
     metricMask: tweet.metricMask,
     format: tweet.format,
