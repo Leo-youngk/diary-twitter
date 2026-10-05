@@ -22,7 +22,7 @@
    - 累计浏览、粉丝总数；
    - 行业平均互动率；
    - 通用的「最佳发帖时间」。
-4. **最值得做的下一步**：用 X 按量计费 API 读取自己帖子的 `user_profile_clicks`。按现在的发帖量，每月约 2 美元，新账号的赠送额度可以覆盖头 3 个月。前提是开 X 开发者账号并充值，需要你来决定。
+4. **能补上主页点击的唯一渠道**是 X 按量计费 API 的 `user_profile_clicks`。按现在的发帖量每月约 2 美元，但要开 X 开发者账号并充值。2026-10-05 决定暂不接入，所以分析页不做「看见 → 主页 → 关注」的转化分析。
 
 ## 2. 别人保留了什么、保留多久
 
@@ -96,7 +96,9 @@
   - X 帖子归一化后是赞、评论、转发、曝光、点击这一类，和 FxTwitter 重复；按帖归属的 `follows` 只有 Instagram 才有。
   - 免费版额度是每 24 小时 250 次请求（[限额](https://developers.buffer.com/guides/api-limits.html)）。**不值得接**。
 
-### 下一步 1：用 X API 读取主页点击（需要你来决定）
+### 暂不做：用 X API 读取主页点击
+
+2026-10-05 决定不开 X 开发者账号。以下保留作参考，以后要接时从这里开始。
 
 - **能拿到什么**：自己 30 天内帖子的 `non_public_metrics`，包括 `user_profile_clicks`（从这条帖子点进主页的次数）、`url_link_clicks`、`engagements`（[X 文档](https://docs.x.com/x-api/fundamentals/metrics)）。拿不到逐帖新增关注。
 - **价格**：按量计费，读自己的帖子每条 0.001 美元（[价格页](https://docs.x.com/x-api/getting-started/pricing)）。
