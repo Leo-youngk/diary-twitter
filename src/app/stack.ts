@@ -13,7 +13,7 @@ declare module '@stackflow/config' {
   interface Register {
     Main: Record<string, never>;
     Post: { postId: string; focusReply?: string };
-    Compose: { editId?: string; replyTo?: string };
+    Compose: { editId?: string; replyTo?: string; writingPrompt?: string };
     Profile: { tab?: 'posts' | 'replies' | 'saved' };
     Settings: Record<string, never>;
   }

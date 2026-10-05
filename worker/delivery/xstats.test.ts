@@ -147,6 +147,20 @@ describe('X stats', () => {
     expect(store.getCell('xmetrics', '106-h2', 'views')).toBe(71);
   });
 
+  it('captures external reply checkpoints while excluding self-continuations of posts and conversations', async () => {
+    routes['/2/profile/me_on_x/statuses'] = page([
+      status('401', new Date(now - 24 * HOUR).toISOString(), { views: 100, ...replyTo('friend', '900') }),
+      status('402', new Date(now - 24 * HOUR).toISOString(), replyTo('me_on_x', '401')),
+      status('403', new Date(now - 24 * HOUR).toISOString(), { views: 20 }),
+      status('404', new Date(now - 24 * HOUR).toISOString(), replyTo('me_on_x', '403')),
+    ], '');
+    await runXStats(sql, store, env, now);
+    expect(store.getRow('xmetrics', '401-h24')).toMatchObject({ tweetId: '401', views: 100, ownReplies: 1 });
+    expect(store.hasRow('xmetrics', '402-h24')).toBe(false);
+    expect(store.hasRow('xmetrics', '403-h24')).toBe(true);
+    expect(store.hasRow('xmetrics', '404-h24')).toBe(false);
+  });
+
   it('refreshes early metrics from the short timeline response after five minutes', async () => {
     routes['/2/profile/me_on_x/statuses'] = page([status('800', '2026-09-30T07:30:00Z', { views: 10 })], '');
     await runXStats(sql, store, env, now);

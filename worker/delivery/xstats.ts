@@ -139,7 +139,10 @@ function save(store: MergeableStore, id: string, tweet: Tweet, now: number): voi
 /** Save the first real observation near each checkpoint, never backfill from a later lifetime total. */
 function snapshot(store: MergeableStore, id: string, now: number): void {
   const row = store.getRow('xtweets', id) as Partial<XTweetRow>;
-  if (row.gone || row.kind === 'reply' || row.inReplyTo || !row.createdAt || !hasMetric(row, 'views')) return;
+  if (row.gone || !row.createdAt || !hasMetric(row, 'views')) return;
+  // External replies are a discovery entry too. Exclude known self-continuations.
+  if (row.inReplyTo && store.hasRow('xtweets', row.inReplyTo)) return;
+  if (row.kind !== 'reply' && row.inReplyTo) return;
   const ownReplies = Object.values(store.getTable('xtweets'))
     .filter((part) => !part.gone && part.inReplyTo === id && Date.parse(String(part.createdAt ?? '')) <= now).length;
   for (const stage of dueStages(row.createdAt, now)) {

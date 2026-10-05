@@ -207,6 +207,11 @@ export default function Composer({ params, onClose, embedded = false, activityId
               <div className="min-w-0 text-[14px]"><p className="truncate font-semibold">{profile.displayName}</p><p className="truncate text-[12px] text-x-gray">@{profile.username}</p></div>
             </div>}
 
+            {mode === 'new' && params.writingPrompt && <aside aria-label="写作参考" className="mb-3 rounded-xl bg-x-darker px-3 py-2.5">
+                <p className="text-[12px] font-medium text-x-gray">写作参考</p>
+                <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-x-gray">{params.writingPrompt}</p>
+              </aside>}
+
             <div className="flex gap-3 pt-1">
               {!embedded && (
                 <div className="flex w-8 shrink-0 flex-col items-center">
