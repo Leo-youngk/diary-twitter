@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from 'react';
 
 /** Which pane of the main screen is showing; kept across reloads within a session. */
-export type MainTab = 'home' | 'goals' | 'calendar' | 'stats';
+export type MainTab = 'home' | 'goals' | 'analysis' | 'stats';
 
 const KEY = 'diary-main-tab';
-const TABS: MainTab[] = ['home', 'goals', 'calendar', 'stats'];
+const TABS: MainTab[] = ['home', 'goals', 'analysis', 'stats'];
 
 function initial(): MainTab {
   try {

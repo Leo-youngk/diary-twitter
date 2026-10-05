@@ -3,6 +3,7 @@ import { stackflow } from '@stackflow/react';
 import { immediateRendererPlugin } from './immediateRendererPlugin';
 import { basicUIPlugin } from '@stackflow/plugin-basic-ui';
 import { historySyncPlugin } from '@stackflow/plugin-history-sync';
+import CalendarActivity from '@/activities/CalendarActivity';
 import MainActivity from '@/activities/MainActivity';
 import PostActivity from '@/activities/PostActivity';
 import ComposeActivity from '@/activities/ComposeActivity';
@@ -16,6 +17,7 @@ declare module '@stackflow/config' {
     Compose: { editId?: string; replyTo?: string; writingPrompt?: string };
     Profile: { tab?: 'posts' | 'replies' | 'saved' };
     Settings: Record<string, never>;
+    Calendar: Record<string, never>;
   }
 }
 
@@ -26,6 +28,7 @@ export const config = defineConfig({
     { name: 'Compose', route: '/compose' },
     { name: 'Profile', route: '/me' },
     { name: 'Settings', route: '/settings' },
+    { name: 'Calendar', route: '/calendar' },
   ],
   transitionDuration: 350,
 });
@@ -38,6 +41,7 @@ export const { Stack, actions } = stackflow({
     Compose: ComposeActivity,
     Profile: ProfileActivity,
     Settings: SettingsActivity,
+    Calendar: CalendarActivity,
   },
   plugins: [
     immediateRendererPlugin(),

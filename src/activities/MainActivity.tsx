@@ -8,7 +8,7 @@ import DesktopPanel from '@/components/DesktopPanel';
 import ProfilePanel from '@/components/ProfilePanel';
 import UpdatePrompt from '@/components/UpdatePrompt';
 import { cn } from '@/lib/utils';
-import CalendarPane from '@/panes/CalendarPane';
+import AnalysisPane from '@/panes/AnalysisPane';
 import GoalsPane from '@/panes/GoalsPane';
 import HomePane from '@/panes/HomePane';
 import StatsPane from '@/panes/StatsPane';
@@ -16,7 +16,7 @@ import StatsPane from '@/panes/StatsPane';
 const PANES: Array<[MainTab, () => React.ReactElement]> = [
   ['home', HomePane],
   ['goals', GoalsPane],
-  ['calendar', CalendarPane],
+  ['analysis', AnalysisPane],
   ['stats', StatsPane],
 ];
 

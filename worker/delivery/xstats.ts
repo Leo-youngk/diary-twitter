@@ -52,6 +52,8 @@ interface TweetRow {
 interface Tweet {
   id: string;
   author: string;
+  /** The author's follower count when read. */
+  followers: number;
   repost: boolean;
   replyTo: { author: string; id: string } | null;
   text: string;
@@ -102,9 +104,11 @@ function parseStatus(value: unknown): Tweet | null {
   const media = isRecord(value.media) ? value.media : null;
   const video = media && ((Array.isArray(media.videos) && media.videos.length > 0) || media.broadcast || media.external);
   const photo = media && Array.isArray(media.photos) && media.photos.length > 0;
+  const followers = isRecord(value.author) ? value.author.followers : undefined;
   return {
     id: value.id,
     author: lower(isRecord(value.author) ? value.author.screen_name : ''),
+    followers: typeof followers === 'number' && Number.isFinite(followers) && followers >= 0 ? followers : -1,
     repost: isRecord(value.reposted_by),
     replyTo: reply && typeof reply.status === 'string' ? { author: lower(reply.screen_name), id: reply.status } : null,
     text: typeof value.text === 'string' ? value.text : '',
@@ -122,12 +126,22 @@ function kindOf(store: MergeableStore, tweet: Tweet): 'post' | 'reply' {
   return store.getCell('xtweets', tweet.replyTo.id, 'kind') === 'reply' ? 'reply' : 'post';
 }
 
-function save(store: MergeableStore, id: string, tweet: Tweet, now: number): void {
+/**
+ * Saves a tweet. `parent` is the tweet it answers when the same page carried it: a reply then
+ * keeps the size of the account it answered and when that tweet was posted, which nothing can
+ * recover later (accounts grow; the parent is not ours to re-read).
+ */
+function save(store: MergeableStore, id: string, tweet: Tweet, now: number, parent?: Tweet): void {
+  const externalParent = parent && parent.author !== tweet.author;
+  const recordedFollowers = store.getCell('xtweets', id, 'parentFollowers');
   store.setPartialRow('xtweets', id, {
     text: tweet.text,
     ...(tweet.createdAt ? { createdAt: tweet.createdAt } : {}),
     kind: kindOf(store, tweet),
     inReplyTo: tweet.replyTo?.id ?? '',
+    ...(externalParent && parent.followers >= 0 && (typeof recordedFollowers !== 'number' || recordedFollowers < 0)
+      ? { parentFollowers: parent.followers } : {}),
+    ...(externalParent && parent.createdAt && !store.getCell('xtweets', id, 'parentAt') ? { parentAt: parent.createdAt } : {}),
     ...tweet.numbers,
     metricMask: tweet.metricMask,
     format: tweet.format,
@@ -218,14 +232,15 @@ async function readPage(store: MergeableStore, handle: string, cursor: string, n
   const results: unknown[] = Array.isArray(result.body.results) ? result.body.results : [];
   const me = handle.toLowerCase();
   // The timeline also carries the tweets being replied to and reposts of others' tweets.
-  const mine = results
-    .map(parseStatus)
-    .filter((tweet): tweet is Tweet => tweet !== null && tweet.author === me && !tweet.repost && !(onlyNew && store.hasRow('xtweets', tweet.id)
+  const statuses = results.map(parseStatus).filter((tweet): tweet is Tweet => tweet !== null);
+  const byId = new Map(statuses.map((tweet) => [tweet.id, tweet]));
+  const mine = statuses
+    .filter((tweet) => tweet.author === me && !tweet.repost && !(onlyNew && store.hasRow('xtweets', tweet.id)
       && !hotRefreshDue(store.getRow('xtweets', tweet.id) as Partial<XTweetRow>, now)))
     // Oldest first, so a reply's parent has its kind before the reply asks for it.
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (mine.length > 0) store.transaction(() => {
-    for (const tweet of mine) save(store, tweet.id, tweet, now);
+    for (const tweet of mine) save(store, tweet.id, tweet, now, tweet.replyTo ? byId.get(tweet.replyTo.id) : undefined);
     // Parents and thread parts have all been saved before counting self-replies.
     for (const tweet of mine) snapshot(store, tweet.id, now);
   });

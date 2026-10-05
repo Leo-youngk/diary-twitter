@@ -67,7 +67,7 @@ export function useLikedPostIds(): string[] {
   return ui.useSliceRowIds('likedPosts', 'liked', indexes);
 }
 
-/** All posts, newest first, for screens that aggregate (calendar, stats). */
+/** All posts, newest first, for screens that aggregate (calendar, analysis). */
 export function usePosts(): Post[] {
   const table = ui.useTable('posts', store);
   return useMemo(

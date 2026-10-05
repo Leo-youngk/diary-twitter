@@ -7,7 +7,7 @@ import Icon, { type IconName } from './Icon';
 export const MAIN_TABS: Array<{ tab: MainTab; label: string; icon: IconName }> = [
   { tab: 'home', label: '首页', icon: 'home' },
   { tab: 'goals', label: '目标', icon: 'target' },
-  { tab: 'calendar', label: '日历', icon: 'calendar' },
+  { tab: 'analysis', label: '分析', icon: 'trend' },
   { tab: 'stats', label: '统计', icon: 'chart' },
 ];
 

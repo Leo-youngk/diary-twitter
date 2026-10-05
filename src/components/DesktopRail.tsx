@@ -40,6 +40,10 @@ export default function DesktopRail() {
           <span className="hidden text-[17px] lg:inline">{label}</span>
         </button>
       ))}
+      <button type="button" aria-label="日历" onClick={() => actions.push('Calendar', {})} className="flex items-center gap-4 rounded-xl px-3 py-3 text-x-gray hover:bg-x-hover">
+        <Icon name="calendar" size={26} />
+        <span className="hidden text-[17px] lg:inline">日历</span>
+      </button>
       <button type="button" aria-label="设置" onClick={() => actions.push('Settings', {})} className="flex items-center gap-4 rounded-xl px-3 py-3 text-x-gray hover:bg-x-hover">
         <Icon name="gear" size={26} />
         <span className="hidden text-[17px] lg:inline">设置</span>
