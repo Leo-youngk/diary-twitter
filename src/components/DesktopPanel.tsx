@@ -23,7 +23,7 @@ export default function DesktopPanel() {
         {!newPost && <button type="button" onClick={() => showDesktopPanel({ kind: 'compose', params: {}, focus: Date.now() })} className="text-[13px] text-x-blue">继续写作</button>}
       </div>
       <div className="min-h-0 flex-1" hidden={!newPost}>
-        <Composer params={{}} embedded onClose={write} focusRequest={newPost ? panel.focus : 0} />
+        <Composer params={newPost ? panel.params : {}} embedded onClose={write} focusRequest={newPost ? panel.focus : 0} />
         <p className="mt-4 text-[12px] leading-7 text-x-gray">一边浏览，一边记录。<br />离开写作区时，草稿会保留。</p>
       </div>
       {panel.kind === 'post' && <div className="min-h-0 flex-1"><PostDetail key={panel.params.postId} params={panel.params} embedded onBack={write} /></div>}
