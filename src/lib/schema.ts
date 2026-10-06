@@ -22,7 +22,7 @@ export interface PostRow {
   images: string;
   createdAt: string;
   isLiked: boolean;
-  /** Set once at creation: also publish this 随想 to X. */
+  /** Publish this 随想 to X, immediately or after an explicit manual request. */
   xSync: boolean;
 }
 
@@ -37,7 +37,7 @@ export interface ReplyRow {
 }
 
 export type XState = 'queued' | 'sending' | 'publishing' | 'sent' | 'failed' | 'dismissed';
-export type XCommand = '' | 'retry' | 'dismiss';
+export type XCommand = '' | 'send' | 'retry' | 'dismiss';
 
 /** Written by the server; the client only ever writes `command`. */
 export interface XPostRow {

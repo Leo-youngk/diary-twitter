@@ -129,6 +129,103 @@ describe('D1 incremental CRDT persistence', () => {
 });
 
 describe('D1 X delivery safety and task leases', () => {
+  it('holds an old thread until its explicit send, persists its outcome, and ignores a replay', async () => {
+    const createdAt = new Date(Date.now() - 10 * 24 * 3600_000).toISOString();
+    const text = '长文'.repeat(2000), part = '第二条'.repeat(500);
+    const source = post().setPartialRow('posts', 'p', { content: text, xSync: false, createdAt })
+      .setRow('replies', 'a', { postId: 'p', content: part, createdAt, xSync: false, thread: true });
+    await upload(source);
+    let loaded = await loadStore(db);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: { createPost: {
+      __typename: 'PostActionSuccess', post: { id: 'buffer', status: 'sent', externalLink: 'https://x.com/test/status/123' },
+    } } })));
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await query(db, 'SELECT id FROM diary3_x')).toEqual([]);
+
+    source.setCell('replies', 'a', 'xSync', true).setCell('posts', 'p', 'xSync', true).setCell('xposts', 'p', 'command', 'send');
+    await upload(source);
+    loaded = await loadStore(db);
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const input = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body)).variables.input;
+    expect(input.text).toBe(text);
+    expect(input.metadata.twitter.thread).toEqual([{ text, assets: [] }, { text: part, assets: [] }]);
+    const saved = (await loadStore(db)).store;
+    for (const id of ['p', 'a']) expect(saved.getRow('xposts', id)).toMatchObject({ state: 'sent', link: 'https://x.com/test/status/123' });
+    expect(saved.getCell('posts', 'p', 'createdAt')).toBe(createdAt);
+
+    loaded.store.setCell('xposts', 'p', 'command', 'send');
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors a delayed manual command after a separate batch first hit the archive-age check', async () => {
+    const source = post().setCell('posts', 'p', 'createdAt', new Date(Date.now() - 10 * 24 * 3600_000).toISOString());
+    await upload(source);
+    const loaded = await loadStore(db);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: { createPost: {
+      __typename: 'PostActionSuccess', post: { id: 'buffer', status: 'sent', externalLink: 'https://x.com/test/status/123' },
+    } } })));
+    const persist = () => saveStore(db, loaded.store, loaded.baseline);
+    await runX(db, loaded.store, env(), Date.now(), persist);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(loaded.store.getCell('xposts', 'p', 'error')).toContain('3 天');
+    loaded.store.setCell('xposts', 'p', 'command', 'send');
+    await runX(db, loaded.store, env(), Date.now(), persist);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(loaded.store.getCell('xposts', 'p', 'state')).toBe('sent');
+  });
+
+  it.each(['sending', 'publishing', 'sent', 'failed'] as const)('does not restart a known %s delivery for a replayed first-send command', async (state) => {
+    await upload(post().setCell('xposts', 'p', 'command', 'send'));
+    const now = Date.now();
+    await insertLedgerRow(db, { id: 'p', kind: 'post', state, attempts: 1, buffer_id: 'known', next_at: now + 60_000, updated_at: now, error: state === 'failed' ? '结果未知' : '' });
+    const loaded = await loadStore(db);
+    vi.stubGlobal('fetch', vi.fn());
+    await runX(db, loaded.store, env(), now, () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(loaded.store.getCell('xposts', 'p', 'state')).toBe(state);
+    expect(loaded.store.getCell('xposts', 'p', 'command')).toBe('');
+  });
+
+  it('keeps an unconfigured manual send failed without an external request', async () => {
+    const source = post().setCell('xposts', 'p', 'command', 'send');
+    await upload(source);
+    const loaded = await loadStore(db);
+    vi.stubGlobal('fetch', vi.fn());
+    await runX(db, loaded.store, { ...env(), BUFFER_API_KEY: '' }, Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(loaded.store.getCell('xposts', 'p', 'state')).toBe('failed');
+    expect(loaded.store.getCell('xposts', 'p', 'error')).toContain('没有配置 Buffer');
+  });
+
+  it('submits a long post intact and exposes an actual Buffer rejection instead of falling back to app-only storage', async () => {
+    const text = '字'.repeat(15000);
+    await upload(post().setCell('posts', 'p', 'content', text));
+    const loaded = await loadStore(db);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: { createPost: { __typename: 'InvalidInputError', message: '频道验证失败' } } })));
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body)).variables.input.text).toBe(text);
+    expect(loaded.store.getCell('posts', 'p', 'xSync')).toBe(true);
+    expect(loaded.store.getRow('xposts', 'p')).toMatchObject({ state: 'failed', error: expect.stringContaining('频道验证失败') });
+  });
+
+  it('sends a long quote reply intact through both text and retweet comment', async () => {
+    const text = '追加'.repeat(1000);
+    await upload(post().setRow('replies', 'q', { postId: 'p', content: text, createdAt: new Date().toISOString(), xSync: true, thread: false }));
+    await insertLedgerRow(db, { id: 'p', kind: 'post', state: 'sent', buffer_id: 'known', link: 'https://x.com/test/status/123' });
+    const loaded = await loadStore(db);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: { createPost: { __typename: 'PostActionSuccess', post: { id: 'buffer', status: 'sent', externalLink: 'https://x.com/test/status/456' } } } })));
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const input = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body)).variables.input;
+    expect(input.text).toBe(text);
+    expect(input.metadata.twitter.retweet.comment).toBe(text);
+    expect(loaded.store.getRow('xposts', 'q')).toMatchObject({ state: 'sent', link: 'https://x.com/test/status/456' });
+  });
+
   it('reconciles an existing live publication after a duplicate refusal without publishing again', async () => {
     const now=Date.now(); const source=post().setRow('xtweets','123',{text:'test',createdAt:new Date(now).toISOString(),measuredAt:now});
     await upload(source);

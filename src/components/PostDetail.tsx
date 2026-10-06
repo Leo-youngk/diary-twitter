@@ -140,7 +140,7 @@ export default function PostDetail({ params, onBack, embedded = false }: {
                 </>
               )}
             </div>
-            <XDeliveryStatus id={post.id} requested={post.xSync} x={x} />
+            <XDeliveryStatus id={post.id} requested={post.xSync} x={x} canSync={post.entryType === 'thought'} />
             {tweet && (
               <p className="mt-2 border-t border-x-border pt-2 text-[14px] text-x-gray">
                 {tweet.gone ? '这条在 X 上已删除' : (
@@ -174,7 +174,7 @@ export default function PostDetail({ params, onBack, embedded = false }: {
         <div className="dock shrink-0 border-t border-x-border bg-x-dark px-3 pt-2">
           {replyToX && (
             <p className={cn('mb-1 flex items-center gap-1 px-1 text-[12px]', tooLongForX ? 'text-x-danger' : 'text-x-gray')}>
-              <XLogo size={11} /> {tooLongForX ? '超出 X 的长度上限（中文每字算 2，最多 140 字），只保存在本地' : '将以引用原帖的形式同步到 X'}
+              <XLogo size={11} /> {tooLongForX ? '超过 X Premium 的 25,000 计数参考，仍会提交同步，结果以 X 返回为准' : '将以引用原帖的形式同步到 X'}
             </p>
           )}
           <div className="flex items-end gap-2">

@@ -1,5 +1,4 @@
 import type { MergeableStore, Row } from 'tinybase';
-import { X_MAX_WEIGHT, xWeightedLength } from '../../src/lib/xText';
 import { ROW_ID_PATTERN, type XState } from '../../src/lib/schema';
 import {
   BufferApiError, bufferConfigured, createBufferPost, fetchBufferPost, tweetIdOf, type BufferEnv,
@@ -50,7 +49,6 @@ const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3600_000, 6 * 3600
 
 const MSG = {
   notConfigured: '当前环境没有配置 Buffer，不会发到 X',
-  tooLong: '超过 X 的长度限制（中文每字算 2，上限 140 字）',
   stale: '这条已超过 3 天，为避免误发没有自动发布；确认要发请点重试',
   deleted: '已在 App 里删除',
   interrupted: '发送过程被中断，可能已经发出；请先到 X 确认，没发出再点重试',
@@ -130,11 +128,10 @@ export function findCandidates(
   return candidates.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || (a.kind === 'post' ? -1 : 1));
 }
 
-export function initialState(candidate: XCandidate, now: number, configured: boolean): { state: XState; error: string } {
+export function initialState(candidate: XCandidate, now: number, configured: boolean, manual = false): { state: XState; error: string } {
   if (!configured) return { state: 'failed', error: MSG.notConfigured };
-  if (xWeightedLength(candidate.text) > X_MAX_WEIGHT) return { state: 'failed', error: MSG.tooLong };
   const created = Date.parse(candidate.createdAt);
-  if (!Number.isFinite(created) || now - created > STALE_MS) return { state: 'failed', error: MSG.stale };
+  if (!manual && (!Number.isFinite(created) || now - created > STALE_MS)) return { state: 'failed', error: MSG.stale };
   return { state: 'queued', error: '' };
 }
 
@@ -177,7 +174,16 @@ async function applyCommands(sql: D1Database, store: MergeableStore, ledger: Map
     // The retry button on a thread part retries the same Buffer publication.
     const entry = command === 'retry' && requested && inThread(store, requested)
       ? ledger.get(requested.parent) : requested;
-    if (command === 'retry' && entry && (entry.state === 'failed' || entry.state === 'dismissed') && !configured) {
+    // Only an explicit first send may bypass archive age. A replay never
+    // resets an attempted/published delivery; it stays owned by the ledger.
+    if (command === 'send' && (!entry || (entry.state === 'failed' && entry.attempts === 0 && !entry.buffer_id && entry.error === MSG.stale))) {
+      const candidate = findCandidates({ [id]: store.getRow('posts', id) }, {}, new Set())[0];
+      if (candidate) {
+        const { state, error } = initialState(candidate, now, configured, true);
+        if (entry) await updateRow(sql, id, { state, error, text: candidate.text, updated_at: now });
+        else await insertLedgerRow(sql, { id, kind: 'post', state, error, text: candidate.text, updated_at: now });
+      }
+    } else if (command === 'retry' && entry && (entry.state === 'failed' || entry.state === 'dismissed') && !configured) {
       // Nothing here could ever send it; a queued row would wait forever.
       await updateRow(sql, entry.id, { state: 'failed', error: MSG.notConfigured, updated_at: now });
     } else if (command === 'retry' && entry && (entry.state === 'failed' || entry.state === 'dismissed')) {
@@ -248,10 +254,6 @@ async function deliver(
     return;
   }
   const thread = row.kind === 'post' ? threadOf(store, row.id) : [];
-  if ([text, ...thread].some((part) => xWeightedLength(part) > X_MAX_WEIGHT)) {
-    await updateRow(sql, row.id, { state: 'failed', error: MSG.tooLong, updated_at: now });
-    return;
-  }
 
   let quoteId: string | undefined;
   if (row.kind === 'reply') {

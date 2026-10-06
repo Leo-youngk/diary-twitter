@@ -17,7 +17,7 @@ import { store } from '@/data/store';
 import { addPost } from '@/data/actions';
 import { trackPublication } from './publications';
 import { toast } from './toast';
-import { publishPost, publishReply } from './publish';
+import { publishPost, publishReply, syncPostToX } from './publish';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -26,6 +26,53 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('publication feedback', () => {
+  it('holds a post and its thread until an explicit request, preserving its edited text and original date', () => {
+    const id = publishPost({ content: '先留着', images: [], toX: false, thread: ['第二条'] })!;
+    const part = store.getRowIds('replies')[0];
+    expect(store.getCell('posts', id, 'xSync')).toBe(false);
+    expect(store.getCell('replies', part, 'xSync')).toBe(false);
+    expect(store.hasRow('xposts', id)).toBe(false);
+    const createdAt = new Date(Date.now() - 10 * 24 * 3600_000).toISOString();
+    store.setPartialRow('posts', id, { content: '修改后的随想', createdAt });
+    store.setRow('replies', 'quote', { postId: id, content: '独立追加', thread: false, xSync: false });
+    store.setValue('xSyncEnabled', false);
+    vi.mocked(trackPublication).mockClear();
+
+    syncPostToX(id);
+    expect(store.getRow('posts', id)).toMatchObject({ content: '修改后的随想', createdAt, xSync: true });
+    expect(store.getCell('replies', part, 'xSync')).toBe(true);
+    expect(store.getCell('replies', 'quote', 'xSync')).toBe(false);
+    expect(store.getCell('xposts', id, 'command')).toBe('send');
+    expect(trackPublication).toHaveBeenCalledOnce();
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
+    syncPostToX(id);
+    expect(trackPublication).toHaveBeenCalledOnce();
+  });
+
+  it('manually sends a held Premium long post and thread without dropping or truncating text', () => {
+    const content = '长文'.repeat(2000), part = '追加'.repeat(1000);
+    const id = publishPost({ content, images: [], toX: false, thread: [part] })!;
+    vi.mocked(trackPublication).mockClear();
+    syncPostToX(id);
+    expect(store.getRow('posts', id)).toMatchObject({ content, xSync: true });
+    expect(store.getRow('replies', store.getRowIds('replies')[0])).toMatchObject({ content: part, xSync: true });
+    expect(store.getCell('xposts', id, 'command')).toBe('send');
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
+    expect(toast).toHaveBeenLastCalledWith('已请求同步到 X', 'info');
+  });
+
+  it('does not queue a deleted post or duplicate a known publication', () => {
+    syncPostToX('deleted');
+    expect(store.hasRow('xposts', 'deleted')).toBe(false);
+    const id = publishPost({ content: '已在 X 上', images: [], toX: false })!;
+    store.setRow('xposts', id, { state: 'sent', link: 'https://x.com/test/status/123' });
+    vi.mocked(trackPublication).mockClear();
+    syncPostToX(id);
+    expect(store.getCell('xposts', id, 'command')).toBe('');
+    expect(store.getCell('posts', id, 'xSync')).toBe(false);
+    expect(trackPublication).not.toHaveBeenCalled();
+  });
+
   it('leaves a post on its way to X to the progress bar, without a toast', () => {
     const id = publishPost({ content: '今天的随想', images: [], toX: true })!;
     expect(store.getCell('posts', id, 'xSync')).toBe(true);
@@ -33,15 +80,19 @@ describe('publication feedback', () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
-  it('explicitly reports the existing length rule when an X-enabled post cannot sync', () => {
-    const id = publishPost({ content: '字'.repeat(141), images: [], toX: true })!;
-    expect(store.getCell('posts', id, 'xSync')).toBe(false);
-    expect(toast).toHaveBeenCalledWith('已发布到日记本，超出 X 字数限制，未同步到 X', 'info');
+  it('submits a Premium long post instead of silently turning off X', () => {
+    const content = '字'.repeat(15000);
+    const id = publishPost({ content, images: [], toX: true })!;
+    expect(store.getRow('posts', id)).toMatchObject({ content, xSync: true });
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('tracks a normal reply on the progress bar too', () => {
     store.setRow('posts', 'p', { content: '原帖', xSync: true });
-    const id = publishReply('p', '追加')!;
+    const text = '追加'.repeat(1000);
+    const id = publishReply('p', text)!;
+    expect(store.getCell('replies', id, 'content')).toBe(text);
     expect(store.getCell('replies', id, 'xSync')).toBe(true);
     expect(trackPublication).toHaveBeenCalledWith({ id, table: 'replies', requestedX: true, skippedX: false });
     expect(toast).not.toHaveBeenCalled();
@@ -60,16 +111,16 @@ describe('publication feedback', () => {
     expect(toast).toHaveBeenCalledWith('发布失败，内容仍保留在输入框，请重试', 'error');
   });
 
-  it('saves the parts written with + as its thread, in order, and keeps the thread off X when one part is too long', () => {
+  it('saves a thread in order and submits long parts to X intact', () => {
     const id = publishPost({ content: '第一条', images: [], toX: true, thread: ['第二条', '  ', '第三条'] })!;
     const parts = Object.values(store.getTable('replies')).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
     expect(parts.map((part) => [part.postId, part.content, part.thread, part.xSync])).toEqual([[id, '第二条', true, true], [id, '第三条', true, true]]);
     expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
     expect(toast).not.toHaveBeenCalled();
 
-    const long = publishPost({ content: '短', images: [], toX: true, thread: ['长'.repeat(141)] })!;
-    expect(store.getCell('posts', long, 'xSync')).toBe(false);
-    expect(Object.values(store.getTable('replies')).find((part) => part.postId === long)?.xSync).toBe(false);
-    expect(toast).toHaveBeenCalledWith('已发布到日记本，超出 X 字数限制，未同步到 X', 'info');
+    const long = publishPost({ content: '短', images: [], toX: true, thread: ['长'.repeat(1000)] })!;
+    expect(store.getCell('posts', long, 'xSync')).toBe(true);
+    expect(Object.values(store.getTable('replies')).find((part) => part.postId === long)).toMatchObject({ content: '长'.repeat(1000), xSync: true });
+    expect(toast).not.toHaveBeenCalled();
   });
 });

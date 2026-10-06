@@ -28,6 +28,9 @@ export function publicationProgress({ synced, requestedX, skippedX = false, onli
   } else if (!requestedX) {
     result.done = true; result.message = '已保存到云端';
     result.detail = skippedX ? '超出 X 字数限制，此帖未同步到 X' : '此帖未开启 X 同步';
+  } else if (x?.command === 'send') {
+    result.message = '正在提交 X 同步请求';
+    result.waiting = true;
   } else if (result.retrying) {
     result.message = '正在提交 X 重试请求';
   } else if (x?.state === 'sent') {
