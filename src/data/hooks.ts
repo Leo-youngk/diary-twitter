@@ -1,8 +1,8 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import type { DayProgress } from '@/lib/goals';
 import {
-  parseImages, tweetIdOfLink, type PostRow, type ProfileValues, type XAccountRow, type XFollowersRow, type XPostRow, type XTweetRow,
-  type XMetricRow, type XLabelRow, type XExperimentRow,
+  parseImages, tweetIdOfLink, type PostRow, type ProfileValues, type SubstackPostRow, type XAccountRow, type XFollowersRow, type XPostRow,
+  type XTweetRow, type XMetricRow, type XLabelRow, type XExperimentRow,
 } from '@/lib/schema';
 import { toLocalDateKey } from '@/lib/utils';
 import { indexes, store, ui } from './store';
@@ -45,6 +45,7 @@ export function toPost(id: string, row: LoosePostRow): Post | null {
     createdAt: row.createdAt,
     isLiked: row.isLiked ?? false,
     xSync: row.xSync ?? false,
+    substackSync: row.substackSync ?? false,
   };
 }
 
@@ -126,11 +127,16 @@ export function useProfile(): ProfileValues {
     joinedDate: values.joinedDate ?? '',
     birthDate: values.birthDate ?? '',
     xSyncEnabled: values.xSyncEnabled ?? true,
+    substackSyncEnabled: values.substackSyncEnabled ?? false,
   }), [values]);
 }
 
 export function useXSyncEnabled(): boolean {
   return ui.useValue('xSyncEnabled', store) ?? true;
+}
+
+export function useSubstackSyncEnabled(): boolean {
+  return ui.useValue('substackSyncEnabled', store) ?? false;
 }
 
 export function useXPost(id: string): XPostRow | null {
@@ -140,6 +146,15 @@ export function useXPost(id: string): XPostRow | null {
 
 export function useXPosts(): Record<string, XPostRow> {
   return ui.useTable('xposts', store) as Record<string, XPostRow>;
+}
+
+export function useSubstackPost(id: string): SubstackPostRow | null {
+  const row = ui.useRow('substackposts', id, store);
+  return row.state ? (row as SubstackPostRow) : null;
+}
+
+export function useSubstackPosts(): Record<string, SubstackPostRow> {
+  return ui.useTable('substackposts', store) as Record<string, SubstackPostRow>;
 }
 
 /** X's numbers for a sent post or reply (from its link), once they have been read. */

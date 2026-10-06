@@ -9,10 +9,10 @@ import { releaseKeyboard } from '@/app/keyboard';
 import { useKeyboardViewport } from '@/app/useKeyboardViewport';
 import Avatar from '@/components/Avatar';
 import PostTime from '@/components/PostTime';
-import Icon, { XLogo } from '@/components/Icon';
+import Icon, { SubstackLogo, XLogo } from '@/components/Icon';
 import { fitsOnX, updatePost } from '@/data/actions';
 import { imageSrc, storeImage } from '@/data/blobs';
-import { usePost, useProfile, useXPost, useXSyncEnabled } from '@/data/hooks';
+import { usePost, useProfile, useSubstackSyncEnabled, useXPost, useXSyncEnabled } from '@/data/hooks';
 import { compressImage, POST_IMAGE_OPTS } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { X_MAX_WEIGHT, xWeightedLength } from '@/lib/xText';
@@ -55,6 +55,8 @@ export default function Composer({ params, onClose, embedded = false, activityId
   const replyingTo = usePost(params.replyTo ?? '');
   const editingX = useXPost(params.editId ?? '');
   const xEnabled = useXSyncEnabled();
+  // A new post that goes to X goes to Substack too; the switch shows both.
+  const alsoSubstack = useSubstackSyncEnabled();
   const mode: 'new' | 'edit' | 'reply' = params.editId ? 'edit' : params.replyTo ? 'reply' : 'new';
 
   // Taken once, when the screen opens.
@@ -361,7 +363,7 @@ export default function Composer({ params, onClose, embedded = false, activityId
               <button
                 type="button"
                 role="switch"
-                aria-label="立即同步到 X"
+                aria-label={alsoSubstack ? '立即同步到 X 和 Substack' : '立即同步到 X'}
                 aria-checked={toX}
                 onClick={() => setXOverride(!toX)}
                 className={cn(
@@ -370,6 +372,7 @@ export default function Composer({ params, onClose, embedded = false, activityId
                 )}
               >
                 <XLogo size={11} />
+                {alsoSubstack && <SubstackLogo size={11} />}
                 {toX ? '立即同步' : '暂不同步'}
               </button>
             )}

@@ -24,6 +24,8 @@ export interface PostRow {
   isLiked: boolean;
   /** Publish this 随想 to X, immediately or after an explicit manual request. */
   xSync: boolean;
+  /** Also publish it as a Substack Note: set with xSync while the Substack setting is on. */
+  substackSync: boolean;
 }
 
 export interface ReplyRow {
@@ -32,6 +34,8 @@ export interface ReplyRow {
   createdAt: string;
   /** Set once at creation: also publish to X as a quote of the post. */
   xSync: boolean;
+  /** Set once at creation: a 追加 becomes a Note linking its post's Note; a part of the thread goes inside the post's Note. */
+  substackSync: boolean;
   /** Written with the post (the compose screen's +): goes to X with it as one thread, not as a quote. */
   thread: boolean;
 }
@@ -48,6 +52,9 @@ export interface XPostRow {
   at: number;
   command: XCommand;
 }
+
+/** A post's Substack Note (sent through Buffer), kept like its X delivery. */
+export type SubstackPostRow = XPostRow;
 
 /**
  * One tweet on the X account (row id = tweet id), written by the server from
@@ -155,6 +162,8 @@ export interface ProfileValues {
   birthDate: string;
   /** The default of the X switch on the compose screen (replies follow their post). */
   xSyncEnabled: boolean;
+  /** What goes to X also goes to Substack Notes, through the Substack channel connected in Buffer. */
+  substackSyncEnabled: boolean;
 }
 
 export const TABLES_SCHEMA = {
@@ -167,15 +176,25 @@ export const TABLES_SCHEMA = {
     createdAt: { type: 'string', default: '' },
     isLiked: { type: 'boolean', default: false },
     xSync: { type: 'boolean', default: false },
+    substackSync: { type: 'boolean', default: false },
   },
   replies: {
     postId: { type: 'string', default: '' },
     content: { type: 'string', default: '' },
     createdAt: { type: 'string', default: '' },
     xSync: { type: 'boolean', default: false },
+    substackSync: { type: 'boolean', default: false },
     thread: { type: 'boolean', default: false },
   },
   xposts: {
+    state: { type: 'string', default: 'queued' },
+    kind: { type: 'string', default: 'post' },
+    link: { type: 'string', default: '' },
+    error: { type: 'string', default: '' },
+    at: { type: 'number', default: 0 },
+    command: { type: 'string', default: '' },
+  },
+  substackposts: {
     state: { type: 'string', default: 'queued' },
     kind: { type: 'string', default: 'post' },
     link: { type: 'string', default: '' },
@@ -263,6 +282,7 @@ export const VALUES_SCHEMA = {
   joinedDate: { type: 'string', default: '' },
   birthDate: { type: 'string', default: '' },
   xSyncEnabled: { type: 'boolean', default: true },
+  substackSyncEnabled: { type: 'boolean', default: false },
 } as const;
 
 export const ROW_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;

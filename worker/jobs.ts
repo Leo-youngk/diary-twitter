@@ -1,12 +1,18 @@
 import type { Env } from './env';
 import { execute, loadStore, query, saveStore } from './d1';
 import { runX } from './delivery/x';
+import { runSubstack } from './delivery/substack';
 import { runObsidian } from './delivery/obsidian';
 import { runXStats } from './delivery/xstats';
 import { runBackup } from './delivery/backup';
 
 const NEVER = 8_000_000_000_000_000;
 interface Job { name: string; generation: number }
+
+/** Never switched on and nothing in its ledger: no post can be waiting for Substack. */
+async function substackIdle(db: D1Database): Promise<boolean> {
+  return !await db.prepare(`SELECT 1 FROM diary3_records WHERE key='v:substackSyncEnabled' UNION ALL SELECT 1 FROM diary3_substack LIMIT 1`).first();
+}
 
 export async function runJob(env: Env, name: string): Promise<void> {
   const now = Date.now();
@@ -17,9 +23,12 @@ export async function runJob(env: Env, name: string): Promise<void> {
   if (!claimed.length) return;
   let next = now + 60_000;
   try {
+    // Every edit wakes this job; until Substack is used it skips reading the whole diary.
+    if (name === 'substack' && await substackIdle(env.DB)) { next = Infinity; return; }
     const { store, baseline } = await loadStore(env.DB);
     const persist = () => saveStore(env.DB, store, baseline);
     if (name === 'x') next = await runX(env.DB, store, env, now, persist);
+    else if (name === 'substack') next = await runSubstack(env.DB, store, env, now, persist);
     else if (name === 'obsidian') next = await runObsidian(env.DB, store, env, env.SPACE_ID!, now);
     else if (name === 'xstats') next = await runXStats(env.DB, store, env, now);
     else next = await runBackup(env.DB, store, env.DATA_KV, env.SPACE_ID!, now);
@@ -34,6 +43,6 @@ export async function runJob(env: Env, name: string): Promise<void> {
 }
 
 export async function runJobs(env: Env, immediate = false): Promise<void> {
-  const names = immediate ? ['x'] : ['x', 'obsidian', 'xstats', 'backup'];
+  const names = immediate ? ['x', 'substack'] : ['x', 'substack', 'obsidian', 'xstats', 'backup'];
   await Promise.allSettled(names.map(name => runJob(env, name)));
 }

@@ -1,9 +1,10 @@
 import { memo } from 'react';
 import { useNav } from '@/app/nav';
-import { useMinute, usePost, useProfile, useReply, useXPost } from '@/data/hooks';
+import { useMinute, usePost, useProfile, useReply, useSubstackPost, useXPost } from '@/data/hooks';
 import { formatCompactTime } from '@/lib/utils';
 import Avatar from './Avatar';
 import PostTime from './PostTime';
+import { SubstackMark, SubstackStatus } from './SubstackDelivery';
 import XMark from './XMark';
 import XDeliveryStatus from './XDeliveryStatus';
 
@@ -16,6 +17,7 @@ function ReplyListItem({ id }: { id: string }) {
   const post = usePost(reply?.postId ?? '');
   const profile = useProfile();
   const x = useXPost(id);
+  const note = useSubstackPost(id);
   const { push } = useNav();
   useMinute();
   if (!reply) return null;
@@ -31,10 +33,12 @@ function ReplyListItem({ id }: { id: string }) {
           <span className="min-w-0 truncate text-x-gray">@{profile.username}</span>
           <span className="shrink-0 text-x-gray">· {formatCompactTime(reply.createdAt)}</span>
           <XMark x={x} />
+          <SubstackMark note={note} />
         </div>
         {reply.thread && <p className="text-[14px] text-x-gray">回复 <span className="text-x-blue">@{profile.username}</span></p>}
         <p className="mt-0.5 whitespace-pre-wrap break-words text-[calc(15px*var(--font-scale))] leading-[1.6]">{reply.content}</p>
         <XDeliveryStatus id={id} requested={reply.xSync} x={x} />
+        <SubstackStatus id={id} note={note} />
         {!reply.thread && (
           <div className="mt-2.5 rounded-2xl border border-x-border px-3 py-2.5">
             {post ? (

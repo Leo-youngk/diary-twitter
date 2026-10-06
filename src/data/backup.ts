@@ -91,10 +91,11 @@ function parseV1(value: Record<string, unknown>): ParsedBackup | null {
       createdAt: str(post.createdAt),
       isLiked: post.isLiked === true,
       xSync: post.xSync === true,
+      substackSync: false,
     };
     for (const reply of Array.isArray(post.replies) ? post.replies : []) {
       if (!isRecord(reply) || !ROW_ID_PATTERN.test(str(reply.id))) continue;
-      replies[str(reply.id)] = { postId: str(post.id), content: str(reply.content), createdAt: str(reply.createdAt), xSync: reply.xSync === true, thread: false };
+      replies[str(reply.id)] = { postId: str(post.id), content: str(reply.content), createdAt: str(reply.createdAt), xSync: reply.xSync === true, substackSync: false, thread: false };
     }
   }
   const user = value.user;
@@ -156,19 +157,22 @@ export async function restoreBackup(backup: ParsedBackup): Promise<void> {
   }
   const mapRef = (ref: string) => refFor.get(ref) ?? (blobHashOf(ref) ? ref : '');
 
-  // A restore must never publish to X: keep the flag only where this account
-  // already had it (so replies can still quote those posts), clear it elsewhere.
-  const keepXSync = (table: 'posts' | 'replies', id: string) => store.getCell(table, id, 'xSync') === true;
+  // A restore must never publish to X or Substack: keep the flags only where this
+  // account already had them (so replies can still quote those posts), clear them elsewhere.
+  const keep = (table: 'posts' | 'replies', id: string) => ({
+    xSync: store.getCell(table, id, 'xSync') === true,
+    substackSync: store.getCell(table, id, 'substackSync') === true,
+  });
 
   store.transaction(() => {
     for (const id of store.getRowIds('replies')) if (!backup.replies[id]) store.delRow('replies', id);
     for (const id of store.getRowIds('posts')) if (!backup.posts[id]) store.delRow('posts', id);
     for (const [id, post] of Object.entries(backup.posts)) {
       const images = parseImages(post.images).map(mapRef).filter(Boolean);
-      store.setRow('posts', id, { ...post, images: JSON.stringify(images), xSync: keepXSync('posts', id) });
+      store.setRow('posts', id, { ...post, images: JSON.stringify(images), ...keep('posts', id) });
     }
     for (const [id, reply] of Object.entries(backup.replies)) {
-      store.setRow('replies', id, { ...reply, xSync: keepXSync('replies', id) });
+      store.setRow('replies', id, { ...reply, ...keep('replies', id) });
     }
     if (backup.goals) {
       for (const id of store.getRowIds('goals')) if (!backup.goals[id]) store.delRow('goals', id);

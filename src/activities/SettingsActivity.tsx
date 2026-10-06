@@ -5,17 +5,17 @@ import { AppScreen } from '@stackflow/plugin-basic-ui';
 import { setPreference, usePreferences, type FontFamily, type FontSize, type ScrollChrome, type Theme } from '@/app/preferences';
 import { toast } from '@/app/toast';
 import Avatar from '@/components/Avatar';
-import { XLogo } from '@/components/Icon';
+import { SubstackLogo, XLogo } from '@/components/Icon';
 import ScreenHeader from '@/components/ScreenHeader';
-import { sendXCommand, updateProfile } from '@/data/actions';
+import { sendSubstackCommand, sendXCommand, updateProfile } from '@/data/actions';
 import { downloadBackup, parseBackup, restoreBackup } from '@/data/backup';
 import { imageSrc, storeImage } from '@/data/blobs';
 import { getDeviceId } from '@/data/auth';
 import { useConnection } from '@/data/connection';
-import { useDevices, useProfile, useXPosts } from '@/data/hooks';
+import { useDevices, useProfile, useSubstackPosts, useXPosts } from '@/data/hooks';
 import { saveLocal, store } from '@/data/store';
 import { AVATAR_OPTS, BANNER_OPTS, compressImage } from '@/lib/image';
-import type { ProfileValues } from '@/lib/schema';
+import type { ProfileValues, XCommand, XPostRow } from '@/lib/schema';
 import { cn } from '@/lib/utils';
 
 function Section({ title, footer, children }: { title: string; footer?: string; children: React.ReactNode }) {
@@ -73,40 +73,47 @@ function Field({ label, field, value, multiline, type }: { label: string; field:
   );
 }
 
-function XSection() {
-  const profile = useProfile();
-  const xposts = useXPosts();
-  const entries = Object.entries(xposts);
+function Switch({ checked, onChange, label }: { checked: boolean; onChange: (checked: boolean) => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={cn('relative h-[31px] w-[51px] shrink-0 rounded-full transition-colors', checked ? 'bg-x-green' : 'bg-x-border')}
+    >
+      <span className={cn('absolute left-0.5 top-0.5 h-[27px] w-[27px] rounded-full bg-white shadow transition-transform', checked && 'translate-x-5')} />
+    </button>
+  );
+}
+
+/** A delivery's status line, then what is on its way and what failed (with retry / give up). */
+function DeliveryRows({ network, logo, rows, command }: {
+  network: 'X' | 'Substack';
+  logo: React.ReactNode;
+  rows: Record<string, XPostRow>;
+  command: (id: string, command: Exclude<XCommand, ''>) => void;
+}) {
+  const entries = Object.entries(rows);
   const failed = entries.filter(([, row]) => row.state === 'failed');
   const pending = entries.filter(([, row]) => row.state === 'queued' || row.state === 'sending' || row.state === 'publishing');
   const sent = entries.filter(([, row]) => row.state === 'sent').length;
   const textOf = (id: string, kind: string) => String(
     (kind === 'reply' ? store.getCell('replies', id, 'content') : store.getCell('posts', id, 'content')) ?? '',
   );
-
   return (
-    <Section title="同步到 X" footer="新帖默认经 Buffer 发到 X，也可选择暂不同步，保存后再点击「同步到 X」。已支持 X Premium 长文；追加会以引用原帖的形式发出。之后在这里编辑或删除，不会改动 X 上的内容。">
-      <Row label="发帖时默认同步到 X">
-        <button
-          type="button"
-          role="switch"
-          aria-checked={profile.xSyncEnabled}
-          onClick={() => updateProfile({ xSyncEnabled: !profile.xSyncEnabled })}
-          className={cn('relative h-[31px] w-[51px] shrink-0 rounded-full transition-colors', profile.xSyncEnabled ? 'bg-x-green' : 'bg-x-border')}
-        >
-          <span className={cn('absolute left-0.5 top-0.5 h-[27px] w-[27px] rounded-full bg-white shadow transition-transform', profile.xSyncEnabled && 'translate-x-5')} />
-        </button>
-      </Row>
+    <>
       <Row label="状态">
-        <XLogo size={12} />
+        {logo}
         <span>{pending.length > 0 ? `${pending.length} 条正在发` : `已发出 ${sent} 条`}{failed.length > 0 && ` · ${failed.length} 条失败`}</span>
       </Row>
       {pending.map(([id, row]) => (
         <div key={id} className="border-t border-x-border px-4 py-3 text-[13px]">
           <p className="line-clamp-2">{textOf(id, row.kind) || '（已删除）'}</p>
           <p className="mt-1 text-x-gray">{row.error || (row.state === 'publishing'
-            ? 'Buffer 已接收，正在核对 X 发布状态；不会重复发布'
-            : row.state === 'sending' ? '正在确认发送结果；暂时不要重复发布' : '等待发送到 X')}</p>
+            ? `Buffer 已接收，正在核对 ${network} 发布状态；不会重复发布`
+            : row.state === 'sending' ? '正在确认发送结果；暂时不要重复发布' : `等待发送到 ${network}`)}</p>
         </div>
       ))}
       {failed.map(([id, row]) => (
@@ -114,11 +121,39 @@ function XSection() {
           <p className="line-clamp-2 text-[15px]">{row.kind === 'reply' ? '追加：' : ''}{textOf(id, row.kind) || '（已删除）'}</p>
           <p className="mt-1 text-[13px] text-x-danger">{row.error}</p>
           <div className="mt-2 flex gap-4 text-[15px]">
-            <button type="button" onClick={() => sendXCommand(id, 'retry')} className="font-semibold text-x-blue">重试</button>
-            <button type="button" onClick={() => sendXCommand(id, 'dismiss')} className="text-x-gray">放弃</button>
+            <button type="button" onClick={() => command(id, 'retry')} className="font-semibold text-x-blue">重试</button>
+            <button type="button" onClick={() => command(id, 'dismiss')} className="text-x-gray">放弃</button>
           </div>
         </div>
       ))}
+    </>
+  );
+}
+
+function XSection() {
+  const profile = useProfile();
+  const xposts = useXPosts();
+  return (
+    <Section title="同步到 X" footer="新帖默认经 Buffer 发到 X，也可选择暂不同步，保存后再点击「同步到 X」。已支持 X Premium 长文；追加会以引用原帖的形式发出。之后在这里编辑或删除，不会改动 X 上的内容。">
+      <Row label="发帖时默认同步到 X">
+        <Switch checked={profile.xSyncEnabled} onChange={(xSyncEnabled) => updateProfile({ xSyncEnabled })} />
+      </Row>
+      <DeliveryRows network="X" logo={<XLogo size={12} />} rows={xposts} command={sendXCommand} />
+    </Section>
+  );
+}
+
+function SubstackSection() {
+  const profile = useProfile();
+  const notes = useSubstackPosts();
+  return (
+    <Section title="同步到 Substack" footer="经 Buffer 发成 Substack Note（Buffer 免费版即可）：先在 Buffer 里连接 Substack，再打开这里。之后发到 X 的新帖也会发一条 Note，用 + 写的几条合成一条，追加单独发一条并附上原 Note 的链接。只发文字，不发长文；在这里编辑或删除，不会改动 Substack 上的内容。">
+      <Row label="发到 X 的帖子也发到 Substack">
+        <Switch checked={profile.substackSyncEnabled} onChange={(substackSyncEnabled) => updateProfile({ substackSyncEnabled })} />
+      </Row>
+      {(profile.substackSyncEnabled || Object.keys(notes).length > 0) && (
+        <DeliveryRows network="Substack" logo={<SubstackLogo size={12} />} rows={notes} command={sendSubstackCommand} />
+      )}
     </Section>
   );
 }
@@ -244,6 +279,7 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
           <p className="px-5 pt-1.5 text-[12px] text-x-gray">出生日期只用于日历里的「人生周历」。</p>
 
           <XSection />
+          <SubstackSection />
 
           <Section title="数据">
             <Row label="同步"><span className={cn(connection.state === 'offline' && 'text-x-danger')}>{syncText}</span></Row>

@@ -18,6 +18,16 @@ export function replyWillSyncToX(postId: string): boolean {
   return store.getValue('xSyncEnabled') && store.getCell('posts', postId, 'xSync') === true;
 }
 
+/** What goes to X goes to Substack too while its setting is on. */
+function substackOn(): boolean {
+  return store.getValue('substackSyncEnabled') === true;
+}
+
+/** A 追加 becomes a Note when its post became one, with both switches still on. */
+export function replyWillSyncToSubstack(postId: string): boolean {
+  return replyWillSyncToX(postId) && substackOn() && store.getCell('posts', postId, 'substackSync') === true;
+}
+
 export interface NewPost {
   content: string;
   images: string[];
@@ -32,6 +42,7 @@ export function addPost(input: NewPost): string {
   const content = input.content.trim();
   const thread = (input.thread ?? []).map((part) => part.trim()).filter(Boolean);
   const xSync = input.toX;
+  const substackSync = xSync && substackOn();
   const now = Date.now();
   store.transaction(() => {
     store.setRow('posts', id, {
@@ -43,10 +54,11 @@ export function addPost(input: NewPost): string {
       createdAt: new Date(now).toISOString(),
       isLiked: false,
       xSync,
+      substackSync,
     });
     // A millisecond apart, so the parts keep their order.
     thread.forEach((part, i) => store.setRow('replies', generateId(), {
-      postId: id, content: part, createdAt: new Date(now + i + 1).toISOString(), xSync, thread: true,
+      postId: id, content: part, createdAt: new Date(now + i + 1).toISOString(), xSync, substackSync, thread: true,
     }));
   });
   return id;
@@ -113,6 +125,7 @@ export function addReply(postId: string, content: string): string | null {
     content: text,
     createdAt: new Date().toISOString(),
     xSync: replyWillSyncToX(postId),
+    substackSync: replyWillSyncToSubstack(postId),
   });
   return id;
 }
@@ -125,6 +138,10 @@ export function sendXCommand(id: string, command: Exclude<XCommand, ''>): void {
   store.setCell('xposts', id, 'command', command);
 }
 
+export function sendSubstackCommand(id: string, command: Exclude<XCommand, ''>): void {
+  store.setCell('substackposts', id, 'command', command);
+}
+
 /** The durable outbox carries this explicit request even after closing the app. */
 export function requestPostXSync(id: string): 'requested' | 'already-requested' | 'missing' | 'unsupported' | 'empty' {
   if (!store.hasRow('posts', id)) return 'missing';
@@ -133,10 +150,17 @@ export function requestPostXSync(id: string): 'requested' | 'already-requested' 
   if (post.xSync || store.hasRow('xposts', id)) return 'already-requested';
   const parts = Object.entries(store.getTable('replies')).filter(([, row]) => row.postId === id && row.thread === true);
   if (!post.content.trim()) return 'empty';
+  // The same explicit request takes it to Substack, unless it was sent there already.
+  const toSubstack = substackOn() && !post.substackSync && !store.hasRow('substackposts', id);
   store.transaction(() => {
     parts.forEach(([partId]) => store.setCell('replies', partId, 'xSync', true));
     store.setCell('posts', id, 'xSync', true);
     sendXCommand(id, 'send');
+    if (toSubstack) {
+      parts.forEach(([partId]) => store.setCell('replies', partId, 'substackSync', true));
+      store.setCell('posts', id, 'substackSync', true);
+      sendSubstackCommand(id, 'send');
+    }
   });
   return 'requested';
 }

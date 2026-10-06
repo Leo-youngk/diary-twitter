@@ -3,7 +3,7 @@ import { useNav } from '@/app/nav';
 import { useDesktopSelection } from '@/app/desktopPanel';
 import { sharePost } from '@/app/postOps';
 import { toggleLike } from '@/data/actions';
-import { usePost, useProfile, useReply, useReplyIds, useThreadIds, useTweetStats, useXPost } from '@/data/hooks';
+import { usePost, useProfile, useReply, useReplyIds, useSubstackPost, useThreadIds, useTweetStats, useXPost } from '@/data/hooks';
 import { cn } from '@/lib/utils';
 import Avatar from './Avatar';
 import Icon from './Icon';
@@ -11,6 +11,7 @@ import PostImages from './PostImages';
 import PostMenu from './PostMenu';
 import PostText from './PostText';
 import PostTime from './PostTime';
+import { SubstackMark, SubstackStatus } from './SubstackDelivery';
 import XMark from './XMark';
 import XDeliveryStatus from './XDeliveryStatus';
 
@@ -52,7 +53,7 @@ function ThreadPart({ id, last }: { id: string; last: boolean }) {
   );
 }
 
-/** One post in a list. Re-renders only when this post, its replies or its X state change. */
+/** One post in a list. Re-renders only when this post, its replies or its X / Substack state change. */
 function PostRow({ id }: { id: string }) {
   const post = usePost(id);
   const selected = useDesktopSelection(id);
@@ -60,6 +61,7 @@ function PostRow({ id }: { id: string }) {
   const replyIds = useReplyIds(id);
   const threadIds = useThreadIds(id);
   const x = useXPost(id);
+  const note = useSubstackPost(id);
   const tweet = useTweetStats(x?.state === 'sent' ? x.link : undefined);
   const { push } = useNav();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -87,6 +89,7 @@ function PostRow({ id }: { id: string }) {
             <span className="shrink-0 text-x-gray">· <PostTime date={post.createdAt} /></span>
             {post.category && <span className="min-w-0 shrink truncate text-[13px] text-x-gray">· {post.category}</span>}
             <XMark x={x} />
+            <SubstackMark note={note} />
             <button
               type="button"
               aria-label="更多"
@@ -106,6 +109,7 @@ function PostRow({ id }: { id: string }) {
           />
           <PostImages images={post.images} />
           <XDeliveryStatus id={id} requested={post.xSync} x={x} canSync={post.entryType === 'thought'} />
+          <SubstackStatus id={id} note={note} />
 
           <div className="mt-2 flex items-center justify-between pr-1">
             <Action label="追加" onClick={() => push('Compose', { replyTo: id })}>

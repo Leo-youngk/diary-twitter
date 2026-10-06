@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs';
 import { createMergeableStore } from 'tinybase';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordContent, splitContent, encodeJson, decodeJson } from '../src/lib/sync';
-import { databasePaused, dirtyJobs, loadStore, pull, query, saveRecord, saveStore, setMeta } from './d1';
+import { databasePaused, dirtyJobs, ensureSchema, execute, getMeta, loadStore, pull, query, saveRecord, saveStore, setMeta, SUBSTACK_LEDGER_SQL } from './d1';
 import { runJob } from './jobs';
 import { runX, insertLedgerRow, publishedDuplicate } from './delivery/x';
+import { runSubstack } from './delivery/substack';
 import type { Env } from './env';
 import { migrateLegacy, type LegacySnapshot } from './migrate';
 import { d1Login } from './d1-login';
@@ -345,5 +346,203 @@ describe('D1 X delivery safety and task leases', () => {
     expect(loaded.store.getCell('xposts', retryId, 'command')).toBe('');
     await runX(db, loaded.store, env(), Date.now(), persist);
     expect(request).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('D1 Substack Notes delivery', () => {
+  const NOTE = 'https://substack.com/@me/note/c-1';
+  const SUBSTACK_CHANNELS = [
+    { id: 'x-channel', service: 'twitter', isLocked: false, isDisconnected: false },
+    { id: 'notes', service: 'substack', isLocked: false, isDisconnected: false },
+  ];
+  /** A Buffer stand-in answering the organization, channel, publish and status queries. */
+  function buffer(options: { channels?: unknown[]; createPost?: () => Response | Promise<Response> } = {}) {
+    return vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const query = String(JSON.parse(String(init?.body)).query);
+      if (query.includes('organizations')) return Response.json({ data: { account: { organizations: [{ id: 'org' }] } } });
+      if (query.includes('channels')) return Response.json({ data: { channels: options.channels ?? SUBSTACK_CHANNELS } });
+      if (query.includes('createPost')) return options.createPost ? await options.createPost() : Response.json({ data: { createPost: {
+        __typename: 'PostActionSuccess', post: { id: 'buffer-note', status: 'sent', externalLink: NOTE },
+      } } });
+      throw new Error(`unexpected Buffer query: ${query}`);
+    });
+  }
+  const published = (fetchMock: ReturnType<typeof buffer>) => fetchMock.mock.calls
+    .map(([, init]) => JSON.parse(String(init?.body)))
+    .filter((body) => String(body.query).includes('createPost'))
+    .map((body) => body.variables.input);
+  function notePost(createdAt = new Date().toISOString()) {
+    return createMergeableStore().setRow('posts', 'p', { content: '第一段', entryType: 'thought', xSync: true, substackSync: true, createdAt });
+  }
+  async function pass(store = (async () => (await loadStore(db)))()) {
+    const loaded = await store;
+    const next = await runSubstack(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    return { ...loaded, next };
+  }
+
+  it('publishes a post and the parts written with it as one Note to the connected channel, once', async () => {
+    const at = Date.now();
+    await upload(notePost(new Date(at).toISOString())
+      .setRow('replies', 'b', { postId: 'p', content: '第三段', createdAt: new Date(at + 2).toISOString(), xSync: true, substackSync: true, thread: true })
+      .setRow('replies', 'a', { postId: 'p', content: '第二段', createdAt: new Date(at + 1).toISOString(), xSync: true, substackSync: true, thread: true }));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    const { store } = await pass();
+    expect(published(fetchMock)).toEqual([{
+      channelId: 'notes', text: '第一段\n\n第二段\n\n第三段', schedulingType: 'automatic', mode: 'shareNow', assets: [], needsApproval: false,
+    }]);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'sent', kind: 'post', link: NOTE, error: '' });
+    expect(store.hasRow('substackposts', 'a')).toBe(false);
+    expect(await getMeta(db, 'substack_channel')).toBe('notes');
+
+    const calls = fetchMock.mock.calls.length;
+    await pass();
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
+    expect((await loadStore(db)).store.getCell('substackposts', 'p', 'state')).toBe('sent');
+  });
+
+  it('asks nothing of Buffer when no post asked for Substack', async () => {
+    await upload(post());
+    vi.stubGlobal('fetch', vi.fn());
+    const { next } = await pass();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(next).toBe(Infinity);
+    expect(await query(db, 'SELECT id FROM diary3_substack')).toEqual([]);
+  });
+
+  it('sends a 追加 after its post, as a Note with a link card to the post\'s Note', async () => {
+    await upload(notePost().setRow('replies', 'q', { postId: 'p', content: '后来的追加', createdAt: new Date(Date.now() + 1).toISOString(), xSync: true, substackSync: true, thread: false }));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    await pass();
+    expect(published(fetchMock).map((input) => input.text)).toEqual(['第一段']);
+    const { store } = await pass();
+    const reply = published(fetchMock)[1];
+    expect(reply.text).toBe('后来的追加');
+    expect(reply.metadata).toEqual({ substack: { linkAttachment: { url: NOTE } } });
+    expect(store.getRow('substackposts', 'q')).toMatchObject({ state: 'sent', kind: 'reply' });
+  });
+
+  it('fails a 追加 whose post did not go out, instead of sending it on its own', async () => {
+    await upload(notePost().setRow('replies', 'q', { postId: 'p', content: '追加', createdAt: new Date(Date.now() + 1).toISOString(), xSync: true, substackSync: true, thread: false }));
+    const fetchMock = buffer({ createPost: () => Response.json({ data: { createPost: { __typename: 'InvalidInputError', message: 'bad' } } }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await pass();
+    const { store } = await pass();
+    expect(published(fetchMock)).toHaveLength(1);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'failed', error: expect.stringContaining('bad') });
+    expect(store.getRow('substackposts', 'q')).toMatchObject({ state: 'failed', error: expect.stringContaining('原帖还没有发到 Substack') });
+  });
+
+  it('explains a missing Substack channel, asks Buffer again only on retry, then publishes', async () => {
+    await upload(notePost());
+    const fetchMock = buffer({ channels: [SUBSTACK_CHANNELS[0]] });
+    vi.stubGlobal('fetch', fetchMock);
+    let { store, baseline } = await pass();
+    expect(published(fetchMock)).toEqual([]);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'failed', error: expect.stringContaining('还没有连接可用的 Substack 频道') });
+    const lookups = fetchMock.mock.calls.length;
+
+    await upload(createMergeableStore().setRow('posts', 'second', { content: '第二条', entryType: 'thought', xSync: true, substackSync: true, createdAt: new Date().toISOString() }));
+    ({ store } = await pass());
+    expect(fetchMock).toHaveBeenCalledTimes(lookups);
+    expect(store.getCell('substackposts', 'second', 'state')).toBe('failed');
+
+    const connected = buffer();
+    vi.stubGlobal('fetch', connected);
+    ({ store, baseline } = await loadStore(db));
+    store.setCell('substackposts', 'p', 'command', 'retry');
+    await saveStore(db, store, baseline);
+    ({ store } = await pass());
+    expect(published(connected)).toHaveLength(1);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'sent', link: NOTE, command: '' });
+  });
+
+  it('holds an old post until an explicit send and then publishes it once', async () => {
+    await upload(notePost(new Date(Date.now() - 10 * 24 * 3600_000).toISOString()));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    let { store, baseline } = await pass();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(store.getCell('substackposts', 'p', 'error')).toContain('3 天');
+    store.setCell('substackposts', 'p', 'command', 'send');
+    await saveStore(db, store, baseline);
+    ({ store, baseline } = await pass());
+    expect(published(fetchMock)).toHaveLength(1);
+    expect(store.getCell('substackposts', 'p', 'state')).toBe('sent');
+    store.setCell('substackposts', 'p', 'command', 'send');
+    await saveStore(db, store, baseline);
+    await pass();
+    expect(published(fetchMock)).toHaveLength(1);
+  });
+
+  it('commits sending before the request and never resends an interrupted Note', async () => {
+    await upload(notePost());
+    let duringRequest: unknown[] = [];
+    vi.stubGlobal('fetch', buffer({ createPost: async () => {
+      duringRequest = [
+        (await query<{ state: string }>(db, 'SELECT state FROM diary3_substack WHERE id=?', 'p'))[0].state,
+        (await loadStore(db)).store.getCell('substackposts', 'p', 'state'),
+      ];
+      return new Response('upstream died', { status: 502 });
+    } }));
+    let { store } = await pass();
+    expect(duringRequest).toEqual(['sending', 'sending']);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'failed', error: expect.stringContaining('请先到 Substack 确认') });
+
+    await execute(db, `UPDATE diary3_substack SET state='sending', updated_at=? WHERE id='p'`, Date.now() - 120_000);
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    ({ store } = await pass());
+    expect(published(fetchMock)).toEqual([]);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'failed', error: expect.stringContaining('中断') });
+  });
+
+  it('waits out a rate limit for every Buffer request before trying again', async () => {
+    await upload(notePost());
+    const fetchMock = buffer({ createPost: () => Response.json({}, { status: 429, headers: { 'retry-after': '900' } }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const { store, next } = await pass();
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'queued', error: expect.stringContaining('过于频繁') });
+    expect(Number(await getMeta(db, 'buffer_retry_at'))).toBeGreaterThan(Date.now() + 800_000);
+    expect(next).toBeGreaterThan(Date.now() + 800_000);
+    const calls = fetchMock.mock.calls.length;
+    await execute(db, `UPDATE diary3_substack SET next_at=0 WHERE id='p'`);
+    await pass();
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
+  });
+
+  it('adds its ledger and job to a database migrated before it, and runs as its own job', async () => {
+    sqlite.exec('DROP TABLE diary3_substack');
+    await ensureSchema(db);
+    await ensureSchema(db);
+    expect(await query(db, "SELECT name FROM diary3_jobs WHERE name='substack'")).toEqual([{ name: 'substack' }]);
+    expect(readFileSync(new URL('../migrations/0001_diary.sql', import.meta.url), 'utf8')).toContain(`${SUBSTACK_LEDGER_SQL};`);
+    await upload(notePost().setValue('substackSyncEnabled', true));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    await runJob(env(), 'substack');
+    expect(published(fetchMock)).toHaveLength(1);
+    expect((await loadStore(db)).store.getCell('substackposts', 'p', 'state')).toBe('sent');
+  });
+
+  it('does not read the diary for an edit while Substack was never switched on', async () => {
+    await ensureSchema(db);
+    await upload(post());
+    let loads = 0;
+    const counting = { ...db, prepare: (sql: string) => {
+      if (sql.startsWith('SELECT key,data FROM diary3_records')) loads++;
+      return db.prepare(sql);
+    } } as D1Database;
+    vi.stubGlobal('fetch', vi.fn());
+    await runJob({ ...env(), DB: counting }, 'substack');
+    expect(loads).toBe(0);
+    expect(fetch).not.toHaveBeenCalled();
+    expect((await query<{ next_at: number }>(db, "SELECT next_at FROM diary3_jobs WHERE name='substack'"))[0].next_at).toBeGreaterThan(Date.now() + 1e12);
+
+    await upload(createMergeableStore().setValue('substackSyncEnabled', false));
+    await dirtyJobs(db);
+    await runJob({ ...env(), DB: counting }, 'substack');
+    expect(loads).toBe(1);
   });
 });
