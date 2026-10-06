@@ -47,9 +47,9 @@ describe('initialState', () => {
     expect(initialState(candidate('今天', HOUR), now, true)).toEqual({ state: 'queued', error: '' });
   });
 
-  it('fails loudly without Buffer, when too long, or when stale', () => {
+  it('accepts long posts for Buffer to validate, while failing loudly without Buffer or when stale', () => {
     expect(initialState(candidate('今天', HOUR), now, false).state).toBe('failed');
-    expect(initialState(candidate('字'.repeat(141), HOUR), now, true).error).toContain('长度');
+    expect(initialState(candidate('字'.repeat(15000), HOUR), now, true)).toEqual({ state: 'queued', error: '' });
     expect(initialState(candidate('今天', 73 * HOUR), now, true).error).toContain('3 天');
   });
 });

@@ -8,18 +8,14 @@ export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+/** An advisory Premium counter; Buffer validates the connected account at delivery. */
 export function fitsOnX(text: string): boolean {
   return xWeightedLength(text) <= X_MAX_WEIGHT;
 }
 
-/** A new post goes to X when its switch is on and it, and every part of its thread, fits. */
-export function postWillSyncToX(toX: boolean, content: string, thread: string[] = []): boolean {
-  return toX && fitsOnX(content.trim()) && thread.every((part) => fitsOnX(part.trim()));
-}
-
-/** A reply goes to X when its post went there, the setting is on and it fits. */
-export function replyWillSyncToX(postId: string, content: string): boolean {
-  return store.getValue('xSyncEnabled') && store.getCell('posts', postId, 'xSync') === true && fitsOnX(content.trim());
+/** A reply follows its post and the default switch; text length never drops an X request. */
+export function replyWillSyncToX(postId: string): boolean {
+  return store.getValue('xSyncEnabled') && store.getCell('posts', postId, 'xSync') === true;
 }
 
 export interface NewPost {
@@ -35,7 +31,7 @@ export function addPost(input: NewPost): string {
   const id = generateId();
   const content = input.content.trim();
   const thread = (input.thread ?? []).map((part) => part.trim()).filter(Boolean);
-  const xSync = postWillSyncToX(input.toX, content, thread);
+  const xSync = input.toX;
   const now = Date.now();
   store.transaction(() => {
     store.setRow('posts', id, {
@@ -116,7 +112,7 @@ export function addReply(postId: string, content: string): string | null {
     postId,
     content: text,
     createdAt: new Date().toISOString(),
-    xSync: replyWillSyncToX(postId, text),
+    xSync: replyWillSyncToX(postId),
   });
   return id;
 }
@@ -127,6 +123,22 @@ export function updateProfile(values: Partial<ProfileValues>): void {
 
 export function sendXCommand(id: string, command: Exclude<XCommand, ''>): void {
   store.setCell('xposts', id, 'command', command);
+}
+
+/** The durable outbox carries this explicit request even after closing the app. */
+export function requestPostXSync(id: string): 'requested' | 'already-requested' | 'missing' | 'unsupported' | 'empty' {
+  if (!store.hasRow('posts', id)) return 'missing';
+  const post = store.getRow('posts', id);
+  if (post.entryType !== 'thought') return 'unsupported';
+  if (post.xSync || store.hasRow('xposts', id)) return 'already-requested';
+  const parts = Object.entries(store.getTable('replies')).filter(([, row]) => row.postId === id && row.thread === true);
+  if (!post.content.trim()) return 'empty';
+  store.transaction(() => {
+    parts.forEach(([partId]) => store.setCell('replies', partId, 'xSync', true));
+    store.setCell('posts', id, 'xSync', true);
+    sendXCommand(id, 'send');
+  });
+  return 'requested';
 }
 
 export function labelXTweet(id: string, topic: string): void {

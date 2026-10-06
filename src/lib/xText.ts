@@ -1,11 +1,11 @@
 // X counts characters by "weight", not by length: most CJK characters and emoji
-// weigh 2, so a Chinese post tops out at 140 characters. The ranges below are
+// weigh 2. This account has X Premium; Buffer supports long posts. The ranges below are
 // the ones from X's published twitter-text v3 config (weight 1 = Latin-ish
 // text and common punctuation, everything else weighs 2; a URL is always 23).
 // Grapheme clusters are not merged, so emoji sequences are over-counted, which
-// only ever errs on the side of rejecting a post that X might have accepted.
+// only affects the advisory counter. Buffer, not this estimate, validates delivery.
 
-export const X_MAX_WEIGHT = 280;
+export const X_MAX_WEIGHT = 25_000;
 
 const URL_WEIGHT = 23;
 const URL_PATTERN = /https?:\/\/\S+/g;

@@ -20,7 +20,7 @@ import { X_MAX_WEIGHT, xWeightedLength } from '@/lib/xText';
 const DRAFT_KEY = 'diary-compose-draft';
 const MAX_IMAGES = 4;
 // A ceiling against runaway pastes; X's own limit is shown separately.
-const MAX_LENGTH = 20_000;
+const MAX_LENGTH = 100_000;
 
 interface Draft { content: string; thread: string[] }
 
@@ -107,7 +107,7 @@ export default function Composer({ params, onClose, embedded = false, activityId
   const xFits = fitsOnX(text) && thread.every(fitsOnX);
   let xNote: { text: string; warn: boolean } | null = null;
   if (xBound && !xFits) {
-    xNote = { text: `超出 X 的长度上限（中文每字算 2，最多 140 字），这${thread.length > 0 ? '一串' : '条'}只保存在本机`, warn: true };
+    xNote = { text: '超过 X Premium 的 25,000 计数参考，仍会提交同步，结果以 X 返回为准', warn: true };
   } else if (xBound && thread.length > 0) {
     xNote = { text: `将作为一串（${thread.length + 1} 条）一起发到 X${images.length > 0 ? '，图片不会同步' : ''}`, warn: false };
   } else if (xBound && mode === 'reply') {
@@ -116,6 +116,8 @@ export default function Composer({ params, onClose, embedded = false, activityId
     xNote = { text: '图片不会同步到 X，只发文字', warn: false };
   } else if (mode === 'edit' && editingX?.state === 'sent') {
     xNote = { text: 'X 上已发出的那条不会跟着修改', warn: false };
+  } else if (mode === 'new' && !toX && text.length > 0) {
+    xNote = { text: '先保存在日记本，之后可在帖子上点击「同步到 X」', warn: false };
   }
 
   const canPublish = text.length > 0 && content.length <= MAX_LENGTH && !uploading && !missing;
@@ -359,6 +361,7 @@ export default function Composer({ params, onClose, embedded = false, activityId
               <button
                 type="button"
                 role="switch"
+                aria-label="立即同步到 X"
                 aria-checked={toX}
                 onClick={() => setXOverride(!toX)}
                 className={cn(
@@ -367,7 +370,7 @@ export default function Composer({ params, onClose, embedded = false, activityId
                 )}
               >
                 <XLogo size={11} />
-                {toX ? '同步' : '不同步'}
+                {toX ? '立即同步' : '暂不同步'}
               </button>
             )}
             <div className="ml-auto flex items-center gap-3">
@@ -384,7 +387,7 @@ export default function Composer({ params, onClose, embedded = false, activityId
                 disabled={!canPublish}
                 className={cn('pressable px-5 py-2 text-[15px] font-semibold disabled:opacity-30', embedded ? 'rounded-lg bg-x-blue text-white' : 'rounded-full bg-x-fg text-x-dark')}
               >
-                {mode === 'edit' ? '保存' : '发布'}
+                {mode === 'edit' || (mode === 'new' && !toX) ? '保存' : '发布'}
               </button>
             </div>
           </div>

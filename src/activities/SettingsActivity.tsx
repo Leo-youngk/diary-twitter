@@ -85,7 +85,7 @@ function XSection() {
   );
 
   return (
-    <Section title="同步到 X" footer="新帖默认经 Buffer 发到 X，发帖页可以单独关掉某一条；已同步帖子下的追加会以引用原帖的形式发出。之后在这里编辑或删除，不会改动 X 上的内容。超过 140 个汉字的只保存在本地。">
+    <Section title="同步到 X" footer="新帖默认经 Buffer 发到 X，也可选择暂不同步，保存后再点击「同步到 X」。已支持 X Premium 长文；追加会以引用原帖的形式发出。之后在这里编辑或删除，不会改动 X 上的内容。">
       <Row label="发帖时默认同步到 X">
         <button
           type="button"

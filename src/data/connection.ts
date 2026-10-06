@@ -45,7 +45,7 @@ export function outgoingRecords(): SyncRecord[] {
     // first, including when the durable outbox needs several HTTP batches.
     const priority = (record: SyncRecord) => {
       const [, table, id] = record.key.split(':');
-      return table === 'replies' && store.getCell('replies', id, 'thread') === true ? 0 : 1;
+      return table === 'replies' && store.getCell('replies', id, 'thread') === true ? 0 : table === 'xposts' ? 2 : 1;
     };
     return priority(a) - priority(b);
   });

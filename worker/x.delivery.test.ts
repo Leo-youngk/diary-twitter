@@ -46,6 +46,22 @@ beforeEach(() => {
 afterEach(() => { db.close(); vi.useRealTimers(); });
 
 describe('X delivery progress', () => {
+  it('keeps an old saved post off X until its explicit send and ignores a replay', async () => {
+    const createdAt = new Date(now - 10 * 24 * 3600_000).toISOString();
+    store.setPartialRow('posts', 'p', { xSync: false, createdAt });
+    await runX(sql, store, env, now);
+    expect(createBufferPost).not.toHaveBeenCalled();
+    store.setCell('posts', 'p', 'xSync', true);
+    store.setCell('xposts', 'p', 'command', 'send');
+    await runX(sql, store, env, now);
+    expect(createBufferPost).toHaveBeenCalledTimes(1);
+    expect(store.getCell('xposts', 'p', 'state')).toBe('publishing');
+    expect(store.getCell('posts', 'p', 'createdAt')).toBe(createdAt);
+    store.setCell('xposts', 'p', 'command', 'send');
+    await runX(sql, store, env, now);
+    expect(createBufferPost).toHaveBeenCalledTimes(1);
+  });
+
   it('acknowledges a received post and exposes sending before waiting for Buffer', async () => {
     vi.mocked(createBufferPost).mockImplementationOnce(async () => {
       expect(store.getCell('xposts', 'p', 'state')).toBe('sending');

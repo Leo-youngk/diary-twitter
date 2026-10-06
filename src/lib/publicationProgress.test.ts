@@ -27,6 +27,10 @@ describe('publication stages from real acknowledgements', () => {
   it('shows cancellation without completing the X step', () => {
     expect(publicationProgress({ ...input, x: x('dismissed') })).toMatchObject({ complete: [true, true, false], done: true, active: -1 });
   });
+  it('keeps an old post\'s explicit send pending while its previous age check is being replaced', () => {
+    expect(publicationProgress({ ...input, x: x('failed', { command: 'send', error: '超过 3 天' }) }))
+      .toMatchObject({ done: false, failed: false, waiting: true, message: '正在提交 X 同步请求' });
+  });
   it('finishes cloud-only posts and explains the length limit', () => {
     expect(publicationProgress({ ...input, requestedX: false, skippedX: true })).toMatchObject({ labels: ['日记本', '云端保存'], complete: [true, true], done: true, detail: '超出 X 字数限制，此帖未同步到 X' });
   });

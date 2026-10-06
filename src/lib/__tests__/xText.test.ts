@@ -7,9 +7,10 @@ describe('xWeightedLength', () => {
     expect(xWeightedLength('hello, world\n')).toBe(13);
   });
 
-  it('counts Chinese characters as 2, so 140 of them fill a post', () => {
-    expect(xWeightedLength('字'.repeat(140))).toBe(X_MAX_WEIGHT);
-    expect(xWeightedLength('字'.repeat(141))).toBeGreaterThan(X_MAX_WEIGHT);
+  it('counts Chinese characters as 2 while the counter uses the Premium allowance', () => {
+    expect(xWeightedLength('字'.repeat(140))).toBe(280);
+    expect(xWeightedLength('字'.repeat(1000))).toBe(2000);
+    expect(X_MAX_WEIGHT).toBe(25000);
   });
 
   it('counts fullwidth punctuation and emoji as 2', () => {
