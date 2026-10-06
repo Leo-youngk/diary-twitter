@@ -55,17 +55,22 @@ export async function saveStore(db: D1Database, store: MergeableStore, baseline:
 }
 
 export async function dirtyJobs(db: D1Database): Promise<void> {
-  await execute(db, `UPDATE diary3_jobs SET next_at=0,generation=generation+1 WHERE name IN ('x','substack','obsidian')`);
+  await execute(db, `UPDATE diary3_jobs SET next_at=0,generation=generation+1 WHERE name IN ('x','substack','threads','obsidian')`);
 }
 
-/** The Substack ledger, as in migrations/0001_diary.sql. */
-export const SUBSTACK_LEDGER_SQL = "CREATE TABLE IF NOT EXISTS diary3_substack (id TEXT PRIMARY KEY, kind TEXT NOT NULL, parent TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL DEFAULT 0, buffer_id TEXT NOT NULL DEFAULT '', link TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0)";
+/** The ledger of a channel other than X, as in migrations/0001_diary.sql. */
+export const ledgerSql = (table: string) => `CREATE TABLE IF NOT EXISTS ${table} (id TEXT PRIMARY KEY, kind TEXT NOT NULL, parent TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL DEFAULT 0, buffer_id TEXT NOT NULL DEFAULT '', link TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0)`;
+
+/** Each such channel's ledger and the D1 job that delivers it. */
+export const CHANNEL_LEDGERS = [['diary3_substack', 'substack'], ['diary3_threads', 'threads']] as const;
 
 /**
  * What was added to the schema after the migration: a running database need not
  * have had the schema file applied again. Idempotent; writes nothing once present.
  */
 export async function ensureSchema(db: D1Database): Promise<void> {
-  await execute(db, SUBSTACK_LEDGER_SQL);
-  await execute(db, `INSERT OR IGNORE INTO diary3_jobs(name) VALUES('substack')`);
+  for (const [table, job] of CHANNEL_LEDGERS) {
+    await execute(db, ledgerSql(table));
+    await execute(db, 'INSERT OR IGNORE INTO diary3_jobs(name) VALUES(?)', job);
+  }
 }

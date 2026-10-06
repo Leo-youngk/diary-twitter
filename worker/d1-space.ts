@@ -30,8 +30,8 @@ export class D1Diary extends DurableObject<Env> {
       const fragments = splitContent(parsed.getMergeableContent());
       if (fragments.length !== 1 || fragments[0].key !== record.key) throw new Error('Invalid sync content');
       // Delivery state is server-owned. Devices may only submit commands.
-      if (kind === 'r' && ['xtweets','xaccount','xfollowers','xmetrics','devices'].includes(table)) continue;
-      if (kind === 'r' && (table === 'xposts' || table === 'substackposts')) {
+      if (kind === 'r' && ['xtweets','xaccount','xfollowers','xmetrics','substackmetrics','threadsmetrics','devices'].includes(table)) continue;
+      if (kind === 'r' && ['xposts', 'substackposts', 'threadsposts'].includes(table)) {
         const cells = recordContent(record)[0][0][table][0][id][0];
         for (const cell of Object.keys(cells)) if (cell !== 'command') delete cells[cell];
         const content = recordContent(record);
@@ -39,7 +39,7 @@ export class D1Diary extends DurableObject<Env> {
         record = { key: record.key, data: encodeJson(content) };
       }
       const changed = await saveRecord(this.env.DB, record);
-      if (changed && ['posts', 'replies', 'xposts', 'substackposts'].includes(table)) dirty = true;
+      if (changed && ['posts', 'replies', 'xposts', 'substackposts', 'threadsposts'].includes(table)) dirty = true;
     }
     if (dirty) {
       await dirtyJobs(this.env.DB);

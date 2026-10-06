@@ -5,17 +5,19 @@ import { AppScreen } from '@stackflow/plugin-basic-ui';
 import { setPreference, usePreferences, type FontFamily, type FontSize, type ScrollChrome, type Theme } from '@/app/preferences';
 import { toast } from '@/app/toast';
 import Avatar from '@/components/Avatar';
-import { SubstackLogo, XLogo } from '@/components/Icon';
+import { ChannelLogo } from '@/components/ChannelDelivery';
+import { XLogo } from '@/components/Icon';
 import ScreenHeader from '@/components/ScreenHeader';
-import { sendSubstackCommand, sendXCommand, updateProfile } from '@/data/actions';
+import { sendChannelCommand, sendXCommand, updateProfile } from '@/data/actions';
 import { downloadBackup, parseBackup, restoreBackup } from '@/data/backup';
 import { imageSrc, storeImage } from '@/data/blobs';
 import { getDeviceId } from '@/data/auth';
 import { useConnection } from '@/data/connection';
-import { useDevices, useProfile, useSubstackPosts, useXPosts } from '@/data/hooks';
+import { useChannelPosts, useDevices, useProfile, useXPosts } from '@/data/hooks';
 import { saveLocal, store } from '@/data/store';
 import { AVATAR_OPTS, BANNER_OPTS, compressImage } from '@/lib/image';
-import type { ProfileValues, XCommand, XPostRow } from '@/lib/schema';
+import { CHANNELS } from '@/lib/channels';
+import type { Channel, ProfileValues, XCommand, XPostRow } from '@/lib/schema';
 import { cn } from '@/lib/utils';
 
 function Section({ title, footer, children }: { title: string; footer?: string; children: React.ReactNode }) {
@@ -90,7 +92,7 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (che
 
 /** A delivery's status line, then what is on its way and what failed (with retry / give up). */
 function DeliveryRows({ network, logo, rows, command }: {
-  network: 'X' | 'Substack';
+  network: string;
   logo: React.ReactNode;
   rows: Record<string, XPostRow>;
   command: (id: string, command: Exclude<XCommand, ''>) => void;
@@ -143,16 +145,25 @@ function XSection() {
   );
 }
 
-function SubstackSection() {
+/** What each platform does with a post, shown under its switch. */
+const CHANNEL_NOTES: Record<Channel, string> = {
+  substack: '经 Buffer 发成 Substack Note（Buffer 免费版即可），需先在 Buffer 里连接 Substack。用 + 写的几条合成一条 Note，追加单独发一条并附上原 Note 的链接。只发文字，不发长文。',
+  threads: '经 Buffer 发到 Threads（Buffer 免费版即可），需先在 Buffer 里连接 Threads。每条最多 500 字；用 + 写的几条作为串发出，追加单独发一条并附上原帖的链接。只发文字。',
+};
+
+/** One platform other than X: its own default switch, status and failures, independent of the others. */
+function ChannelSection({ channel }: { channel: Channel }) {
   const profile = useProfile();
-  const notes = useSubstackPosts();
+  const rows = useChannelPosts(channel);
+  const { name, setting } = CHANNELS[channel];
+  const enabled = profile[setting];
   return (
-    <Section title="同步到 Substack" footer="经 Buffer 发成 Substack Note（Buffer 免费版即可）：先在 Buffer 里连接 Substack，再打开这里。之后发到 X 的新帖也会发一条 Note，用 + 写的几条合成一条，追加单独发一条并附上原 Note 的链接。只发文字，不发长文；在这里编辑或删除，不会改动 Substack 上的内容。">
-      <Row label="发到 X 的帖子也发到 Substack">
-        <Switch checked={profile.substackSyncEnabled} onChange={(substackSyncEnabled) => updateProfile({ substackSyncEnabled })} />
+    <Section title={`同步到 ${name}`} footer={`${CHANNEL_NOTES[channel]}写帖时可以单独关掉；在这里编辑或删除，不会改动 ${name} 上的内容。`}>
+      <Row label={`发帖时默认同步到 ${name}`}>
+        <Switch checked={enabled} onChange={(value) => updateProfile({ [setting]: value })} />
       </Row>
-      {(profile.substackSyncEnabled || Object.keys(notes).length > 0) && (
-        <DeliveryRows network="Substack" logo={<SubstackLogo size={12} />} rows={notes} command={sendSubstackCommand} />
+      {(enabled || Object.keys(rows).length > 0) && (
+        <DeliveryRows network={name} logo={<ChannelLogo channel={channel} />} rows={rows} command={(id, command) => sendChannelCommand(channel, id, command)} />
       )}
     </Section>
   );
@@ -279,7 +290,8 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
           <p className="px-5 pt-1.5 text-[12px] text-x-gray">出生日期只用于日历里的「人生周历」。</p>
 
           <XSection />
-          <SubstackSection />
+          <ChannelSection channel="substack" />
+          <ChannelSection channel="threads" />
 
           <Section title="数据">
             <Row label="同步"><span className={cn(connection.state === 'offline' && 'text-x-danger')}>{syncText}</span></Row>

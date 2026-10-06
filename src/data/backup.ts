@@ -92,10 +92,11 @@ function parseV1(value: Record<string, unknown>): ParsedBackup | null {
       isLiked: post.isLiked === true,
       xSync: post.xSync === true,
       substackSync: false,
+      threadsSync: false,
     };
     for (const reply of Array.isArray(post.replies) ? post.replies : []) {
       if (!isRecord(reply) || !ROW_ID_PATTERN.test(str(reply.id))) continue;
-      replies[str(reply.id)] = { postId: str(post.id), content: str(reply.content), createdAt: str(reply.createdAt), xSync: reply.xSync === true, substackSync: false, thread: false };
+      replies[str(reply.id)] = { postId: str(post.id), content: str(reply.content), createdAt: str(reply.createdAt), xSync: reply.xSync === true, substackSync: false, threadsSync: false, thread: false };
     }
   }
   const user = value.user;
@@ -157,11 +158,12 @@ export async function restoreBackup(backup: ParsedBackup): Promise<void> {
   }
   const mapRef = (ref: string) => refFor.get(ref) ?? (blobHashOf(ref) ? ref : '');
 
-  // A restore must never publish to X or Substack: keep the flags only where this
-  // account already had them (so replies can still quote those posts), clear them elsewhere.
+  // A restore must never publish anywhere: keep the flags only where this account
+  // already had them (so replies can still quote those posts), clear them elsewhere.
   const keep = (table: 'posts' | 'replies', id: string) => ({
     xSync: store.getCell(table, id, 'xSync') === true,
     substackSync: store.getCell(table, id, 'substackSync') === true,
+    threadsSync: store.getCell(table, id, 'threadsSync') === true,
   });
 
   store.transaction(() => {

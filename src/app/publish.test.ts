@@ -17,7 +17,7 @@ import { store } from '@/data/store';
 import { addPost } from '@/data/actions';
 import { trackPublication } from './publications';
 import { toast } from './toast';
-import { publishPost, publishReply, syncPostToX } from './publish';
+import { publishPost, publishReply, syncPostToChannel, syncPostToX } from './publish';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -111,45 +111,49 @@ describe('publication feedback', () => {
     expect(toast).toHaveBeenCalledWith('发布失败，内容仍保留在输入框，请重试', 'error');
   });
 
-  it('sends a new post and its thread to Substack only while its setting is on and the post goes to X', () => {
-    const off = publishPost({ content: '设置关闭', images: [], toX: true, thread: ['二'] })!;
-    store.setValue('substackSyncEnabled', true);
-    const on = publishPost({ content: '设置打开', images: [], toX: true, thread: ['二'] })!;
-    const held = publishPost({ content: '暂不同步', images: [], toX: false })!;
+  it('takes each platform from its own compose switch, for the post and its thread alike', () => {
     const partOf = (postId: string) => Object.values(store.getTable('replies')).find((part) => part.postId === postId);
-    expect(store.getCell('posts', off, 'substackSync')).toBe(false);
-    expect(partOf(off)?.substackSync).toBe(false);
-    expect(store.getCell('posts', on, 'substackSync')).toBe(true);
-    expect(partOf(on)?.substackSync).toBe(true);
-    expect(store.getRow('posts', held)).toMatchObject({ xSync: false, substackSync: false });
+    const mixed = publishPost({ content: 'X 和 Threads', images: [], toX: true, toSubstack: false, toThreads: true, thread: ['二'] })!;
+    expect(store.getRow('posts', mixed)).toMatchObject({ xSync: true, substackSync: false, threadsSync: true });
+    expect(partOf(mixed)).toMatchObject({ xSync: true, substackSync: false, threadsSync: true });
+    const substackOnly = publishPost({ content: '只发 Substack', images: [], toX: false, toSubstack: true, toThreads: false })!;
+    expect(store.getRow('posts', substackOnly)).toMatchObject({ xSync: false, substackSync: true, threadsSync: false });
+    expect(store.hasRow('xposts', substackOnly)).toBe(false);
+    expect(trackPublication).toHaveBeenLastCalledWith({ id: substackOnly, table: 'posts', requestedX: false, skippedX: false });
   });
 
-  it('makes a 追加 a Note only when its post became one and both switches are still on', () => {
+  it('makes a 追加 follow its post on each platform separately, while that platform\'s default is on', () => {
     store.setValue('substackSyncEnabled', true);
-    store.setRow('posts', 'note', { content: '原帖', xSync: true, substackSync: true });
-    store.setRow('posts', 'xOnly', { content: '只发 X', xSync: true, substackSync: false });
-    expect(store.getCell('replies', publishReply('note', '追加')!, 'substackSync')).toBe(true);
-    expect(store.getCell('replies', publishReply('xOnly', '追加')!, 'substackSync')).toBe(false);
+    store.setRow('posts', 'p', { content: '原帖', xSync: false, substackSync: true, threadsSync: true });
+    const reply = publishReply('p', '追加')!;
+    expect(store.getRow('replies', reply)).toMatchObject({ xSync: false, substackSync: true, threadsSync: false });
+    store.setValue('threadsSyncEnabled', true);
     store.setValue('substackSyncEnabled', false);
-    expect(store.getCell('replies', publishReply('note', '追加')!, 'substackSync')).toBe(false);
+    expect(store.getRow('replies', publishReply('p', '再追加')!)).toMatchObject({ xSync: false, substackSync: false, threadsSync: true });
   });
 
-  it('takes a saved post to Substack with the same explicit request that takes it to X, once', () => {
-    store.setValue('substackSyncEnabled', true);
+  it('sends a saved post to one more platform on request, without touching the others', () => {
     const id = publishPost({ content: '先留着', images: [], toX: false, thread: ['第二条'] })!;
     const part = store.getRowIds('replies')[0];
     store.setRow('replies', 'quote', { postId: id, content: '独立追加', thread: false });
+
     syncPostToX(id);
-    expect(store.getRow('posts', id)).toMatchObject({ xSync: true, substackSync: true });
+    expect(store.getRow('posts', id)).toMatchObject({ xSync: true, substackSync: false, threadsSync: false });
+    expect(store.hasRow('substackposts', id)).toBe(false);
+
+    syncPostToChannel('substack', id);
+    expect(store.getRow('posts', id)).toMatchObject({ substackSync: true, threadsSync: false });
     expect(store.getCell('replies', part, 'substackSync')).toBe(true);
     expect(store.getCell('replies', 'quote', 'substackSync')).toBe(false);
     expect(store.getCell('substackposts', id, 'command')).toBe('send');
+    expect(store.hasRow('threadsposts', id)).toBe(false);
+    expect(toast).toHaveBeenLastCalledWith('已请求同步到 Substack', 'info');
 
-    store.setValue('substackSyncEnabled', false);
-    const xOnly = publishPost({ content: '只发 X', images: [], toX: false })!;
-    syncPostToX(xOnly);
-    expect(store.getRow('posts', xOnly)).toMatchObject({ xSync: true, substackSync: false });
-    expect(store.hasRow('substackposts', xOnly)).toBe(false);
+    syncPostToChannel('substack', id);
+    expect(toast).toHaveBeenLastCalledWith('这条已请求同步，请查看同步状态', 'info');
+    syncPostToChannel('threads', id);
+    expect(store.getCell('threadsposts', id, 'command')).toBe('send');
+    expect(store.getCell('replies', part, 'threadsSync')).toBe(true);
   });
 
   it('saves a thread in order and submits long parts to X intact', () => {

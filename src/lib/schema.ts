@@ -24,8 +24,10 @@ export interface PostRow {
   isLiked: boolean;
   /** Publish this 随想 to X, immediately or after an explicit manual request. */
   xSync: boolean;
-  /** Also publish it as a Substack Note: set with xSync while the Substack setting is on. */
+  /** Publish it as a Substack Note; chosen on its own, like each platform. */
   substackSync: boolean;
+  /** Publish it to Threads; chosen on its own, like each platform. */
+  threadsSync: boolean;
 }
 
 export interface ReplyRow {
@@ -36,6 +38,8 @@ export interface ReplyRow {
   xSync: boolean;
   /** Set once at creation: a 追加 becomes a Note linking its post's Note; a part of the thread goes inside the post's Note. */
   substackSync: boolean;
+  /** Set once at creation: a 追加 becomes a Threads post linking its post; a part of the thread goes out in the post's thread. */
+  threadsSync: boolean;
   /** Written with the post (the compose screen's +): goes to X with it as one thread, not as a quote. */
   thread: boolean;
 }
@@ -53,8 +57,29 @@ export interface XPostRow {
   command: XCommand;
 }
 
-/** A post's Substack Note (sent through Buffer), kept like its X delivery. */
-export type SubstackPostRow = XPostRow;
+/** A post's delivery to Substack or Threads (through Buffer), kept like its X delivery. */
+export type ChannelPostRow = XPostRow;
+
+/** The platforms other than X, each with its own delivery and numbers. */
+export type Channel = 'substack' | 'threads';
+
+/**
+ * Buffer's numbers for a post published to Substack or Threads (row id = the
+ * post or 追加), written by the server. -1: the network did not report it.
+ */
+export interface ChannelMetricsRow {
+  views: number;
+  impressions: number;
+  reactions: number;
+  comments: number;
+  reposts: number;
+  quotes: number;
+  shares: number;
+  freeSubscriptions: number;
+  paidSubscriptions: number;
+  /** When Buffer last read them from the network (ms), 0 if not yet. */
+  measuredAt: number;
+}
 
 /**
  * One tweet on the X account (row id = tweet id), written by the server from
@@ -162,9 +187,34 @@ export interface ProfileValues {
   birthDate: string;
   /** The default of the X switch on the compose screen (replies follow their post). */
   xSyncEnabled: boolean;
-  /** What goes to X also goes to Substack Notes, through the Substack channel connected in Buffer. */
+  /** The default of the Substack switch on the compose screen (replies follow their post). */
   substackSyncEnabled: boolean;
+  /** The default of the Threads switch on the compose screen (replies follow their post). */
+  threadsSyncEnabled: boolean;
 }
+
+/** A delivery's cells, the same for every platform. */
+const DELIVERY_CELLS = {
+  state: { type: 'string', default: 'queued' },
+  kind: { type: 'string', default: 'post' },
+  link: { type: 'string', default: '' },
+  error: { type: 'string', default: '' },
+  at: { type: 'number', default: 0 },
+  command: { type: 'string', default: '' },
+} as const;
+
+const CHANNEL_METRIC_CELLS = {
+  views: { type: 'number', default: -1 },
+  impressions: { type: 'number', default: -1 },
+  reactions: { type: 'number', default: -1 },
+  comments: { type: 'number', default: -1 },
+  reposts: { type: 'number', default: -1 },
+  quotes: { type: 'number', default: -1 },
+  shares: { type: 'number', default: -1 },
+  freeSubscriptions: { type: 'number', default: -1 },
+  paidSubscriptions: { type: 'number', default: -1 },
+  measuredAt: { type: 'number', default: 0 },
+} as const;
 
 export const TABLES_SCHEMA = {
   posts: {
@@ -177,6 +227,7 @@ export const TABLES_SCHEMA = {
     isLiked: { type: 'boolean', default: false },
     xSync: { type: 'boolean', default: false },
     substackSync: { type: 'boolean', default: false },
+    threadsSync: { type: 'boolean', default: false },
   },
   replies: {
     postId: { type: 'string', default: '' },
@@ -184,24 +235,14 @@ export const TABLES_SCHEMA = {
     createdAt: { type: 'string', default: '' },
     xSync: { type: 'boolean', default: false },
     substackSync: { type: 'boolean', default: false },
+    threadsSync: { type: 'boolean', default: false },
     thread: { type: 'boolean', default: false },
   },
-  xposts: {
-    state: { type: 'string', default: 'queued' },
-    kind: { type: 'string', default: 'post' },
-    link: { type: 'string', default: '' },
-    error: { type: 'string', default: '' },
-    at: { type: 'number', default: 0 },
-    command: { type: 'string', default: '' },
-  },
-  substackposts: {
-    state: { type: 'string', default: 'queued' },
-    kind: { type: 'string', default: 'post' },
-    link: { type: 'string', default: '' },
-    error: { type: 'string', default: '' },
-    at: { type: 'number', default: 0 },
-    command: { type: 'string', default: '' },
-  },
+  xposts: DELIVERY_CELLS,
+  substackposts: DELIVERY_CELLS,
+  threadsposts: DELIVERY_CELLS,
+  substackmetrics: CHANNEL_METRIC_CELLS,
+  threadsmetrics: CHANNEL_METRIC_CELLS,
   xtweets: {
     text: { type: 'string', default: '' },
     createdAt: { type: 'string', default: '' },
@@ -283,6 +324,7 @@ export const VALUES_SCHEMA = {
   birthDate: { type: 'string', default: '' },
   xSyncEnabled: { type: 'boolean', default: true },
   substackSyncEnabled: { type: 'boolean', default: false },
+  threadsSyncEnabled: { type: 'boolean', default: false },
 } as const;
 
 export const ROW_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;

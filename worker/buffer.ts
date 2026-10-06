@@ -1,6 +1,6 @@
 // Minimal client for Buffer's GraphQL API, the free route to publishing on X
 // (X's own API has no free tier) and the officially supported route to
-// Substack Notes (Substack has no open publishing API).
+// Substack Notes and Threads (neither has an open publishing API).
 
 export interface BufferEnv {
   BUFFER_API_KEY?: string;
@@ -8,7 +8,13 @@ export interface BufferEnv {
 }
 
 /** Where a Buffer post lands; named in the messages the user reads. */
-export type Network = 'X' | 'Substack';
+export type Network = 'X' | 'Substack' | 'Threads';
+
+/** The text of a post, and the network's own metadata (a thread, a link card). */
+export interface ChannelRequest {
+  text: string;
+  metadata?: Record<string, unknown>;
+}
 
 export type BufferPostStatus = 'draft' | 'error' | 'needs_approval' | 'scheduled' | 'sending' | 'sent';
 
@@ -104,7 +110,7 @@ async function bufferRequest(
   }
 }
 
-/** A text-only post published now, as the X and Substack channels both take it. */
+/** A text-only post published now, as every channel takes it. */
 function publishNow(channelId: string | undefined, text: string, metadata?: Record<string, unknown>): Record<string, unknown> {
   return {
     channelId,
@@ -132,9 +138,9 @@ export async function createBufferPost(env: BufferEnv, text: string, quoteTweetI
   ), 'X');
 }
 
-/** Publish a Substack Note now; `linkUrl` attaches a link card (e.g. the Note it follows up on). */
-export async function createSubstackNote(env: BufferEnv, channelId: string, text: string, linkUrl?: string): Promise<CreateResult> {
-  return submitPost(env, publishNow(channelId, text, linkUrl ? { substack: { linkAttachment: { url: linkUrl } } } : undefined), 'Substack');
+/** Publish now to a Substack or Threads channel, with that network's metadata. */
+export async function createChannelPost(env: BufferEnv, network: Network, channelId: string, request: ChannelRequest): Promise<CreateResult> {
+  return submitPost(env, publishNow(channelId, request.text, request.metadata), network);
 }
 
 async function submitPost(env: BufferEnv, input: Record<string, unknown>, network: Network): Promise<CreateResult> {
@@ -224,26 +230,67 @@ export async function fetchChannelHandle(env: BufferEnv, organizationId: string)
   }
 }
 
-const SUBSTACK_CHANNELS = `query($org: OrganizationId!) {
+const SERVICE_CHANNELS = `query($org: OrganizationId!) {
   channels(input: { organizationId: $org }) { id service isLocked isDisconnected }
 }`;
 
-export type SubstackChannel =
+export type BufferChannel =
   | { kind: 'found'; id: string }
-  // Buffer answered: no usable Substack channel is connected.
+  // Buffer answered: no usable channel of that network is connected.
   | { kind: 'none' }
   // No usable answer; ask again later.
   | { kind: 'error'; retryAfterMs?: number };
 
-/** The organization's connected Substack channel. Buffer only publishes Notes to it. */
-export async function findSubstackChannel(env: BufferEnv, organizationId: string): Promise<SubstackChannel> {
+/** The organization's connected channel of one network ('substack', 'threads'). */
+export async function findChannel(env: BufferEnv, organizationId: string, service: string): Promise<BufferChannel> {
   try {
-    const { status, body, retryAfterMs } = await bufferRequest(env, SUBSTACK_CHANNELS, { org: organizationId });
+    const { status, body, retryAfterMs } = await bufferRequest(env, SERVICE_CHANNELS, { org: organizationId });
     if (status === 429 || graphQLError(body)?.code === 'RATE_LIMIT_EXCEEDED') return { kind: 'error', retryAfterMs: retryAfterMs ?? 60_000 };
     if (!isRecord(body) || !isRecord(body.data) || !Array.isArray(body.data.channels)) return { kind: 'error' };
-    const channel = body.data.channels.find((item) => isRecord(item) && item.service === 'substack'
+    const channel = body.data.channels.find((item) => isRecord(item) && item.service === service
       && typeof item.id === 'string' && item.isLocked !== true && item.isDisconnected !== true);
     return isRecord(channel) ? { kind: 'found', id: String(channel.id) } : { kind: 'none' };
+  } catch {
+    return { kind: 'error' };
+  }
+}
+
+const CHANNEL_METRICS = `query($org: OrganizationId!, $channel: ChannelId!) {
+  posts(first: 50, input: {
+    organizationId: $org
+    filter: { status: [sent], channelIds: [$channel] }
+    sort: [{ field: dueAt, direction: desc }]
+  }) {
+    edges { node { id metrics { type value } metricsUpdatedAt } }
+  }
+}`;
+
+/** Buffer's numbers for one sent post, by metric type ('views', 'reactions'…); absent ones were not reported. */
+export interface PostMetrics {
+  bufferPostId: string;
+  metrics: Record<string, number>;
+  updatedAt: number;
+}
+
+/** The channel's latest sent posts with their numbers, which Buffer refreshes daily. */
+export async function fetchChannelMetrics(env: BufferEnv, organizationId: string, channelId: string): Promise<{ kind: 'ok'; posts: PostMetrics[] } | { kind: 'error'; retryAfterMs?: number }> {
+  try {
+    const { status, body, retryAfterMs } = await bufferRequest(env, CHANNEL_METRICS, { org: organizationId, channel: channelId });
+    if (status === 429 || graphQLError(body)?.code === 'RATE_LIMIT_EXCEEDED') return { kind: 'error', retryAfterMs: retryAfterMs ?? 60_000 };
+    const edges = isRecord(body) && isRecord(body.data) && isRecord(body.data.posts) && Array.isArray(body.data.posts.edges) ? body.data.posts.edges : null;
+    if (!edges) return { kind: 'error' };
+    const posts: PostMetrics[] = [];
+    for (const edge of edges) {
+      const node = isRecord(edge) && isRecord(edge.node) ? edge.node : null;
+      if (!node || typeof node.id !== 'string' || !Array.isArray(node.metrics)) continue;
+      const metrics: Record<string, number> = {};
+      for (const metric of node.metrics) {
+        if (isRecord(metric) && typeof metric.type === 'string' && typeof metric.value === 'number' && Number.isFinite(metric.value)) metrics[metric.type] = metric.value;
+      }
+      const updatedAt = typeof node.metricsUpdatedAt === 'string' ? Date.parse(node.metricsUpdatedAt) : NaN;
+      posts.push({ bufferPostId: node.id, metrics, updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0 });
+    }
+    return { kind: 'ok', posts };
   } catch {
     return { kind: 'error' };
   }

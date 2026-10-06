@@ -1,4 +1,5 @@
-import type { GoalRow, PostRow, ProfileValues, ReplyRow, XCommand } from '@/lib/schema';
+import { CHANNELS } from '@/lib/channels';
+import type { Channel, GoalRow, PostRow, ProfileValues, ReplyRow, XCommand } from '@/lib/schema';
 import { X_MAX_WEIGHT, xWeightedLength } from '@/lib/xText';
 import { indexes, store } from './store';
 
@@ -18,14 +19,10 @@ export function replyWillSyncToX(postId: string): boolean {
   return store.getValue('xSyncEnabled') && store.getCell('posts', postId, 'xSync') === true;
 }
 
-/** What goes to X goes to Substack too while its setting is on. */
-function substackOn(): boolean {
-  return store.getValue('substackSyncEnabled') === true;
-}
-
-/** A 追加 becomes a Note when its post became one, with both switches still on. */
-export function replyWillSyncToSubstack(postId: string): boolean {
-  return replyWillSyncToX(postId) && substackOn() && store.getCell('posts', postId, 'substackSync') === true;
+/** Each platform on its own: a reply follows its post there, while that platform's default switch is on. */
+export function replyWillSyncTo(channel: Channel, postId: string): boolean {
+  const { setting, flag } = CHANNELS[channel];
+  return store.getValue(setting) === true && store.getCell('posts', postId, flag) === true;
 }
 
 export interface NewPost {
@@ -33,6 +30,9 @@ export interface NewPost {
   images: string[];
   /** The compose screen's X switch. */
   toX: boolean;
+  /** The compose screen's Substack and Threads switches, each independent of the others. */
+  toSubstack?: boolean;
+  toThreads?: boolean;
   /** Further parts written with +, saved as its 追加 and sent to X with it as one thread. */
   thread?: string[];
 }
@@ -42,7 +42,8 @@ export function addPost(input: NewPost): string {
   const content = input.content.trim();
   const thread = (input.thread ?? []).map((part) => part.trim()).filter(Boolean);
   const xSync = input.toX;
-  const substackSync = xSync && substackOn();
+  const substackSync = input.toSubstack === true;
+  const threadsSync = input.toThreads === true;
   const now = Date.now();
   store.transaction(() => {
     store.setRow('posts', id, {
@@ -55,10 +56,11 @@ export function addPost(input: NewPost): string {
       isLiked: false,
       xSync,
       substackSync,
+      threadsSync,
     });
     // A millisecond apart, so the parts keep their order.
     thread.forEach((part, i) => store.setRow('replies', generateId(), {
-      postId: id, content: part, createdAt: new Date(now + i + 1).toISOString(), xSync, substackSync, thread: true,
+      postId: id, content: part, createdAt: new Date(now + i + 1).toISOString(), xSync, substackSync, threadsSync, thread: true,
     }));
   });
   return id;
@@ -125,7 +127,8 @@ export function addReply(postId: string, content: string): string | null {
     content: text,
     createdAt: new Date().toISOString(),
     xSync: replyWillSyncToX(postId),
-    substackSync: replyWillSyncToSubstack(postId),
+    substackSync: replyWillSyncTo('substack', postId),
+    threadsSync: replyWillSyncTo('threads', postId),
   });
   return id;
 }
@@ -138,8 +141,8 @@ export function sendXCommand(id: string, command: Exclude<XCommand, ''>): void {
   store.setCell('xposts', id, 'command', command);
 }
 
-export function sendSubstackCommand(id: string, command: Exclude<XCommand, ''>): void {
-  store.setCell('substackposts', id, 'command', command);
+export function sendChannelCommand(channel: Channel, id: string, command: Exclude<XCommand, ''>): void {
+  store.setCell(CHANNELS[channel].table, id, 'command', command);
 }
 
 /** The durable outbox carries this explicit request even after closing the app. */
@@ -150,17 +153,27 @@ export function requestPostXSync(id: string): 'requested' | 'already-requested' 
   if (post.xSync || store.hasRow('xposts', id)) return 'already-requested';
   const parts = Object.entries(store.getTable('replies')).filter(([, row]) => row.postId === id && row.thread === true);
   if (!post.content.trim()) return 'empty';
-  // The same explicit request takes it to Substack, unless it was sent there already.
-  const toSubstack = substackOn() && !post.substackSync && !store.hasRow('substackposts', id);
   store.transaction(() => {
     parts.forEach(([partId]) => store.setCell('replies', partId, 'xSync', true));
     store.setCell('posts', id, 'xSync', true);
     sendXCommand(id, 'send');
-    if (toSubstack) {
-      parts.forEach(([partId]) => store.setCell('replies', partId, 'substackSync', true));
-      store.setCell('posts', id, 'substackSync', true);
-      sendSubstackCommand(id, 'send');
-    }
+  });
+  return 'requested';
+}
+
+/** A saved post (and its thread) sent to one more platform, by the same explicit request as X's. */
+export function requestPostChannelSync(channel: Channel, id: string): 'requested' | 'already-requested' | 'missing' | 'unsupported' | 'empty' {
+  if (!store.hasRow('posts', id)) return 'missing';
+  const { flag, table } = CHANNELS[channel];
+  const post = store.getRow('posts', id);
+  if (post.entryType !== 'thought') return 'unsupported';
+  if (post[flag] || store.hasRow(table, id)) return 'already-requested';
+  if (!post.content.trim()) return 'empty';
+  const parts = Object.entries(store.getTable('replies')).filter(([, row]) => row.postId === id && row.thread === true);
+  store.transaction(() => {
+    parts.forEach(([partId]) => store.setCell('replies', partId, flag, true));
+    store.setCell('posts', id, flag, true);
+    sendChannelCommand(channel, id, 'send');
   });
   return 'requested';
 }

@@ -1,8 +1,9 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import type { DayProgress } from '@/lib/goals';
+import { CHANNELS } from '@/lib/channels';
 import {
-  parseImages, tweetIdOfLink, type PostRow, type ProfileValues, type SubstackPostRow, type XAccountRow, type XFollowersRow, type XPostRow,
-  type XTweetRow, type XMetricRow, type XLabelRow, type XExperimentRow,
+  parseImages, tweetIdOfLink, type Channel, type ChannelMetricsRow, type ChannelPostRow, type PostRow, type ProfileValues, type XAccountRow,
+  type XFollowersRow, type XPostRow, type XTweetRow, type XMetricRow, type XLabelRow, type XExperimentRow,
 } from '@/lib/schema';
 import { toLocalDateKey } from '@/lib/utils';
 import { indexes, store, ui } from './store';
@@ -46,6 +47,7 @@ export function toPost(id: string, row: LoosePostRow): Post | null {
     isLiked: row.isLiked ?? false,
     xSync: row.xSync ?? false,
     substackSync: row.substackSync ?? false,
+    threadsSync: row.threadsSync ?? false,
   };
 }
 
@@ -128,6 +130,7 @@ export function useProfile(): ProfileValues {
     birthDate: values.birthDate ?? '',
     xSyncEnabled: values.xSyncEnabled ?? true,
     substackSyncEnabled: values.substackSyncEnabled ?? false,
+    threadsSyncEnabled: values.threadsSyncEnabled ?? false,
   }), [values]);
 }
 
@@ -135,8 +138,9 @@ export function useXSyncEnabled(): boolean {
   return ui.useValue('xSyncEnabled', store) ?? true;
 }
 
-export function useSubstackSyncEnabled(): boolean {
-  return ui.useValue('substackSyncEnabled', store) ?? false;
+/** The default of a platform's switch on the compose screen. */
+export function useChannelEnabled(channel: Channel): boolean {
+  return ui.useValue(CHANNELS[channel].setting, store) ?? false;
 }
 
 export function useXPost(id: string): XPostRow | null {
@@ -148,13 +152,19 @@ export function useXPosts(): Record<string, XPostRow> {
   return ui.useTable('xposts', store) as Record<string, XPostRow>;
 }
 
-export function useSubstackPost(id: string): SubstackPostRow | null {
-  const row = ui.useRow('substackposts', id, store);
-  return row.state ? (row as SubstackPostRow) : null;
+/** A post's delivery to Substack or Threads, once the server has it. */
+export function useChannelPost(channel: Channel, id: string): ChannelPostRow | null {
+  const row = ui.useRow(CHANNELS[channel].table, id, store);
+  return row.state ? (row as ChannelPostRow) : null;
 }
 
-export function useSubstackPosts(): Record<string, SubstackPostRow> {
-  return ui.useTable('substackposts', store) as Record<string, SubstackPostRow>;
+export function useChannelPosts(channel: Channel): Record<string, ChannelPostRow> {
+  return ui.useTable(CHANNELS[channel].table, store) as Record<string, ChannelPostRow>;
+}
+
+/** Buffer's numbers for what was published to a platform, by post or 追加 id. */
+export function useChannelMetrics(channel: Channel): Record<string, ChannelMetricsRow> {
+  return ui.useTable(CHANNELS[channel].metrics, store) as Record<string, ChannelMetricsRow>;
 }
 
 /** X's numbers for a sent post or reply (from its link), once they have been read. */

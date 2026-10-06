@@ -1,4 +1,6 @@
-import { addPost, addReply, replyWillSyncToX, requestPostXSync, type NewPost } from '@/data/actions';
+import { addPost, addReply, replyWillSyncToX, requestPostChannelSync, requestPostXSync, type NewPost } from '@/data/actions';
+import { CHANNELS } from '@/lib/channels';
+import type { Channel } from '@/lib/schema';
 import { toast } from './toast';
 import { trackPublication } from './publications';
 
@@ -43,4 +45,18 @@ export function syncPostToX(id: string): void {
     };
     toast(messages[result], 'info');
   }
+}
+
+/** Send a saved post to Substack or Threads; each platform is asked for on its own. */
+export function syncPostToChannel(channel: Channel, id: string): void {
+  const { name } = CHANNELS[channel];
+  const result = requestPostChannelSync(channel, id);
+  const messages = {
+    requested: `已请求同步到 ${name}`,
+    'already-requested': '这条已请求同步，请查看同步状态',
+    missing: '这条已被删除',
+    unsupported: `只有随想可以同步到 ${name}`,
+    empty: `内容为空，无法同步到 ${name}`,
+  };
+  toast(messages[result], 'info');
 }

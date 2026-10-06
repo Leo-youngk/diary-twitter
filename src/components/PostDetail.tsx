@@ -8,23 +8,22 @@ import { useBack } from '@/app/useBack';
 import { useKeyboardViewport } from '@/app/useKeyboardViewport';
 import { publishReply } from '@/app/publish';
 import Avatar from '@/components/Avatar';
-import Icon, { SubstackLogo, XLogo } from '@/components/Icon';
+import Icon, { XLogo } from '@/components/Icon';
 import PostImages from '@/components/PostImages';
 import PostMenu from '@/components/PostMenu';
 import PostTime from '@/components/PostTime';
 import ScreenHeader from '@/components/ScreenHeader';
-import { SubstackMark, SubstackStatus } from '@/components/SubstackDelivery';
+import { ChannelLinks, ChannelMarks, ChannelStatuses } from '@/components/ChannelDelivery';
 import XMark from '@/components/XMark';
 import XDeliveryStatus from '@/components/XDeliveryStatus';
 import { fitsOnX, toggleLike } from '@/data/actions';
-import { usePost, useProfile, useReply, useReplyIds, useSubstackPost, useTweetStats, useXPost, useXSyncEnabled } from '@/data/hooks';
+import { usePost, useProfile, useReply, useReplyIds, useTweetStats, useXPost, useXSyncEnabled } from '@/data/hooks';
 import { cn, formatDateCN } from '@/lib/utils';
 
 function ReplyItem({ id, last }: { id: string; last: boolean }) {
   const reply = useReply(id);
   const profile = useProfile();
   const x = useXPost(id);
-  const note = useSubstackPost(id);
   if (!reply) return null;
   return (
     <div data-reply={id} className="flex gap-3 px-4">
@@ -37,11 +36,11 @@ function ReplyItem({ id, last }: { id: string; last: boolean }) {
           <span className="truncate font-semibold">{profile.displayName}</span>
           <span className="shrink-0 text-x-gray">· <PostTime date={reply.createdAt} /></span>
           <XMark x={x} />
-          <SubstackMark note={note} />
+          <ChannelMarks id={id} />
         </div>
         <p className="mt-0.5 whitespace-pre-wrap break-words text-[calc(15px*var(--font-scale))] leading-[1.6]">{reply.content}</p>
         <XDeliveryStatus id={id} requested={reply.xSync} x={x} table="replies" />
-        <SubstackStatus id={id} note={note} />
+        <ChannelStatuses id={id} />
       </div>
     </div>
   );
@@ -56,7 +55,6 @@ export default function PostDetail({ params, onBack, embedded = false }: {
   const profile = useProfile();
   const replyIds = useReplyIds(params.postId);
   const x = useXPost(params.postId);
-  const note = useSubstackPost(params.postId);
   const tweet = useTweetStats(x?.state === 'sent' ? x.link : undefined);
   const xEnabled = useXSyncEnabled();
   const { push } = useNav();
@@ -144,25 +142,10 @@ export default function PostDetail({ params, onBack, embedded = false }: {
                   )}
                 </>
               )}
-              {note && note.state !== 'dismissed' && (
-                <>
-                  <span>·</span>
-                  {note.state === 'sent' && note.link ? (
-                    <a href={note.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-x-blue">
-                      <SubstackLogo size={12} /> 查看 Note
-                    </a>
-                  ) : (
-                    <span className={cn('inline-flex items-center gap-1', note.state === 'failed' && 'text-x-danger')}>
-                      <SubstackLogo size={12} /> {note.state === 'failed' ? 'Substack 同步需要处理'
-                        : note.state === 'sent' ? '已发到 Substack'
-                        : note.state === 'publishing' ? 'Buffer 已接收，正在核对 Substack 发布结果' : '等待发到 Substack'}
-                    </span>
-                  )}
-                </>
-              )}
+              <ChannelLinks id={post.id} />
             </div>
             <XDeliveryStatus id={post.id} requested={post.xSync} x={x} canSync={post.entryType === 'thought'} />
-            <SubstackStatus id={post.id} note={note} />
+            <ChannelStatuses id={post.id} />
             {tweet && (
               <p className="mt-2 border-t border-x-border pt-2 text-[14px] text-x-gray">
                 {tweet.gone ? '这条在 X 上已删除' : (

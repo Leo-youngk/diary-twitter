@@ -29,7 +29,7 @@ function setStatus(next: Partial<Status>): void {
 /** IndexedDB's MergeableStore is the durable outbox. Unacknowledged clocks
  * remain there after a network error, tab close or device restart. */
 /** Delivery tables: the server owns them, a device only submits its commands. */
-const COMMAND_TABLES = ['xposts', 'substackposts'];
+const COMMAND_TABLES = ['xposts', 'substackposts', 'threadsposts'];
 
 export function outgoingRecords(): SyncRecord[] {
   return splitContent(store.getMergeableContent()).flatMap(record => {
@@ -129,12 +129,13 @@ async function sync(): Promise<void> {
     if (ownEpoch !== epoch && getToken()) schedule(0);
   }
   const recent = (createdAt: string | undefined) => Date.now() - Date.parse(createdAt ?? '') < 72 * 3600_000;
-  const awaiting = (flag: 'xSync' | 'substackSync', table: 'xposts' | 'substackposts') =>
+  const awaiting = (flag: 'xSync' | 'substackSync' | 'threadsSync', table: 'xposts' | 'substackposts' | 'threadsposts') =>
     Object.values(store.getTable(table)).some(row => ['queued', 'sending', 'publishing'].includes(String(row.state)))
     || Object.entries(store.getTable('posts')).some(([id, row]) => row[flag] && row.entryType === 'thought' && recent(row.createdAt) && !store.hasRow(table, id))
-    // A part of a thread goes out inside its post's Note and never gets a Substack row of its own.
-    || Object.entries(store.getTable('replies')).some(([id, row]) => row[flag] && !(table === 'substackposts' && row.thread) && recent(row.createdAt) && !store.hasRow(table, id));
-  schedule(again ? 0 : awaiting('xSync', 'xposts') || awaiting('substackSync', 'substackposts') ? 3000 : 30_000);
+    // Only X gives a thread's parts rows of their own; elsewhere they go out with their post.
+    || Object.entries(store.getTable('replies')).some(([id, row]) => row[flag] && !(table !== 'xposts' && row.thread) && recent(row.createdAt) && !store.hasRow(table, id));
+  const pending = awaiting('xSync', 'xposts') || awaiting('substackSync', 'substackposts') || awaiting('threadsSync', 'threadsposts');
+  schedule(again ? 0 : pending ? 3000 : 30_000);
 }
 
 const X_CHECK_EVERY_MS = 30_000;

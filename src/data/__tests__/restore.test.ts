@@ -12,21 +12,21 @@ const { parseBackup, restoreBackup } = await import('../backup');
 const { store } = await import('../store');
 
 describe('restoreBackup', () => {
-  it('never publishes a restored post or 追加 to X or Substack, keeping the flags the account already had', async () => {
+  it('never publishes a restored post or 追加 to any platform, keeping the flags the account already had', async () => {
     const row = (content: string) => ({
-      entryType: 'thought', category: '', title: '', content, images: '[]', createdAt: new Date().toISOString(), isLiked: false, xSync: true, substackSync: true,
+      entryType: 'thought', category: '', title: '', content, images: '[]', createdAt: new Date().toISOString(), isLiked: false, xSync: true, substackSync: true, threadsSync: true,
     });
     store.setRow('posts', 'kept', row('已经发出的'));
     const backup = parseBackup({
       version: 2,
       posts: { kept: row('已经发出的'), restored: row('只在备份里的') },
-      replies: { r: { postId: 'restored', content: '追加', createdAt: new Date().toISOString(), xSync: true, substackSync: true, thread: false } },
+      replies: { r: { postId: 'restored', content: '追加', createdAt: new Date().toISOString(), xSync: true, substackSync: true, threadsSync: true, thread: false } },
       images: {},
       profile: {},
     });
     await restoreBackup(backup!);
-    expect(store.getRow('posts', 'kept')).toMatchObject({ xSync: true, substackSync: true });
-    expect(store.getRow('posts', 'restored')).toMatchObject({ content: '只在备份里的', xSync: false, substackSync: false });
-    expect(store.getRow('replies', 'r')).toMatchObject({ xSync: false, substackSync: false });
+    expect(store.getRow('posts', 'kept')).toMatchObject({ xSync: true, substackSync: true, threadsSync: true });
+    expect(store.getRow('posts', 'restored')).toMatchObject({ content: '只在备份里的', xSync: false, substackSync: false, threadsSync: false });
+    expect(store.getRow('replies', 'r')).toMatchObject({ xSync: false, substackSync: false, threadsSync: false });
   });
 });
