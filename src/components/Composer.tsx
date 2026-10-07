@@ -14,7 +14,7 @@ import Icon, { XLogo } from '@/components/Icon';
 import { fitsOnX, updatePost } from '@/data/actions';
 import { imageSrc, storeImage } from '@/data/blobs';
 import { useChannelEnabled, usePost, useProfile, useXPost, useXSyncEnabled } from '@/data/hooks';
-import { THREADS_MAX_LENGTH } from '@/lib/channels';
+import { SUBSTACK_MAX_LENGTH, THREADS_MAX_PARTS, substackNote, threadsParts } from '@/lib/channelText';
 import { compressImage, POST_IMAGE_OPTS } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { X_MAX_WEIGHT, xWeightedLength } from '@/lib/xText';
@@ -129,9 +129,22 @@ export default function Composer({ params, onClose, embedded = false, activityId
   } else if (mode === 'new' && !toAny && text.length > 0) {
     xNote = { text: '先保存在日记本，之后可在帖子上点击「同步到 X」', warn: false };
   }
-  // Threads takes 500 characters a post; Buffer refuses longer ones, so say so first.
+  // Threads holds 500 bytes a post (about 166 Chinese characters): what is longer
+  // goes out there, and only there, as a thread split where sentences end.
+  const written = mode === 'new' ? [text, ...thread] : [text];
   const threadsBound = text.length > 0 && (mode === 'new' ? toThreads : mode === 'reply' && Boolean(replyingTo?.threadsSync) && threadsEnabled);
-  const threadsOver = threadsBound && [text, ...(mode === 'new' ? thread : [])].some((part) => part.length > THREADS_MAX_LENGTH);
+  const threadsCount = threadsBound ? threadsParts(written).length : 0;
+  let threadsNote: { text: string; warn: boolean } | null = null;
+  if (threadsCount > THREADS_MAX_PARTS) {
+    threadsNote = { text: `拆成 Threads 的串有 ${threadsCount} 条，超过一串最多 ${THREADS_MAX_PARTS} 条，发到 Threads 会失败`, warn: true };
+  } else if (threadsCount > written.length) {
+    threadsNote = { text: `超过 Threads 每条 500 字节（约 166 个汉字），将在句子结束处拆成 ${threadsCount} 条，作为一串发到 Threads`, warn: false };
+  } else if (threadsCount > 1) {
+    threadsNote = { text: `将作为一串（${threadsCount} 条）发到 Threads`, warn: false };
+  }
+  // A post and its parts are one Note on Substack, which holds 10,000 characters.
+  const substackBound = text.length > 0 && (mode === 'new' ? toSubstack : mode === 'reply' && Boolean(replyingTo?.substackSync) && substackEnabled);
+  const substackOver = substackBound && substackNote(written).length > SUBSTACK_MAX_LENGTH;
 
   const canPublish = text.length > 0 && content.length <= MAX_LENGTH && !uploading && !missing;
   const changed = content !== initial.content || title !== initial.title || images.join() !== initial.images.join();
@@ -193,9 +206,8 @@ export default function Composer({ params, onClose, embedded = false, activityId
   const activeText = (parts.find((part) => part.key === activeKey)?.text ?? content).trim();
 
   const heading = mode === 'reply' ? '追加' : mode === 'edit' ? '编辑' : '新随想';
-  const counter = threadsBound
-    ? { used: activeText.length, max: THREADS_MAX_LENGTH, over: activeText.length > THREADS_MAX_LENGTH }
-    : xBound ? { used: xWeightedLength(activeText), max: X_MAX_WEIGHT, over: !fitsOnX(activeText) }
+  // Hard limits only: what is long for Threads becomes a thread, told in its note.
+  const counter = xBound ? { used: xWeightedLength(activeText), max: X_MAX_WEIGHT, over: !fitsOnX(activeText) }
     : content.length > MAX_LENGTH * 0.9 ? { used: content.length, max: MAX_LENGTH, over: content.length > MAX_LENGTH } : null;
 
   return (
@@ -329,10 +341,16 @@ export default function Composer({ params, onClose, embedded = false, activityId
                 <span>{xNote.text}</span>
               </p>
             )}
-            {threadsOver && (
-              <p className={cn('mt-3 flex items-start gap-1 text-[12px] leading-snug text-x-danger', !embedded && 'ml-11')}>
+            {threadsNote && (
+              <p className={cn('mt-3 flex items-start gap-1 text-[12px] leading-snug', !embedded && 'ml-11', threadsNote.warn ? 'text-x-danger' : 'text-x-gray')}>
                 <ChannelLogo channel="threads" size={11} className="mt-px shrink-0" />
-                <span>超过 Threads 每条 {THREADS_MAX_LENGTH} 字的上限，发到 Threads 会失败；可以用 + 分成几条</span>
+                <span>{threadsNote.text}</span>
+              </p>
+            )}
+            {substackOver && (
+              <p className={cn('mt-3 flex items-start gap-1 text-[12px] leading-snug text-x-danger', !embedded && 'ml-11')}>
+                <ChannelLogo channel="substack" size={11} className="mt-px shrink-0" />
+                <span>超过 Substack 一条 Note 最多 10,000 字的上限，发到 Substack 会失败</span>
               </p>
             )}
           </div>

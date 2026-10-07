@@ -54,8 +54,10 @@ export async function saveStore(db: D1Database, store: MergeableStore, baseline:
   }
 }
 
-export async function dirtyJobs(db: D1Database): Promise<void> {
-  await execute(db, `UPDATE diary3_jobs SET next_at=0,generation=generation+1 WHERE name IN ('x','substack','threads','obsidian')`);
+/** Run these jobs now: an edit arriving during a run makes the run that follows look again. */
+export async function dirtyJobs(db: D1Database, names: readonly string[]): Promise<void> {
+  if (names.length === 0) return;
+  await execute(db, `UPDATE diary3_jobs SET next_at=0,generation=generation+1 WHERE name IN (${names.map(() => '?').join(',')})`, ...names);
 }
 
 /** The ledger of a channel other than X, as in migrations/0001_diary.sql. */
@@ -72,5 +74,11 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   for (const [table, job] of CHANNEL_LEDGERS) {
     await execute(db, ledgerSql(table));
     await execute(db, 'INSERT OR IGNORE INTO diary3_jobs(name) VALUES(?)', job);
+  }
+  // The first version parked a channel's job while that channel's setting had
+  // never been saved, even when a post had chosen it: look at every post once.
+  if (await getMeta(db, 'channels_rescanned') !== '1') {
+    await dirtyJobs(db, CHANNEL_LEDGERS.map(([, job]) => job));
+    await setMeta(db, 'channels_rescanned', '1');
   }
 }

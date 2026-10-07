@@ -5,7 +5,7 @@ import { recordContent, splitContent, encodeJson, type SyncRecord } from '../src
 import type { Env } from './env';
 import { databasePaused, dirtyJobs, ensureSchema, execute, pull, saveRecord } from './d1';
 import { migrateLegacy } from './migrate';
-import { runJob, runJobs } from './jobs';
+import { concernedJobs, runJob, runJobs } from './jobs';
 import type { LoginOutcome } from './login';
 import { d1Login } from './d1-login';
 
@@ -20,7 +20,7 @@ export class D1Diary extends DurableObject<Env> {
   async sync(records: SyncRecord[], cursor: number, device: { id: string; name: string; build: string }) {
     await this.ensureReady();
     if (records.length > 100 || !Number.isSafeInteger(cursor) || cursor < 0) throw new Error('Invalid sync request');
-    let dirty = false;
+    const dirty = new Set<string>();
     for (let record of records) {
       const [kind, table, id] = record.key.split(':');
       if ((kind === 'r' && (!Object.hasOwn(TABLES_SCHEMA, table) || !id || !ROW_ID_PATTERN.test(id)))
@@ -38,11 +38,10 @@ export class D1Diary extends DurableObject<Env> {
         content[0][0][table][0][id][0] = cells;
         record = { key: record.key, data: encodeJson(content) };
       }
-      const changed = await saveRecord(this.env.DB, record);
-      if (changed && ['posts', 'replies', 'xposts', 'substackposts', 'threadsposts'].includes(table)) dirty = true;
+      if (await saveRecord(this.env.DB, record) && kind === 'r') for (const job of concernedJobs(record, table, id)) dirty.add(job);
     }
-    if (dirty) {
-      await dirtyJobs(this.env.DB);
+    if (dirty.size > 0) {
+      await dirtyJobs(this.env.DB, [...dirty]);
       this.ctx.waitUntil(runJobs(this.env, true));
     }
     // Device presence changes once per build/day, not every polling request.

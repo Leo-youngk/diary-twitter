@@ -1,7 +1,8 @@
+import { recordContent, type SyncRecord } from '../src/lib/sync';
 import type { Env } from './env';
 import { execute, loadStore, query, saveStore } from './d1';
 import { runX } from './delivery/x';
-import { CHANNELS, runChannel, type Channel } from './delivery/channel';
+import { CHANNELS, runChannel } from './delivery/channel';
 import { runObsidian } from './delivery/obsidian';
 import { runXStats } from './delivery/xstats';
 import { runBackup } from './delivery/backup';
@@ -9,9 +10,16 @@ import { runBackup } from './delivery/backup';
 const NEVER = 8_000_000_000_000_000;
 interface Job { name: string; generation: number }
 
-/** Never switched on and nothing in its ledger: no post can be waiting for the channel. */
-async function channelIdle(db: D1Database, channel: Channel): Promise<boolean> {
-  return !await db.prepare(`SELECT 1 FROM diary3_records WHERE key=? UNION ALL SELECT 1 FROM ${channel.ledger} LIMIT 1`).bind(`v:${channel.setting}`).first();
+/**
+ * The jobs a device's changed row concerns. X and Obsidian look at every post;
+ * a channel's job only at the posts and 追加 that chose it and at its commands,
+ * so an edit elsewhere does not make it read the whole diary.
+ */
+export function concernedJobs(record: SyncRecord, table: string, id: string): string[] {
+  const jobs = ['posts', 'replies', 'xposts'].includes(table) ? ['x', 'obsidian'] : [];
+  const cells = table === 'posts' || table === 'replies' ? recordContent(record)[0][0][table]?.[0][id]?.[0] : undefined;
+  for (const c of CHANNELS) if (table === c.table || cells?.[c.flag]?.[0] === true) jobs.push(c.job);
+  return jobs;
 }
 
 export async function runJob(env: Env, name: string): Promise<void> {
@@ -24,8 +32,6 @@ export async function runJob(env: Env, name: string): Promise<void> {
   let next = now + 60_000;
   const channel = CHANNELS.find((c) => c.job === name);
   try {
-    // Every edit wakes the channel jobs; until a channel is used, it skips reading the whole diary.
-    if (channel && await channelIdle(env.DB, channel)) { next = Infinity; return; }
     const { store, baseline } = await loadStore(env.DB);
     const persist = () => saveStore(env.DB, store, baseline);
     if (name === 'x') next = await runX(env.DB, store, env, now, persist);

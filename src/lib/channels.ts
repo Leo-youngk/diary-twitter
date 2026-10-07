@@ -25,6 +25,3 @@ export const CHANNELS = {
 } as const;
 
 export const CHANNEL_IDS = Object.keys(CHANNELS) as Channel[];
-
-/** A Threads post holds 500 characters, counted as UTF-16 code units, as Buffer validates them. */
-export const THREADS_MAX_LENGTH = 500;

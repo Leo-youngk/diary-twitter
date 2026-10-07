@@ -33,5 +33,32 @@ describe('publication stages from real acknowledgements', () => {
   });
   it('finishes cloud-only posts and explains the length limit', () => {
     expect(publicationProgress({ ...input, requestedX: false, skippedX: true })).toMatchObject({ labels: ['日记本', '云端保存'], complete: [true, true], done: true, detail: '超出 X 字数限制，此帖未同步到 X' });
+    expect(publicationProgress({ ...input, requestedX: false })).toMatchObject({ done: true, detail: '此帖未开启同步' });
+  });
+});
+
+describe('publication stages on Substack and Threads', () => {
+  it('follows a post sent only to Substack until Substack has it', () => {
+    const substack = (row: XPostRow | null) => publicationProgress({ ...input, requestedX: false, channels: [{ name: 'Substack', row }] });
+    expect(substack(null)).toMatchObject({ labels: ['日记本', '云端保存', 'Substack 发布'], complete: [true, true, false], active: 2, done: false, message: '等待发送到 Substack' });
+    expect(substack(x('sending'))).toMatchObject({ done: false, message: '正在发送到 Substack' });
+    expect(substack(x('sent'))).toMatchObject({ complete: [true, true, true], active: -1, done: true, message: '已同步到 Substack' });
+  });
+
+  it('is done only when every platform the post went to is', () => {
+    const progress = (threads: XPostRow | null) => publicationProgress({ ...input, x: x('sent'), channels: [{ name: 'Threads', row: threads }] });
+    expect(progress(x('publishing'))).toMatchObject({ complete: [true, true, true, false], active: 3, done: false, message: '正在确认 Threads 发布结果' });
+    expect(progress(x('sent'))).toMatchObject({ done: true, message: '已同步到 X、Threads' });
+    expect(progress(x('dismissed'))).toMatchObject({ done: true, message: '已同步到 X，Threads 同步已取消' });
+  });
+
+  it('tells a platform\'s failure even while another is still on its way', () => {
+    const progress = publicationProgress({ ...input, x: x('sending'), channels: [
+      { name: 'Substack', row: x('failed', { error: 'Buffer 里还没有连接可用的 Substack 频道' }) },
+      { name: 'Threads', row: null },
+    ] });
+    expect(progress).toMatchObject({ failed: true, done: false, message: 'Substack 同步失败', detail: 'Buffer 里还没有连接可用的 Substack 频道' });
+    expect(publicationProgress({ ...input, requestedX: false, channels: [{ name: 'Threads', row: x('failed', { command: 'retry' }) }] }))
+      .toMatchObject({ failed: false, retrying: true, message: '正在提交 Threads 重试请求' });
   });
 });

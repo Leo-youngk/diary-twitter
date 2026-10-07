@@ -1,5 +1,5 @@
-import { addPost, addReply, replyWillSyncToX, requestPostChannelSync, requestPostXSync, type NewPost } from '@/data/actions';
-import { CHANNELS } from '@/lib/channels';
+import { addPost, addReply, replyWillSyncTo, replyWillSyncToX, requestPostChannelSync, requestPostXSync, type NewPost } from '@/data/actions';
+import { CHANNEL_IDS, CHANNELS } from '@/lib/channels';
 import type { Channel } from '@/lib/schema';
 import { toast } from './toast';
 import { trackPublication } from './publications';
@@ -7,7 +7,8 @@ import { trackPublication } from './publications';
 export function publishPost(input: NewPost): string | null {
   try {
     const id = addPost(input);
-    trackPublication({ id, table: 'posts', requestedX: input.toX, skippedX: false });
+    const channels = CHANNEL_IDS.filter((channel) => (channel === 'substack' ? input.toSubstack : input.toThreads) === true);
+    trackPublication({ id, table: 'posts', requestedX: input.toX, skippedX: false, channels });
     return id;
   } catch (error) {
     console.error('[post] save failed', error);
@@ -19,9 +20,10 @@ export function publishPost(input: NewPost): string | null {
 export function publishReply(postId: string, content: string): string | null {
   try {
     const sending = replyWillSyncToX(postId);
+    const channels = CHANNEL_IDS.filter((channel) => replyWillSyncTo(channel, postId));
     const id = addReply(postId, content);
     if (!id) { toast('原帖已被删除，追加没有保存', 'error'); return null; }
-    trackPublication({ id, table: 'replies', requestedX: sending, skippedX: false });
+    trackPublication({ id, table: 'replies', requestedX: sending, skippedX: false, channels });
     return id;
   } catch (error) {
     console.error('[reply] save failed', error);
@@ -34,7 +36,7 @@ export function publishReply(postId: string, content: string): string | null {
 export function syncPostToX(id: string): void {
   const result = requestPostXSync(id);
   if (result === 'requested') {
-    trackPublication({ id, table: 'posts', requestedX: true, skippedX: false });
+    trackPublication({ id, table: 'posts', requestedX: true, skippedX: false, channels: [] });
     toast('已请求同步到 X', 'info');
   } else {
     const messages = {
@@ -51,6 +53,7 @@ export function syncPostToX(id: string): void {
 export function syncPostToChannel(channel: Channel, id: string): void {
   const { name } = CHANNELS[channel];
   const result = requestPostChannelSync(channel, id);
+  if (result === 'requested') trackPublication({ id, table: 'posts', requestedX: false, skippedX: false, channels: [channel] });
   const messages = {
     requested: `已请求同步到 ${name}`,
     'already-requested': '这条已请求同步，请查看同步状态',

@@ -1,4 +1,5 @@
 import type { MergeableStore, Row } from 'tinybase';
+import { SUBSTACK_MAX_LENGTH, THREADS_MAX_PARTS, substackNote, threadsParts } from '../../src/lib/channelText';
 import { ROW_ID_PATTERN, type XState } from '../../src/lib/schema';
 import {
   BufferApiError, createChannelPost, fetchBufferPost, fetchChannelMetrics, fetchOrganizationId, findChannel,
@@ -29,8 +30,10 @@ export interface Channel {
   metricsTable: 'substackmetrics' | 'threadsmetrics';
   /** The post / reply cell that asks for this channel. */
   flag: 'substackSync' | 'threadsSync';
-  /** The setting that turns the channel on; no record of it means it was never used. */
+  /** The setting that turns the channel on by default for new posts. */
   setting: 'substackSyncEnabled' | 'threadsSyncEnabled';
+  /** Why a post (its text and the parts written with it) or a 追加 cannot go out there as it is; '' when it can. */
+  refuse(texts: string[]): string;
   /** A post and the parts written with it (its +). */
   post(text: string, parts: string[]): ChannelRequest;
   /** A later 追加, linking its post's published URL when Buffer returned one. */
@@ -41,16 +44,35 @@ export const SUBSTACK: Channel = {
   network: 'Substack', service: 'substack', job: 'substack', ledger: 'diary3_substack',
   table: 'substackposts', metricsTable: 'substackmetrics', flag: 'substackSync', setting: 'substackSyncEnabled',
   // A Note holds 10,000 characters: the parts are further paragraphs, not a thread.
-  post: (text, parts) => ({ text: [text, ...parts].join('\n\n') }),
+  refuse: (texts) => (substackNote(texts).length > SUBSTACK_MAX_LENGTH
+    ? '超过 Substack 一条 Note 最多 10,000 字的上限，没有发出；删减后点重试' : ''),
+  post: (text, parts) => ({ text: substackNote([text, ...parts]) }),
   followUp: (text, link) => ({ text, metadata: link ? { substack: { linkAttachment: { url: link } } } : undefined }),
 };
+
+/** The posts of a Threads thread, the first one carrying the link card if there is one. */
+const threadItems = (items: string[], link = '') => items.map((text, index) => ({
+  text, assets: [], ...(index === 0 && link ? { metadata: { threads: { linkAttachment: { url: link } } } } : {}),
+}));
 
 export const THREADS: Channel = {
   network: 'Threads', service: 'threads', job: 'threads', ledger: 'diary3_threads',
   table: 'threadsposts', metricsTable: 'threadsmetrics', flag: 'threadsSync', setting: 'threadsSyncEnabled',
-  // A Threads post holds 500 characters: the parts go out as a thread, each replying to the one before.
-  post: (text, parts) => ({ text, metadata: parts.length > 0 ? { threads: { thread: [text, ...parts].map((part) => ({ text: part, assets: [] })) } } : undefined }),
-  followUp: (text, link) => ({ text, metadata: link ? { threads: { linkAttachment: { url: link } } } : undefined }),
+  // A Threads post holds 500 bytes: the parts, and whatever is longer than one
+  // post, go out as a thread, each post replying to the one before.
+  refuse: (texts) => {
+    const count = threadsParts(texts).length;
+    return count > THREADS_MAX_PARTS ? `拆成 Threads 的串有 ${count} 条，超过一串最多 ${THREADS_MAX_PARTS} 条的上限，没有发出；删减后点重试` : '';
+  },
+  post: (text, parts) => {
+    const items = threadsParts([text, ...parts]);
+    return { text: items[0], metadata: items.length > 1 ? { threads: { thread: threadItems(items) } } : undefined };
+  },
+  followUp: (text, link) => {
+    const items = threadsParts([text]);
+    if (items.length > 1) return { text: items[0], metadata: { threads: { thread: threadItems(items, link) } } };
+    return { text, metadata: link ? { threads: { linkAttachment: { url: link } } } : undefined };
+  },
 };
 
 export const CHANNELS = [SUBSTACK, THREADS];
@@ -85,10 +107,13 @@ const PARENT_WAIT_MS = 30_000;
 const MAX_SEND_PER_RUN = 1;
 const MAX_REFRESH_PER_RUN = 2;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3600_000, 6 * 3600_000, 12 * 3600_000];
-// Buffer's free plan allows 250 requests a day. A missing channel is looked up
-// again hourly, or at once when the user retries; a failed lookup after 5 minutes.
+// Buffer's free plan allows 250 requests a day, shared with X. A missing channel
+// is looked up again hourly, or at once when the user retries. A failed lookup
+// waits 5 minutes, then twice as long each time up to 6 hours, so a long Buffer
+// outage costs a few requests a day.
 const NO_CHANNEL_RECHECK_MS = 3600_000;
 const LOOKUP_RETRY_MS = 5 * 60_000;
+const LOOKUP_RETRY_MAX_MS = 6 * 3600_000;
 // Buffer reads the numbers from the network daily; one request covers the channel's latest 50 posts.
 const METRICS_EVERY_MS = 6 * 3600_000;
 const METRICS_WINDOW_MS = 30 * 24 * 3600_000;
@@ -203,7 +228,10 @@ async function applyCommands(sql: D1Database, c: Channel, store: MergeableStore,
     store.setCell(c.table, id, 'command', '');
   }
   // The user may just have connected the channel in Buffer: look it up again now.
-  if (requeued) await setMeta(sql, `${c.job}_channel_none_at`, '0');
+  if (requeued) {
+    await setMeta(sql, `${c.job}_channel_none_at`, '0');
+    await setMeta(sql, `${c.job}_lookup_at`, '0');
+  }
 }
 
 async function organization(sql: D1Database, env: BufferEnv): Promise<string | null> {
@@ -221,24 +249,25 @@ type ChannelLookup = { kind: 'found'; id: string } | { kind: 'none' } | { kind: 
 async function channelId(sql: D1Database, c: Channel, env: BufferEnv, now: number): Promise<ChannelLookup> {
   const known = await getMeta(sql, `${c.job}_channel`);
   if (known) return { kind: 'found', id: known };
-  const metaTime = async (key: string) => Number((await getMeta(sql, key)) ?? 0);
-  if (now - await metaTime(`${c.job}_channel_none_at`) < NO_CHANNEL_RECHECK_MS) return { kind: 'none' };
-  const failedAt = await metaTime(`${c.job}_channel_failed_at`);
-  if (now - failedAt < LOOKUP_RETRY_MS) return { kind: 'later', at: failedAt + LOOKUP_RETRY_MS };
+  const metaNumber = async (key: string) => Number((await getMeta(sql, key)) ?? 0);
+  if (now - await metaNumber(`${c.job}_channel_none_at`) < NO_CHANNEL_RECHECK_MS) return { kind: 'none' };
+  const retryAt = await metaNumber(`${c.job}_lookup_at`);
+  if (now < retryAt) return { kind: 'later', at: retryAt };
 
   const org = await organization(sql, env);
   const lookup = org ? await findChannel(env, org, c.service) : { kind: 'error' as const, retryAfterMs: undefined };
-  if (lookup.kind === 'found') {
-    await setMeta(sql, `${c.job}_channel`, lookup.id);
+  if (lookup.kind === 'found') await setMeta(sql, `${c.job}_channel`, lookup.id);
+  if (lookup.kind === 'none') await setMeta(sql, `${c.job}_channel_none_at`, String(now));
+  if (lookup.kind !== 'error') {
+    await setMeta(sql, `${c.job}_lookup_failures`, '0');
     return lookup;
   }
-  if (lookup.kind === 'none') {
-    await setMeta(sql, `${c.job}_channel_none_at`, String(now));
-    return lookup;
-  }
-  await setMeta(sql, `${c.job}_channel_failed_at`, String(now));
+  const failures = await metaNumber(`${c.job}_lookup_failures`) + 1;
+  const wait = Math.max(Math.min(LOOKUP_RETRY_MS * 2 ** (failures - 1), LOOKUP_RETRY_MAX_MS), lookup.retryAfterMs ?? 0);
+  await setMeta(sql, `${c.job}_lookup_failures`, String(failures));
+  await setMeta(sql, `${c.job}_lookup_at`, String(now + wait));
   if (lookup.retryAfterMs) await setMeta(sql, `${c.job}_retry_at`, String(now + lookup.retryAfterMs));
-  return { kind: 'later', at: now + Math.max(LOOKUP_RETRY_MS, lookup.retryAfterMs ?? 0) };
+  return { kind: 'later', at: now + wait };
 }
 
 function retryDelay(attempts: number): number | null {
@@ -345,6 +374,13 @@ async function deliver(
     }
   }
 
+  // Too long for the platform: nothing is sent; an edit and a retry send the new text.
+  const refusal = c.refuse(post ? [post.text, ...post.parts] : [text]);
+  if (refusal) {
+    await updateRow(sql, c, row.id, { state: 'failed', error: refusal, updated_at: now });
+    return;
+  }
+
   const request = post ? c.post(post.text, post.parts) : c.followUp(text, parentLink);
   // Committed before the request: if the object dies mid-send, the row stays
   // in `sending` and is failed (never resent) on the next run.
@@ -404,10 +440,11 @@ function measurable(rows: LedgerRow[], now: number): LedgerRow[] {
 async function refreshMetrics(sql: D1Database, c: Channel, store: MergeableStore, env: BufferEnv, rows: LedgerRow[], now: number): Promise<void> {
   // Counted as a look even when the channel is unknown, so it waits its turn instead of retrying every minute.
   await setMeta(sql, `${c.job}_metrics_at`, String(now));
-  const channel = await getMeta(sql, `${c.job}_channel`);
-  const org = channel ? await organization(sql, env) : null;
-  if (!channel || !org) return;
-  const result = await fetchChannelMetrics(env, org, channel);
+  // A refusal forgets the channel; find it again (as rarely as delivery does) rather than stop the numbers.
+  const channel = await channelId(sql, c, env, now);
+  const org = channel.kind === 'found' ? await organization(sql, env) : null;
+  if (channel.kind !== 'found' || !org) return;
+  const result = await fetchChannelMetrics(env, org, channel.id);
   if (result.kind === 'error') {
     if (result.retryAfterMs) await setMeta(sql, `${c.job}_retry_at`, String(now + result.retryAfterMs));
     return;

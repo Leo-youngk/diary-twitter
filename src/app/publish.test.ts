@@ -44,7 +44,7 @@ describe('publication feedback', () => {
     expect(store.getCell('replies', 'quote', 'xSync')).toBe(false);
     expect(store.getCell('xposts', id, 'command')).toBe('send');
     expect(trackPublication).toHaveBeenCalledOnce();
-    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false, channels: [] });
     syncPostToX(id);
     expect(trackPublication).toHaveBeenCalledOnce();
   });
@@ -57,7 +57,7 @@ describe('publication feedback', () => {
     expect(store.getRow('posts', id)).toMatchObject({ content, xSync: true });
     expect(store.getRow('replies', store.getRowIds('replies')[0])).toMatchObject({ content: part, xSync: true });
     expect(store.getCell('xposts', id, 'command')).toBe('send');
-    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false, channels: [] });
     expect(toast).toHaveBeenLastCalledWith('已请求同步到 X', 'info');
   });
 
@@ -76,7 +76,7 @@ describe('publication feedback', () => {
   it('leaves a post on its way to X to the progress bar, without a toast', () => {
     const id = publishPost({ content: '今天的随想', images: [], toX: true })!;
     expect(store.getCell('posts', id, 'xSync')).toBe(true);
-    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false, channels: [] });
     expect(toast).not.toHaveBeenCalled();
   });
 
@@ -84,7 +84,7 @@ describe('publication feedback', () => {
     const content = '字'.repeat(15000);
     const id = publishPost({ content, images: [], toX: true })!;
     expect(store.getRow('posts', id)).toMatchObject({ content, xSync: true });
-    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false, channels: [] });
     expect(toast).not.toHaveBeenCalled();
   });
 
@@ -94,7 +94,7 @@ describe('publication feedback', () => {
     const id = publishReply('p', text)!;
     expect(store.getCell('replies', id, 'content')).toBe(text);
     expect(store.getCell('replies', id, 'xSync')).toBe(true);
-    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'replies', requestedX: true, skippedX: false });
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'replies', requestedX: true, skippedX: false, channels: [] });
     expect(toast).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,8 @@ describe('publication feedback', () => {
     const substackOnly = publishPost({ content: '只发 Substack', images: [], toX: false, toSubstack: true, toThreads: false })!;
     expect(store.getRow('posts', substackOnly)).toMatchObject({ xSync: false, substackSync: true, threadsSync: false });
     expect(store.hasRow('xposts', substackOnly)).toBe(false);
-    expect(trackPublication).toHaveBeenLastCalledWith({ id: substackOnly, table: 'posts', requestedX: false, skippedX: false });
+    expect(trackPublication).toHaveBeenLastCalledWith({ id: substackOnly, table: 'posts', requestedX: false, skippedX: false, channels: ['substack'] });
+    expect(trackPublication).toHaveBeenCalledWith({ id: mixed, table: 'posts', requestedX: true, skippedX: false, channels: ['threads'] });
   });
 
   it('makes a 追加 follow its post on each platform separately, while that platform\'s default is on', () => {
@@ -127,6 +128,7 @@ describe('publication feedback', () => {
     store.setRow('posts', 'p', { content: '原帖', xSync: false, substackSync: true, threadsSync: true });
     const reply = publishReply('p', '追加')!;
     expect(store.getRow('replies', reply)).toMatchObject({ xSync: false, substackSync: true, threadsSync: false });
+    expect(trackPublication).toHaveBeenLastCalledWith({ id: reply, table: 'replies', requestedX: false, skippedX: false, channels: ['substack'] });
     store.setValue('threadsSyncEnabled', true);
     store.setValue('substackSyncEnabled', false);
     expect(store.getRow('replies', publishReply('p', '再追加')!)).toMatchObject({ xSync: false, substackSync: false, threadsSync: true });
@@ -148,6 +150,7 @@ describe('publication feedback', () => {
     expect(store.getCell('substackposts', id, 'command')).toBe('send');
     expect(store.hasRow('threadsposts', id)).toBe(false);
     expect(toast).toHaveBeenLastCalledWith('已请求同步到 Substack', 'info');
+    expect(trackPublication).toHaveBeenLastCalledWith({ id, table: 'posts', requestedX: false, skippedX: false, channels: ['substack'] });
 
     syncPostToChannel('substack', id);
     expect(toast).toHaveBeenLastCalledWith('这条已请求同步，请查看同步状态', 'info');
@@ -160,7 +163,7 @@ describe('publication feedback', () => {
     const id = publishPost({ content: '第一条', images: [], toX: true, thread: ['第二条', '  ', '第三条'] })!;
     const parts = Object.values(store.getTable('replies')).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
     expect(parts.map((part) => [part.postId, part.content, part.thread, part.xSync])).toEqual([[id, '第二条', true, true], [id, '第三条', true, true]]);
-    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false });
+    expect(trackPublication).toHaveBeenCalledWith({ id, table: 'posts', requestedX: true, skippedX: false, channels: [] });
     expect(toast).not.toHaveBeenCalled();
 
     const long = publishPost({ content: '短', images: [], toX: true, thread: ['长'.repeat(1000)] })!;
