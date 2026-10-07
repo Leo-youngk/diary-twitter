@@ -11,6 +11,7 @@ import PostImages from './PostImages';
 import PostMenu from './PostMenu';
 import PostText from './PostText';
 import PostTime from './PostTime';
+import { ChannelMarks, ChannelStatuses } from './ChannelDelivery';
 import XMark from './XMark';
 import XDeliveryStatus from './XDeliveryStatus';
 
@@ -52,7 +53,7 @@ function ThreadPart({ id, last }: { id: string; last: boolean }) {
   );
 }
 
-/** One post in a list. Re-renders only when this post, its replies or its X state change. */
+/** One post in a list. Re-renders only when this post, its replies or its X state change; each platform's mark watches its own. */
 function PostRow({ id }: { id: string }) {
   const post = usePost(id);
   const selected = useDesktopSelection(id);
@@ -87,6 +88,7 @@ function PostRow({ id }: { id: string }) {
             <span className="shrink-0 text-x-gray">· <PostTime date={post.createdAt} /></span>
             {post.category && <span className="min-w-0 shrink truncate text-[13px] text-x-gray">· {post.category}</span>}
             <XMark x={x} />
+            <ChannelMarks id={id} />
             <button
               type="button"
               aria-label="更多"
@@ -106,6 +108,7 @@ function PostRow({ id }: { id: string }) {
           />
           <PostImages images={post.images} />
           <XDeliveryStatus id={id} requested={post.xSync} x={x} canSync={post.entryType === 'thought'} />
+          <ChannelStatuses id={id} />
 
           <div className="mt-2 flex items-center justify-between pr-1">
             <Action label="追加" onClick={() => push('Compose', { replyTo: id })}>

@@ -1,9 +1,19 @@
 // Minimal client for Buffer's GraphQL API, the free route to publishing on X
-// (X's own API has no free tier).
+// (X's own API has no free tier) and the officially supported route to
+// Substack Notes and Threads (neither has an open publishing API).
 
 export interface BufferEnv {
   BUFFER_API_KEY?: string;
   BUFFER_CHANNEL_ID?: string;
+}
+
+/** Where a Buffer post lands; named in the messages the user reads. */
+export type Network = 'X' | 'Substack' | 'Threads';
+
+/** The text of a post, and the network's own metadata (a thread, a link card). */
+export interface ChannelRequest {
+  text: string;
+  metadata?: Record<string, unknown>;
 }
 
 export type BufferPostStatus = 'draft' | 'error' | 'needs_approval' | 'scheduled' | 'sending' | 'sent';
@@ -13,7 +23,7 @@ export type CreateResult =
   // Buffer answered that nothing was posted. `retryable` marks refusals that
   // clear up on their own (rate limit, daily posting limit).
   | { kind: 'rejected'; message: string; retryable: boolean; retryAfterMs?: number }
-  // No usable answer: the post may or may not be on X.
+  // No usable answer: the post may or may not be published.
   | { kind: 'unknown'; message: string };
 
 export interface BufferPostState {
@@ -100,31 +110,48 @@ async function bufferRequest(
   }
 }
 
+/** A text-only post published now, as every channel takes it. */
+function publishNow(channelId: string | undefined, text: string, metadata?: Record<string, unknown>): Record<string, unknown> {
+  return {
+    channelId,
+    text,
+    schedulingType: 'automatic',
+    mode: 'shareNow',
+    assets: [],
+    needsApproval: false,
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
 /**
  * Publish now. A quote needs the text both as the post and as the comment; a
  * thread lists every part, the first one included, each replying to the one before.
  */
 export async function createBufferPost(env: BufferEnv, text: string, quoteTweetId?: string, thread: string[] = []): Promise<CreateResult> {
+  return submitPost(env, publishNow(
+    env.BUFFER_CHANNEL_ID,
+    text,
+    // Without `comment` Buffer publishes a plain retweet and drops `text`.
+    quoteTweetId ? { twitter: { retweet: { id: quoteTweetId, comment: text } } }
+      : thread.length > 0 ? { twitter: { thread: [text, ...thread].map((part) => ({ text: part, assets: [] })) } }
+        : undefined,
+  ), 'X');
+}
+
+/** Publish now to a Substack or Threads channel, with that network's metadata. */
+export async function createChannelPost(env: BufferEnv, network: Network, channelId: string, request: ChannelRequest): Promise<CreateResult> {
+  return submitPost(env, publishNow(channelId, request.text, request.metadata), network);
+}
+
+async function submitPost(env: BufferEnv, input: Record<string, unknown>, network: Network): Promise<CreateResult> {
   let status: number;
   let body: unknown;
   let retryAfterMs: number | undefined;
   try {
-    ({ status, body, retryAfterMs } = await bufferRequest(env, CREATE_POST, {
-      input: {
-        channelId: env.BUFFER_CHANNEL_ID,
-        text,
-        schedulingType: 'automatic',
-        mode: 'shareNow',
-        assets: [],
-        needsApproval: false,
-        // Without `comment` Buffer publishes a plain retweet and drops `text`.
-        ...(quoteTweetId ? { metadata: { twitter: { retweet: { id: quoteTweetId, comment: text } } } } : {}),
-        ...(!quoteTweetId && thread.length > 0 ? { metadata: { twitter: { thread: [text, ...thread].map((part) => ({ text: part, assets: [] })) } } } : {}),
-      },
-    }));
+    ({ status, body, retryAfterMs } = await bufferRequest(env, CREATE_POST, { input }));
   } catch (error) {
     const reason = error instanceof Error && error.name === 'AbortError' ? '请求超时' : '网络错误';
-    return { kind: 'unknown', message: `${reason}，可能已经发出；请先到 X 确认，没发出再点重试` };
+    return { kind: 'unknown', message: `${reason}，可能已经发出；请先到 ${network} 确认，没发出再点重试` };
   }
 
   if (status === 429) return { kind: 'rejected', message: 'Buffer 请求过于频繁，配额恢复后会自动重试', retryable: true, retryAfterMs };
@@ -142,7 +169,7 @@ export async function createBufferPost(env: BufferEnv, text: string, quoteTweetI
     if (error && ['UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'GRAPHQL_VALIDATION_FAILED', 'BAD_USER_INPUT'].includes(error.code)) {
       return { kind: 'rejected', message: `Buffer 拒绝了这次发布（${error.code}）：${error.message}`, retryable: false };
     }
-    return { kind: 'unknown', message: `Buffer 返回了无法识别的响应（HTTP ${status}），可能已经发出；请先到 X 确认` };
+    return { kind: 'unknown', message: `Buffer 返回了无法识别的响应（HTTP ${status}），可能已经发出；请先到 ${network} 确认` };
   }
 
   if (payload.__typename === 'PostActionSuccess' && isRecord(payload.post)) {
@@ -155,7 +182,7 @@ export async function createBufferPost(env: BufferEnv, text: string, quoteTweetI
         link: typeof post.externalLink === 'string' ? post.externalLink : undefined,
       };
     }
-    return { kind: 'unknown', message: 'Buffer 返回的帖子信息不完整，可能已经发出；请先到 X 确认' };
+    return { kind: 'unknown', message: `Buffer 返回的帖子信息不完整，可能已经发出；请先到 ${network} 确认` };
   }
 
   const message = typeof payload.message === 'string' ? payload.message : String(payload.__typename ?? '未知错误');
@@ -168,7 +195,7 @@ export async function createBufferPost(env: BufferEnv, text: string, quoteTweetI
     case 'UnauthorizedError':
       return { kind: 'rejected', message: `Buffer 拒绝了这次发布：${message}`, retryable: false };
     default:
-      return { kind: 'unknown', message: `Buffer 内部错误：${message}，可能已经发出；请先到 X 确认` };
+      return { kind: 'unknown', message: `Buffer 内部错误：${message}，可能已经发出；请先到 ${network} 确认` };
   }
 }
 
@@ -203,7 +230,73 @@ export async function fetchChannelHandle(env: BufferEnv, organizationId: string)
   }
 }
 
-export async function fetchBufferPost(env: BufferEnv, bufferPostId: string): Promise<BufferPostState | null> {
+const SERVICE_CHANNELS = `query($org: OrganizationId!) {
+  channels(input: { organizationId: $org }) { id service isLocked isDisconnected }
+}`;
+
+export type BufferChannel =
+  | { kind: 'found'; id: string }
+  // Buffer answered: no usable channel of that network is connected.
+  | { kind: 'none' }
+  // No usable answer; ask again later.
+  | { kind: 'error'; retryAfterMs?: number };
+
+/** The organization's connected channel of one network ('substack', 'threads'). */
+export async function findChannel(env: BufferEnv, organizationId: string, service: string): Promise<BufferChannel> {
+  try {
+    const { status, body, retryAfterMs } = await bufferRequest(env, SERVICE_CHANNELS, { org: organizationId });
+    if (status === 429 || graphQLError(body)?.code === 'RATE_LIMIT_EXCEEDED') return { kind: 'error', retryAfterMs: retryAfterMs ?? 60_000 };
+    if (!isRecord(body) || !isRecord(body.data) || !Array.isArray(body.data.channels)) return { kind: 'error' };
+    const channel = body.data.channels.find((item) => isRecord(item) && item.service === service
+      && typeof item.id === 'string' && item.isLocked !== true && item.isDisconnected !== true);
+    return isRecord(channel) ? { kind: 'found', id: String(channel.id) } : { kind: 'none' };
+  } catch {
+    return { kind: 'error' };
+  }
+}
+
+const CHANNEL_METRICS = `query($org: OrganizationId!, $channel: ChannelId!) {
+  posts(first: 50, input: {
+    organizationId: $org
+    filter: { status: [sent], channelIds: [$channel] }
+    sort: [{ field: dueAt, direction: desc }]
+  }) {
+    edges { node { id metrics { type value } metricsUpdatedAt } }
+  }
+}`;
+
+/** Buffer's numbers for one sent post, by metric type ('views', 'reactions'…); absent ones were not reported. */
+export interface PostMetrics {
+  bufferPostId: string;
+  metrics: Record<string, number>;
+  updatedAt: number;
+}
+
+/** The channel's latest sent posts with their numbers, which Buffer refreshes daily. */
+export async function fetchChannelMetrics(env: BufferEnv, organizationId: string, channelId: string): Promise<{ kind: 'ok'; posts: PostMetrics[] } | { kind: 'error'; retryAfterMs?: number }> {
+  try {
+    const { status, body, retryAfterMs } = await bufferRequest(env, CHANNEL_METRICS, { org: organizationId, channel: channelId });
+    if (status === 429 || graphQLError(body)?.code === 'RATE_LIMIT_EXCEEDED') return { kind: 'error', retryAfterMs: retryAfterMs ?? 60_000 };
+    const edges = isRecord(body) && isRecord(body.data) && isRecord(body.data.posts) && Array.isArray(body.data.posts.edges) ? body.data.posts.edges : null;
+    if (!edges) return { kind: 'error' };
+    const posts: PostMetrics[] = [];
+    for (const edge of edges) {
+      const node = isRecord(edge) && isRecord(edge.node) ? edge.node : null;
+      if (!node || typeof node.id !== 'string' || !Array.isArray(node.metrics)) continue;
+      const metrics: Record<string, number> = {};
+      for (const metric of node.metrics) {
+        if (isRecord(metric) && typeof metric.type === 'string' && typeof metric.value === 'number' && Number.isFinite(metric.value)) metrics[metric.type] = metric.value;
+      }
+      const updatedAt = typeof node.metricsUpdatedAt === 'string' ? Date.parse(node.metricsUpdatedAt) : NaN;
+      posts.push({ bufferPostId: node.id, metrics, updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0 });
+    }
+    return { kind: 'ok', posts };
+  } catch {
+    return { kind: 'error' };
+  }
+}
+
+export async function fetchBufferPost(env: BufferEnv, bufferPostId: string, network: Network = 'X'): Promise<BufferPostState | null> {
   try {
     const { status, body, retryAfterMs } = await bufferRequest(env, GET_POST, { id: bufferPostId });
     const error = graphQLError(body);
@@ -211,7 +304,7 @@ export async function fetchBufferPost(env: BufferEnv, bufferPostId: string): Pro
       throw new BufferApiError('Buffer 查询限流，配额恢复后继续核对发布状态', retryAfterMs ?? 60_000);
     }
     if ([401, 403, 404].includes(status) || (error && ['UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND'].includes(error.code))) {
-      throw new BufferApiError(`无法核对 Buffer 发布状态：${error?.message ?? `HTTP ${status}`}；请到 Buffer / X 确认后处理`, undefined, true);
+      throw new BufferApiError(`无法核对 Buffer 发布状态：${error?.message ?? `HTTP ${status}`}；请到 Buffer / ${network} 确认后处理`, undefined, true);
     }
     const post = isRecord(body) && isRecord(body.data) && isRecord(body.data.post) ? body.data.post : null;
     if (!post || !isBufferStatus(post.status)) return null;

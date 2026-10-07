@@ -9,10 +9,12 @@ import { releaseKeyboard } from '@/app/keyboard';
 import { useKeyboardViewport } from '@/app/useKeyboardViewport';
 import Avatar from '@/components/Avatar';
 import PostTime from '@/components/PostTime';
+import { ChannelLogo } from '@/components/ChannelDelivery';
 import Icon, { XLogo } from '@/components/Icon';
 import { fitsOnX, updatePost } from '@/data/actions';
 import { imageSrc, storeImage } from '@/data/blobs';
-import { usePost, useProfile, useXPost, useXSyncEnabled } from '@/data/hooks';
+import { useChannelEnabled, usePost, useProfile, useXPost, useXSyncEnabled } from '@/data/hooks';
+import { SUBSTACK_MAX_LENGTH, THREADS_MAX_PARTS, substackNote, threadsParts } from '@/lib/channelText';
 import { compressImage, POST_IMAGE_OPTS } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { X_MAX_WEIGHT, xWeightedLength } from '@/lib/xText';
@@ -55,6 +57,9 @@ export default function Composer({ params, onClose, embedded = false, activityId
   const replyingTo = usePost(params.replyTo ?? '');
   const editingX = useXPost(params.editId ?? '');
   const xEnabled = useXSyncEnabled();
+  // Each platform has its own switch, defaulting to its own setting.
+  const substackEnabled = useChannelEnabled('substack');
+  const threadsEnabled = useChannelEnabled('threads');
   const mode: 'new' | 'edit' | 'reply' = params.editId ? 'edit' : params.replyTo ? 'reply' : 'new';
 
   // Taken once, when the screen opens.
@@ -70,6 +75,11 @@ export default function Composer({ params, onClose, embedded = false, activityId
   const [images, setImages] = useState<string[]>(initial.images);
   const [xOverride, setXOverride] = useState<boolean | null>(null);
   const toX = xOverride ?? xEnabled;
+  const [substackOverride, setSubstackOverride] = useState<boolean | null>(null);
+  const toSubstack = substackOverride ?? substackEnabled;
+  const [threadsOverride, setThreadsOverride] = useState<boolean | null>(null);
+  const toThreads = threadsOverride ?? threadsEnabled;
+  const toAny = toX || toSubstack || toThreads;
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -116,9 +126,25 @@ export default function Composer({ params, onClose, embedded = false, activityId
     xNote = { text: '图片不会同步到 X，只发文字', warn: false };
   } else if (mode === 'edit' && editingX?.state === 'sent') {
     xNote = { text: 'X 上已发出的那条不会跟着修改', warn: false };
-  } else if (mode === 'new' && !toX && text.length > 0) {
+  } else if (mode === 'new' && !toAny && text.length > 0) {
     xNote = { text: '先保存在日记本，之后可在帖子上点击「同步到 X」', warn: false };
   }
+  // Threads holds 500 bytes a post (about 166 Chinese characters): what is longer
+  // goes out there, and only there, as a thread split where sentences end.
+  const written = mode === 'new' ? [text, ...thread] : [text];
+  const threadsBound = text.length > 0 && (mode === 'new' ? toThreads : mode === 'reply' && Boolean(replyingTo?.threadsSync) && threadsEnabled);
+  const threadsCount = threadsBound ? threadsParts(written).length : 0;
+  let threadsNote: { text: string; warn: boolean } | null = null;
+  if (threadsCount > THREADS_MAX_PARTS) {
+    threadsNote = { text: `拆成 Threads 的串有 ${threadsCount} 条，超过一串最多 ${THREADS_MAX_PARTS} 条，发到 Threads 会失败`, warn: true };
+  } else if (threadsCount > written.length) {
+    threadsNote = { text: `超过 Threads 每条 500 字节（约 166 个汉字），将在句子结束处拆成 ${threadsCount} 条，作为一串发到 Threads`, warn: false };
+  } else if (threadsCount > 1) {
+    threadsNote = { text: `将作为一串（${threadsCount} 条）发到 Threads`, warn: false };
+  }
+  // A post and its parts are one Note on Substack, which holds 10,000 characters.
+  const substackBound = text.length > 0 && (mode === 'new' ? toSubstack : mode === 'reply' && Boolean(replyingTo?.substackSync) && substackEnabled);
+  const substackOver = substackBound && substackNote(written).length > SUBSTACK_MAX_LENGTH;
 
   const canPublish = text.length > 0 && content.length <= MAX_LENGTH && !uploading && !missing;
   const changed = content !== initial.content || title !== initial.title || images.join() !== initial.images.join();
@@ -142,10 +168,10 @@ export default function Composer({ params, onClose, embedded = false, activityId
       if (!saved) { toast('这条已被删除', 'error'); return; }
       toast('已保存');
     } else {
-      if (!publishPost({ content: text, images, toX, thread })) return;
+      if (!publishPost({ content: text, images, toX, toSubstack, toThreads, thread })) return;
       try { localStorage.removeItem(DRAFT_KEY); } catch { /* nothing to clear */ }
     }
-    if (embedded && mode === 'new') { setContent(''); setParts([]); setImages([]); setXOverride(null); }
+    if (embedded && mode === 'new') { setContent(''); setParts([]); setImages([]); setXOverride(null); setSubstackOverride(null); setThreadsOverride(null); }
     onClose();
   };
 
@@ -180,8 +206,8 @@ export default function Composer({ params, onClose, embedded = false, activityId
   const activeText = (parts.find((part) => part.key === activeKey)?.text ?? content).trim();
 
   const heading = mode === 'reply' ? '追加' : mode === 'edit' ? '编辑' : '新随想';
-  const counter = xBound
-    ? { used: xWeightedLength(activeText), max: X_MAX_WEIGHT, over: !fitsOnX(activeText) }
+  // Hard limits only: what is long for Threads becomes a thread, told in its note.
+  const counter = xBound ? { used: xWeightedLength(activeText), max: X_MAX_WEIGHT, over: !fitsOnX(activeText) }
     : content.length > MAX_LENGTH * 0.9 ? { used: content.length, max: MAX_LENGTH, over: content.length > MAX_LENGTH } : null;
 
   return (
@@ -315,6 +341,18 @@ export default function Composer({ params, onClose, embedded = false, activityId
                 <span>{xNote.text}</span>
               </p>
             )}
+            {threadsNote && (
+              <p className={cn('mt-3 flex items-start gap-1 text-[12px] leading-snug', !embedded && 'ml-11', threadsNote.warn ? 'text-x-danger' : 'text-x-gray')}>
+                <ChannelLogo channel="threads" size={11} className="mt-px shrink-0" />
+                <span>{threadsNote.text}</span>
+              </p>
+            )}
+            {substackOver && (
+              <p className={cn('mt-3 flex items-start gap-1 text-[12px] leading-snug text-x-danger', !embedded && 'ml-11')}>
+                <ChannelLogo channel="substack" size={11} className="mt-px shrink-0" />
+                <span>超过 Substack 一条 Note 最多 10,000 字的上限，发到 Substack 会失败</span>
+              </p>
+            )}
           </div>
         )}
 
@@ -358,20 +396,28 @@ export default function Composer({ params, onClose, embedded = false, activityId
               }}
             />
             {mode === 'new' && (
-              <button
-                type="button"
-                role="switch"
-                aria-label="立即同步到 X"
-                aria-checked={toX}
-                onClick={() => setXOverride(!toX)}
-                className={cn(
-                  'pressable flex items-center gap-1 rounded-full border px-2.5 py-1 text-[13px]',
-                  toX ? 'border-x-fg bg-x-fg font-semibold text-x-dark' : 'border-x-border text-x-gray',
-                )}
-              >
-                <XLogo size={11} />
-                {toX ? '立即同步' : '暂不同步'}
-              </button>
+              <div className="flex items-center gap-1.5">
+                {([
+                  ['X', toX, setXOverride, <XLogo key="x" size={12} />],
+                  ['Substack', toSubstack, setSubstackOverride, <ChannelLogo key="substack" channel="substack" size={12} />],
+                  ['Threads', toThreads, setThreadsOverride, <ChannelLogo key="threads" channel="threads" size={12} />],
+                ] as const).map(([name, on, set, logo]) => (
+                  <button
+                    key={name}
+                    type="button"
+                    role="switch"
+                    aria-label={`同步到 ${name}`}
+                    aria-checked={on}
+                    onClick={() => set(!on)}
+                    className={cn(
+                      'pressable flex h-7 w-8 items-center justify-center rounded-full border',
+                      on ? 'border-x-fg bg-x-fg text-x-dark' : 'border-x-border text-x-gray',
+                    )}
+                  >
+                    {logo}
+                  </button>
+                ))}
+              </div>
             )}
             <div className="ml-auto flex items-center gap-3">
               {counter && (
@@ -387,7 +433,7 @@ export default function Composer({ params, onClose, embedded = false, activityId
                 disabled={!canPublish}
                 className={cn('pressable px-5 py-2 text-[15px] font-semibold disabled:opacity-30', embedded ? 'rounded-lg bg-x-blue text-white' : 'rounded-full bg-x-fg text-x-dark')}
               >
-                {mode === 'edit' || (mode === 'new' && !toX) ? '保存' : '发布'}
+                {mode === 'edit' || (mode === 'new' && !toAny) ? '保存' : '发布'}
               </button>
             </div>
           </div>

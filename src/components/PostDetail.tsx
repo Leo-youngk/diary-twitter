@@ -13,6 +13,7 @@ import PostImages from '@/components/PostImages';
 import PostMenu from '@/components/PostMenu';
 import PostTime from '@/components/PostTime';
 import ScreenHeader from '@/components/ScreenHeader';
+import { ChannelLinks, ChannelMarks, ChannelStatuses } from '@/components/ChannelDelivery';
 import XMark from '@/components/XMark';
 import XDeliveryStatus from '@/components/XDeliveryStatus';
 import { fitsOnX, toggleLike } from '@/data/actions';
@@ -35,9 +36,11 @@ function ReplyItem({ id, last }: { id: string; last: boolean }) {
           <span className="truncate font-semibold">{profile.displayName}</span>
           <span className="shrink-0 text-x-gray">· <PostTime date={reply.createdAt} /></span>
           <XMark x={x} />
+          <ChannelMarks id={id} />
         </div>
         <p className="mt-0.5 whitespace-pre-wrap break-words text-[calc(15px*var(--font-scale))] leading-[1.6]">{reply.content}</p>
         <XDeliveryStatus id={id} requested={reply.xSync} x={x} table="replies" />
+        <ChannelStatuses id={id} />
       </div>
     </div>
   );
@@ -139,8 +142,10 @@ export default function PostDetail({ params, onBack, embedded = false }: {
                   )}
                 </>
               )}
+              <ChannelLinks id={post.id} />
             </div>
             <XDeliveryStatus id={post.id} requested={post.xSync} x={x} canSync={post.entryType === 'thought'} />
+            <ChannelStatuses id={post.id} />
             {tweet && (
               <p className="mt-2 border-t border-x-border pt-2 text-[14px] text-x-gray">
                 {tweet.gone ? '这条在 X 上已删除' : (

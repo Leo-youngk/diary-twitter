@@ -5,7 +5,7 @@ import App from './App';
 import { initPreferences } from './app/preferences';
 import { registerServiceWorker } from './app/swUpdate';
 import { installTouchGuard } from './app/touchGuard';
-import { announceXDeliveries } from './app/xNotify';
+import { announceDeliveries } from './app/xNotify';
 import { flushUploads } from './data/blobs';
 import { startConnection, whenSynced } from './data/connection';
 import { adoptLegacyLocalData } from './data/legacyLocal';
@@ -22,7 +22,7 @@ const root = createRoot(document.getElementById('root')!);
 void loadLocal()
   .catch((error) => console.error('[boot] local data failed to load', error))
   .finally(() => {
-    announceXDeliveries();
+    announceDeliveries();
     root.render(<App />);
     startConnection();
     void whenSynced().then(() => {

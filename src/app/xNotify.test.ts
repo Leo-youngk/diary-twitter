@@ -23,29 +23,29 @@ beforeEach(async () => {
 });
 afterEach(() => { stop?.(); vi.useRealTimers(); });
 
-describe('X delivery notifications', () => {
+describe('delivery notifications', () => {
   it('announces success even when the first server row is already sent', () => {
-    stop = notify.announceXDeliveries();
+    stop = notify.announceDeliveries();
     data.store.setRow('xposts', 'post', { state: 'sent', kind: 'post', at: now, link: 'https://x.com/me/status/1' });
     expect(toast).toHaveBeenCalledWith('已发到 X', 'success', { label: '查看', run: expect.any(Function) });
   });
 
   it('announces a first-row failure with the reason supplied by the server', () => {
-    stop = notify.announceXDeliveries();
+    stop = notify.announceDeliveries();
     data.store.setRow('xposts', 'post', { state: 'failed', kind: 'post', at: now, error: 'X 账号需要重新连接' });
     expect(toast).toHaveBeenCalledWith('X 同步失败：X 账号需要重新连接', 'error');
   });
 
   it('reads reply metadata from the complete transaction, not the state cell alone', () => {
     data.store.setRow('xposts', 'reply', { state: 'publishing', kind: 'reply', at: now - 60_000 });
-    stop = notify.announceXDeliveries();
+    stop = notify.announceDeliveries();
     data.store.setPartialRow('xposts', 'reply', { state: 'sent', at: now, link: 'https://x.com/me/status/2' });
     expect(toast).toHaveBeenCalledWith('追加已发到 X', 'success', { label: '查看', run: expect.any(Function) });
   });
 
   it('announces a thread once, for its post, not again for each part', () => {
     data.store.setRow('replies', 'part', { postId: 'post', content: '第二条', thread: true });
-    stop = notify.announceXDeliveries();
+    stop = notify.announceDeliveries();
     data.store.transaction(() => {
       data.store.setRow('xposts', 'post', { state: 'sent', kind: 'post', at: now, link: 'https://x.com/me/status/1' });
       data.store.setRow('xposts', 'part', { state: 'sent', kind: 'reply', at: now, link: 'https://x.com/me/status/1' });
@@ -55,15 +55,29 @@ describe('X delivery notifications', () => {
   });
 
   it('does not repeat a terminal notification on metadata updates', () => {
-    stop = notify.announceXDeliveries();
+    stop = notify.announceDeliveries();
     data.store.setRow('xposts', 'post', { state: 'sent', kind: 'post', at: now });
     data.store.setPartialRow('xposts', 'post', { at: now + 1000, link: 'https://x.com/me/status/1' });
     expect(toast).toHaveBeenCalledTimes(1);
   });
 
+  it('announces Substack and Threads outcomes under their own names', () => {
+    stop = notify.announceDeliveries();
+    data.store.setRow('substackposts', 'post', { state: 'sent', kind: 'post', at: now, link: 'https://substack.com/@me/note/c-1' });
+    expect(toast).toHaveBeenCalledWith('已发到 Substack', 'success', { label: '查看', run: expect.any(Function) });
+    data.store.setRow('threadsposts', 'post', { state: 'failed', kind: 'post', at: now, error: 'Buffer 里还没有连接可用的 Threads 频道；连接后点重试' });
+    expect(toast).toHaveBeenCalledWith('Threads 同步失败：Buffer 里还没有连接可用的 Threads 频道；连接后点重试', 'error');
+    data.store.setRow('threadsposts', 'reply', { state: 'failed', kind: 'reply', at: now, error: '' });
+    expect(toast).toHaveBeenCalledWith('追加同步到 Threads 失败：请查看帖子下的同步状态', 'error');
+    stop();
+    data.store.setRow('substackposts', 'later', { state: 'sent', kind: 'post', at: now });
+    expect(toast).toHaveBeenCalledTimes(3);
+    stop = undefined;
+  });
+
   it('does not announce already-loaded or old terminal rows on reconnection', () => {
     data.store.setRow('xposts', 'loaded', { state: 'sent', kind: 'post', at: now });
-    stop = notify.announceXDeliveries();
+    stop = notify.announceDeliveries();
     data.store.setRow('xposts', 'old', { state: 'sent', kind: 'post', at: now - 20 * 60_000 });
     data.store.setPartialRow('xposts', 'loaded', { link: 'https://x.com/me/status/1' });
     expect(toast).not.toHaveBeenCalled();

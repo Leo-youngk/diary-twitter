@@ -102,9 +102,17 @@ describe('HTTP offline synchronization',()=>{
   });
   it('uploads commands without granting devices control of delivery status',async()=>{
     local.setRow('xposts','p',{state:'sent',link:'https://x.com/test/status/123',command:'retry'});
+    local.setRow('substackposts','p',{state:'failed',error:'没有频道',command:'retry'});
+    local.setRow('substackposts','idle',{state:'sent',link:'https://substack.com/@me/note/c-1'});
+    local.setRow('threadsposts','p',{state:'failed',error:'没有频道',command:'dismiss'});
+    local.setRow('threadsmetrics','p',{views:99999});
     connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
-    const row=(await remoteStore()).getRow('xposts','p');
-    expect(row).toEqual({command:'retry'});
+    const server=await remoteStore();
+    expect(server.getRow('xposts','p')).toEqual({command:'retry'});
+    expect(server.getRow('substackposts','p')).toEqual({command:'retry'});
+    expect(server.hasRow('substackposts','idle')).toBe(false);
+    expect(server.getRow('threadsposts','p')).toEqual({command:'dismiss'});
+    expect(server.hasTable('threadsmetrics')).toBe(false);
   });
   it('syncs classifications, reviewed replies and experiments while keeping observations server-owned', async () => {
     local.setRow('xlabels', '123', { topic: 'AI / 产品实践', reviewedReplies: 2, reviewedAt: Date.now() });

@@ -28,14 +28,17 @@ function setStatus(next: Partial<Status>): void {
 
 /** IndexedDB's MergeableStore is the durable outbox. Unacknowledged clocks
  * remain there after a network error, tab close or device restart. */
+/** Delivery tables: the server owns them, a device only submits its commands. */
+const COMMAND_TABLES = ['xposts', 'substackposts', 'threadsposts'];
+
 export function outgoingRecords(): SyncRecord[] {
   return splitContent(store.getMergeableContent()).flatMap(record => {
     const [, table] = record.key.split(':');
     if (record.key.startsWith('v:') || ['posts', 'replies', 'goals', 'xlabels', 'xexperiments'].includes(table)) return [record];
-    if (table !== 'xposts') return [];
+    if (!COMMAND_TABLES.includes(table)) return [];
     const content = recordContent(record);
     const id = record.key.split(':')[2];
-    const cells = content[0][0].xposts[0][id][0];
+    const cells = content[0][0][table][0][id][0];
     if (!cells.command) return [];
     for (const cell of Object.keys(cells)) if (cell !== 'command') delete cells[cell];
     const onlyCommand = createMergeableStore().applyMergeableChanges(content);
@@ -45,7 +48,7 @@ export function outgoingRecords(): SyncRecord[] {
     // first, including when the durable outbox needs several HTTP batches.
     const priority = (record: SyncRecord) => {
       const [, table, id] = record.key.split(':');
-      return table === 'replies' && store.getCell('replies', id, 'thread') === true ? 0 : table === 'xposts' ? 2 : 1;
+      return table === 'replies' && store.getCell('replies', id, 'thread') === true ? 0 : COMMAND_TABLES.includes(table) ? 2 : 1;
     };
     return priority(a) - priority(b);
   });
@@ -126,10 +129,13 @@ async function sync(): Promise<void> {
     if (ownEpoch !== epoch && getToken()) schedule(0);
   }
   const recent = (createdAt: string | undefined) => Date.now() - Date.parse(createdAt ?? '') < 72 * 3600_000;
-  const awaitingX = Object.values(store.getTable('xposts')).some(row => ['queued', 'sending', 'publishing'].includes(String(row.state)))
-    || Object.entries(store.getTable('posts')).some(([id, row]) => row.xSync && row.entryType === 'thought' && recent(row.createdAt) && !store.hasRow('xposts', id))
-    || Object.entries(store.getTable('replies')).some(([id, row]) => row.xSync && recent(row.createdAt) && !store.hasRow('xposts', id));
-  schedule(again ? 0 : awaitingX ? 3000 : 30_000);
+  const awaiting = (flag: 'xSync' | 'substackSync' | 'threadsSync', table: 'xposts' | 'substackposts' | 'threadsposts') =>
+    Object.values(store.getTable(table)).some(row => ['queued', 'sending', 'publishing'].includes(String(row.state)))
+    || Object.entries(store.getTable('posts')).some(([id, row]) => row[flag] && row.entryType === 'thought' && recent(row.createdAt) && !store.hasRow(table, id))
+    // Only X gives a thread's parts rows of their own; elsewhere they go out with their post.
+    || Object.entries(store.getTable('replies')).some(([id, row]) => row[flag] && !(table !== 'xposts' && row.thread) && recent(row.createdAt) && !store.hasRow(table, id));
+  const pending = awaiting('xSync', 'xposts') || awaiting('substackSync', 'substackposts') || awaiting('threadsSync', 'threadsposts');
+  schedule(again ? 0 : pending ? 3000 : 30_000);
 }
 
 const X_CHECK_EVERY_MS = 30_000;

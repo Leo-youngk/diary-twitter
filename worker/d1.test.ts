@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs';
 import { createMergeableStore } from 'tinybase';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordContent, splitContent, encodeJson, decodeJson } from '../src/lib/sync';
-import { databasePaused, dirtyJobs, loadStore, pull, query, saveRecord, saveStore, setMeta } from './d1';
-import { runJob } from './jobs';
+import { CHANNEL_LEDGERS, databasePaused, dirtyJobs, ensureSchema, execute, getMeta, ledgerSql, loadStore, pull, query, saveRecord, saveStore, setMeta } from './d1';
+import { concernedJobs, runJob } from './jobs';
 import { runX, insertLedgerRow, publishedDuplicate } from './delivery/x';
+import { runChannel, SUBSTACK, THREADS, type Channel } from './delivery/channel';
 import type { Env } from './env';
 import { migrateLegacy, type LegacySnapshot } from './migrate';
 import { d1Login } from './d1-login';
@@ -292,7 +293,7 @@ describe('D1 X delivery safety and task leases', () => {
     await upload(post());
     sqlite.exec("INSERT INTO diary3_jobs(name) VALUES('x'),('obsidian')");
     vi.stubGlobal('fetch',vi.fn(async()=> {
-      await dirtyJobs(db);
+      await dirtyJobs(db, ['x', 'obsidian']);
       return new Response(JSON.stringify({data:{createPost:{__typename:'PostActionSuccess',post:{id:'buffer',status:'sent',externalLink:'https://x.com/test/status/123'}}}}));
     }));
     await Promise.all([runJob(env(),'x'),runJob(env(),'x')]);
@@ -345,5 +346,473 @@ describe('D1 X delivery safety and task leases', () => {
     expect(loaded.store.getCell('xposts', retryId, 'command')).toBe('');
     await runX(db, loaded.store, env(), Date.now(), persist);
     expect(request).toHaveBeenCalledTimes(2);
+  });
+});
+
+const NOTE = 'https://substack.com/@me/note/c-1';
+const THREAD = 'https://www.threads.net/@me/post/abc';
+const CONNECTED = [
+  { id: 'x-channel', service: 'twitter', isLocked: false, isDisconnected: false },
+  { id: 'notes', service: 'substack', isLocked: false, isDisconnected: false },
+  { id: 'threads-channel', service: 'threads', isLocked: false, isDisconnected: false },
+];
+/** A Buffer stand-in answering the organization, channel, publish and metrics queries. */
+function buffer(options: {
+  channels?: unknown[];
+  createPost?: (input: { channelId: string }) => Response | Promise<Response> | undefined;
+  metrics?: unknown[];
+} = {}) {
+  return vi.fn(async (_url: unknown, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    const query = String(body.query);
+    if (query.includes('organizations')) return Response.json({ data: { account: { organizations: [{ id: 'org' }] } } });
+    if (query.includes('metricsUpdatedAt')) return Response.json({ data: { posts: { edges: options.metrics ?? [] } } });
+    if (query.includes('channels')) return Response.json({ data: { channels: options.channels ?? CONNECTED } });
+    if (query.includes('createPost')) {
+      const input = body.variables.input;
+      return await options.createPost?.(input) ?? Response.json({ data: { createPost: {
+        __typename: 'PostActionSuccess', post: { id: `buffer-${input.channelId}`, status: 'sent', externalLink: input.channelId === 'threads-channel' ? THREAD : NOTE },
+      } } });
+    }
+    throw new Error(`unexpected Buffer query: ${query}`);
+  });
+}
+const published = (fetchMock: ReturnType<typeof buffer>) => fetchMock.mock.calls
+  .map(([, init]) => JSON.parse(String(init?.body)))
+  .filter((body) => String(body.query).includes('createPost'))
+  .map((body) => body.variables.input);
+
+describe('D1 Substack Notes delivery', () => {
+  function notePost(createdAt = new Date().toISOString()) {
+    return createMergeableStore().setRow('posts', 'p', { content: '第一段', entryType: 'thought', xSync: true, substackSync: true, createdAt });
+  }
+  async function pass(store = (async () => (await loadStore(db)))()) {
+    const loaded = await store;
+    const next = await runChannel(SUBSTACK, db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    return { ...loaded, next };
+  }
+
+  it('publishes a post and the parts written with it as one Note to the connected channel, once', async () => {
+    const at = Date.now();
+    await upload(notePost(new Date(at).toISOString())
+      .setRow('replies', 'b', { postId: 'p', content: '第三段', createdAt: new Date(at + 2).toISOString(), xSync: true, substackSync: true, thread: true })
+      .setRow('replies', 'a', { postId: 'p', content: '第二段', createdAt: new Date(at + 1).toISOString(), xSync: true, substackSync: true, thread: true }));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    const { store } = await pass();
+    expect(published(fetchMock)).toEqual([{
+      channelId: 'notes', text: '第一段\n\n第二段\n\n第三段', schedulingType: 'automatic', mode: 'shareNow', assets: [], needsApproval: false,
+    }]);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'sent', kind: 'post', link: NOTE, error: '' });
+    expect(store.hasRow('substackposts', 'a')).toBe(false);
+    expect(await getMeta(db, 'substack_channel')).toBe('notes');
+
+    const calls = fetchMock.mock.calls.length;
+    await pass();
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
+    expect((await loadStore(db)).store.getCell('substackposts', 'p', 'state')).toBe('sent');
+  });
+
+  it('asks nothing of Buffer when no post asked for Substack', async () => {
+    await upload(post());
+    vi.stubGlobal('fetch', vi.fn());
+    const { next } = await pass();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(next).toBe(Infinity);
+    expect(await query(db, 'SELECT id FROM diary3_substack')).toEqual([]);
+  });
+
+  it('sends a 追加 after its post, as a Note with a link card to the post\'s Note', async () => {
+    await upload(notePost().setRow('replies', 'q', { postId: 'p', content: '后来的追加', createdAt: new Date(Date.now() + 1).toISOString(), xSync: true, substackSync: true, thread: false }));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    await pass();
+    expect(published(fetchMock).map((input) => input.text)).toEqual(['第一段']);
+    const { store } = await pass();
+    const reply = published(fetchMock)[1];
+    expect(reply.text).toBe('后来的追加');
+    expect(reply.metadata).toEqual({ substack: { linkAttachment: { url: NOTE } } });
+    expect(store.getRow('substackposts', 'q')).toMatchObject({ state: 'sent', kind: 'reply' });
+  });
+
+  it('fails a 追加 whose post did not go out, instead of sending it on its own', async () => {
+    await upload(notePost().setRow('replies', 'q', { postId: 'p', content: '追加', createdAt: new Date(Date.now() + 1).toISOString(), xSync: true, substackSync: true, thread: false }));
+    const fetchMock = buffer({ createPost: () => Response.json({ data: { createPost: { __typename: 'InvalidInputError', message: 'bad' } } }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await pass();
+    const { store } = await pass();
+    expect(published(fetchMock)).toHaveLength(1);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'failed', error: expect.stringContaining('bad') });
+    expect(store.getRow('substackposts', 'q')).toMatchObject({ state: 'failed', error: expect.stringContaining('原帖还没有发到 Substack') });
+  });
+
+  it('explains a missing Substack channel, asks Buffer again only on retry, then publishes', async () => {
+    await upload(notePost());
+    const fetchMock = buffer({ channels: [CONNECTED[0], CONNECTED[2]] });
+    vi.stubGlobal('fetch', fetchMock);
+    let { store, baseline } = await pass();
+    expect(published(fetchMock)).toEqual([]);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'failed', error: expect.stringContaining('还没有连接可用的 Substack 频道') });
+    const lookups = fetchMock.mock.calls.length;
+
+    await upload(createMergeableStore().setRow('posts', 'second', { content: '第二条', entryType: 'thought', xSync: true, substackSync: true, createdAt: new Date().toISOString() }));
+    ({ store } = await pass());
+    expect(fetchMock).toHaveBeenCalledTimes(lookups);
+    expect(store.getCell('substackposts', 'second', 'state')).toBe('failed');
+
+    const connected = buffer();
+    vi.stubGlobal('fetch', connected);
+    ({ store, baseline } = await loadStore(db));
+    store.setCell('substackposts', 'p', 'command', 'retry');
+    await saveStore(db, store, baseline);
+    ({ store } = await pass());
+    expect(published(connected)).toHaveLength(1);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'sent', link: NOTE, command: '' });
+  });
+
+  it('holds an old post until an explicit send and then publishes it once', async () => {
+    await upload(notePost(new Date(Date.now() - 10 * 24 * 3600_000).toISOString()));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    let { store, baseline } = await pass();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(store.getCell('substackposts', 'p', 'error')).toContain('3 天');
+    store.setCell('substackposts', 'p', 'command', 'send');
+    await saveStore(db, store, baseline);
+    ({ store, baseline } = await pass());
+    expect(published(fetchMock)).toHaveLength(1);
+    expect(store.getCell('substackposts', 'p', 'state')).toBe('sent');
+    store.setCell('substackposts', 'p', 'command', 'send');
+    await saveStore(db, store, baseline);
+    await pass();
+    expect(published(fetchMock)).toHaveLength(1);
+  });
+
+  it('commits sending before the request and never resends an interrupted Note', async () => {
+    await upload(notePost());
+    let duringRequest: unknown[] = [];
+    vi.stubGlobal('fetch', buffer({ createPost: async () => {
+      duringRequest = [
+        (await query<{ state: string }>(db, 'SELECT state FROM diary3_substack WHERE id=?', 'p'))[0].state,
+        (await loadStore(db)).store.getCell('substackposts', 'p', 'state'),
+      ];
+      return new Response('upstream died', { status: 502 });
+    } }));
+    let { store } = await pass();
+    expect(duringRequest).toEqual(['sending', 'sending']);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'failed', error: expect.stringContaining('请先到 Substack 确认') });
+
+    await execute(db, `UPDATE diary3_substack SET state='sending', updated_at=? WHERE id='p'`, Date.now() - 120_000);
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    ({ store } = await pass());
+    expect(published(fetchMock)).toEqual([]);
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'failed', error: expect.stringContaining('中断') });
+  });
+
+  it('waits out a rate limit for every Buffer request before trying again', async () => {
+    await upload(notePost());
+    const fetchMock = buffer({ createPost: () => Response.json({}, { status: 429, headers: { 'retry-after': '900' } }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const { store, next } = await pass();
+    expect(store.getRow('substackposts', 'p')).toMatchObject({ state: 'queued', error: expect.stringContaining('过于频繁') });
+    expect(Number(await getMeta(db, 'substack_retry_at'))).toBeGreaterThan(Date.now() + 800_000);
+    expect(await getMeta(db, 'buffer_retry_at')).toBeNull();
+    expect(next).toBeGreaterThan(Date.now() + 800_000);
+    const calls = fetchMock.mock.calls.length;
+    await execute(db, `UPDATE diary3_substack SET next_at=0 WHERE id='p'`);
+    await pass();
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
+  });
+
+  it('adds its ledger and job to a database migrated before it, and runs as its own job', async () => {
+    sqlite.exec('DROP TABLE diary3_substack; DROP TABLE diary3_threads');
+    await ensureSchema(db);
+    await ensureSchema(db);
+    expect(await query(db, "SELECT name FROM diary3_jobs WHERE name IN ('substack','threads') ORDER BY name")).toEqual([{ name: 'substack' }, { name: 'threads' }]);
+    const schema = readFileSync(new URL('../migrations/0001_diary.sql', import.meta.url), 'utf8');
+    for (const [table] of CHANNEL_LEDGERS) expect(schema).toContain(`${ledgerSql(table)};`);
+    expect(CHANNEL_LEDGERS.map(([table, job]) => [table, job])).toEqual([SUBSTACK, THREADS].map((c) => [c.ledger, c.job]));
+    await upload(notePost().setValue('substackSyncEnabled', true));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    await runJob(env(), 'substack');
+    expect(published(fetchMock)).toHaveLength(1);
+    expect((await loadStore(db)).store.getCell('substackposts', 'p', 'state')).toBe('sent');
+  });
+
+  it('publishes a post that chose Substack on its own, though the setting was never saved', async () => {
+    await ensureSchema(db);
+    await runJob(env(), 'substack');
+    // A device from before Substack existed never stored the setting's default.
+    const device = notePost();
+    expect(device.hasValue('substackSyncEnabled')).toBe(false);
+    await upload(device);
+    const [record] = splitContent(device.getMergeableContent());
+    await dirtyJobs(db, concernedJobs(record, 'posts', 'p'));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    await runJob(env(), 'substack');
+    expect(published(fetchMock).map((input) => input.text)).toEqual(['第一段']);
+    expect((await loadStore(db)).store.getCell('substackposts', 'p', 'state')).toBe('sent');
+  });
+
+  it('looks once, after this version arrives, at posts an earlier version left parked', async () => {
+    await upload(notePost());
+    // As the first version left it: the job parked, nothing in the ledger.
+    await execute(db, `INSERT INTO diary3_jobs(name, next_at) VALUES('substack', ?), ('threads', ?)`, 8e15, 8e15);
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    await ensureSchema(db);
+    await runJob(env(), 'substack');
+    expect(published(fetchMock)).toHaveLength(1);
+    expect(await getMeta(db, 'channels_rescanned')).toBe('1');
+
+    await execute(db, `UPDATE diary3_jobs SET next_at=? WHERE name='substack'`, 8e15);
+    await ensureSchema(db);
+    expect((await query<{ next_at: number }>(db, "SELECT next_at FROM diary3_jobs WHERE name='substack'"))[0].next_at).toBe(8e15);
+  });
+});
+
+describe('D1 Threads delivery and independent platforms', () => {
+  async function passFor(channel: Channel) {
+    const loaded = await loadStore(db);
+    const next = await runChannel(channel, db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    return { ...loaded, next };
+  }
+  // One clock for the suite, so the offsets order rows however long a test takes to build them.
+  const base = Date.now();
+  const at = (offset = 0) => new Date(base + offset).toISOString();
+  const metricsCalls = (fetchMock: ReturnType<typeof buffer>) => fetchMock.mock.calls
+    .filter(([, init]) => String(JSON.parse(String(init?.body)).query).includes('metricsUpdatedAt')).length;
+
+  it('sends a post and the parts written with it as one Threads thread', async () => {
+    await upload(createMergeableStore()
+      .setRow('posts', 'p', { content: '第一条', entryType: 'thought', threadsSync: true, createdAt: at() })
+      .setRow('replies', 'b', { postId: 'p', content: '第三条', createdAt: at(2), threadsSync: true, thread: true })
+      .setRow('replies', 'a', { postId: 'p', content: '第二条', createdAt: at(1), threadsSync: true, thread: true }));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    const { store } = await passFor(THREADS);
+    expect(published(fetchMock)).toEqual([{
+      channelId: 'threads-channel', text: '第一条', schedulingType: 'automatic', mode: 'shareNow', assets: [], needsApproval: false,
+      metadata: { threads: { thread: [{ text: '第一条', assets: [] }, { text: '第二条', assets: [] }, { text: '第三条', assets: [] }] } },
+    }]);
+    expect(store.getRow('threadsposts', 'p')).toMatchObject({ state: 'sent', link: THREAD });
+    expect(store.hasRow('threadsposts', 'a')).toBe(false);
+    expect(await getMeta(db, 'threads_channel')).toBe('threads-channel');
+  });
+
+  it('splits a post longer than Threads\' 500 bytes into a thread there, while Substack gets it whole', async () => {
+    const sentence = '今天早上去河边跑了五公里，风很大，但是跑完以后心情很好。';
+    await upload(createMergeableStore()
+      .setRow('posts', 'p', { content: sentence.repeat(8), entryType: 'thought', threadsSync: true, substackSync: true, createdAt: at() })
+      .setRow('replies', 'a', { postId: 'p', content: '补一句。', createdAt: at(1), threadsSync: true, substackSync: true, thread: true }));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    await passFor(THREADS);
+    const [threads] = published(fetchMock);
+    // 84 bytes a sentence: five fit in a post, cut where a sentence ends; the part written with + stays its own post.
+    expect(threads.metadata.threads.thread).toEqual([
+      { text: sentence.repeat(5), assets: [] }, { text: sentence.repeat(3), assets: [] }, { text: '补一句。', assets: [] },
+    ]);
+    expect(threads.text).toBe(sentence.repeat(5));
+    await passFor(SUBSTACK);
+    expect(published(fetchMock)[1]).toMatchObject({ channelId: 'notes', text: `${sentence.repeat(8)}\n\n补一句。` });
+  });
+
+  it('sends a long 追加 as a thread whose first post carries the link card', async () => {
+    await upload(createMergeableStore()
+      .setRow('posts', 'p', { content: '原帖', entryType: 'thought', threadsSync: true, createdAt: at() })
+      .setRow('replies', 'q', { postId: 'p', content: '字'.repeat(200), createdAt: at(1), threadsSync: true, thread: false }));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    await passFor(THREADS);
+    await passFor(THREADS);
+    expect(published(fetchMock)[1]).toMatchObject({
+      text: '字'.repeat(166),
+      metadata: { threads: { thread: [
+        { text: '字'.repeat(166), assets: [], metadata: { threads: { linkAttachment: { url: THREAD } } } },
+        { text: '字'.repeat(34), assets: [] },
+      ] } },
+    });
+  });
+
+  it('refuses a post too long for a Threads thread or a Substack Note without asking Buffer, and sends it once edited', async () => {
+    await upload(createMergeableStore()
+      .setRow('posts', 't', { content: '字'.repeat(166 * 26), entryType: 'thought', threadsSync: true, createdAt: at() })
+      .setRow('posts', 's', { content: 'a'.repeat(10_001), entryType: 'thought', substackSync: true, createdAt: at() }));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    let { store, baseline } = await passFor(THREADS);
+    expect(store.getRow('threadsposts', 't')).toMatchObject({ state: 'failed', error: expect.stringContaining('26 条') });
+    ({ store } = await passFor(SUBSTACK));
+    expect(store.getRow('substackposts', 's')).toMatchObject({ state: 'failed', error: expect.stringContaining('10,000') });
+    expect(published(fetchMock)).toEqual([]);
+    // The refusal says nothing about the channel: it stays known.
+    expect(await getMeta(db, 'threads_channel')).toBe('threads-channel');
+
+    ({ store, baseline } = await loadStore(db));
+    store.setCell('posts', 't', 'content', '删短了。');
+    store.setCell('threadsposts', 't', 'command', 'retry');
+    await saveStore(db, store, baseline);
+    ({ store } = await passFor(THREADS));
+    expect(published(fetchMock).map((input) => input.text)).toEqual(['删短了。']);
+    expect(store.getCell('threadsposts', 't', 'state')).toBe('sent');
+  });
+
+  it('sends a 追加 after its post with a link card to the post on Threads', async () => {
+    await upload(createMergeableStore()
+      .setRow('posts', 'p', { content: '原帖', entryType: 'thought', threadsSync: true, createdAt: at() })
+      .setRow('replies', 'q', { postId: 'p', content: '追加', createdAt: at(1), threadsSync: true, thread: false }));
+    const fetchMock = buffer();
+    vi.stubGlobal('fetch', fetchMock);
+    await passFor(THREADS);
+    const { store } = await passFor(THREADS);
+    expect(published(fetchMock)[1]).toMatchObject({ text: '追加', metadata: { threads: { linkAttachment: { url: THREAD } } } });
+    expect(store.getRow('threadsposts', 'q')).toMatchObject({ state: 'sent', kind: 'reply' });
+  });
+
+  it('keeps each platform to the posts that chose it, and one platform\'s trouble away from the others', async () => {
+    await upload(createMergeableStore()
+      .setRow('posts', 's', { content: '只发 Substack', entryType: 'thought', substackSync: true, createdAt: at() })
+      .setRow('posts', 't', { content: '只发 Threads', entryType: 'thought', threadsSync: true, createdAt: at() })
+      .setRow('posts', 'x', { content: '只发 X', entryType: 'thought', xSync: true, createdAt: at() }));
+    // Substack is not connected in Buffer; Threads is.
+    const fetchMock = buffer({ channels: [CONNECTED[0], CONNECTED[2]] });
+    vi.stubGlobal('fetch', fetchMock);
+    let { store } = await passFor(SUBSTACK);
+    expect(store.getRow('substackposts', 's')).toMatchObject({ state: 'failed', error: expect.stringContaining('Substack 频道') });
+    expect(store.getRowIds('substackposts')).toEqual(['s']);
+    ({ store } = await passFor(THREADS));
+    expect(published(fetchMock).map((input) => input.text)).toEqual(['只发 Threads']);
+    expect(store.getRowIds('threadsposts')).toEqual(['t']);
+    expect(store.getCell('threadsposts', 't', 'state')).toBe('sent');
+    expect(await query(db, 'SELECT id FROM diary3_x')).toEqual([]);
+  });
+
+  it('backs off one platform for a rate limit without holding up another', async () => {
+    await upload(createMergeableStore()
+      .setRow('posts', 's', { content: 'Substack', entryType: 'thought', substackSync: true, createdAt: at() })
+      .setRow('posts', 't', { content: 'Threads', entryType: 'thought', threadsSync: true, createdAt: at() }));
+    vi.stubGlobal('fetch', buffer({ createPost: (input) => input.channelId === 'notes' ? Response.json({}, { status: 429, headers: { 'retry-after': '900' } }) : undefined }));
+    let { store } = await passFor(SUBSTACK);
+    expect(store.getCell('substackposts', 's', 'state')).toBe('queued');
+    expect(Number(await getMeta(db, 'substack_retry_at'))).toBeGreaterThan(Date.now());
+    ({ store } = await passFor(THREADS));
+    expect(store.getCell('threadsposts', 't', 'state')).toBe('sent');
+    expect(await getMeta(db, 'threads_retry_at')).toBeNull();
+  });
+
+  it('copies Buffer\'s numbers for published posts into the platform\'s own table, at most every 6 hours', async () => {
+    await upload(createMergeableStore().setRow('posts', 't', { content: 'Threads', entryType: 'thought', threadsSync: true, createdAt: at() }));
+    const updated = '2026-10-06T08:00:00.000Z';
+    const fetchMock = buffer({ metrics: [
+      { node: { id: 'buffer-threads-channel', metrics: [{ type: 'views', value: 120 }, { type: 'reactions', value: 4 }, { type: 'quotes', value: 1 }], metricsUpdatedAt: updated } },
+      { node: { id: 'someone-elses', metrics: [{ type: 'views', value: 9 }], metricsUpdatedAt: updated } },
+    ] });
+    vi.stubGlobal('fetch', fetchMock);
+    const first = await passFor(THREADS);
+    expect(first.store.getRow('threadsmetrics', 't')).toEqual({
+      views: 120, impressions: -1, reactions: 4, comments: -1, reposts: -1, quotes: 1, shares: -1,
+      freeSubscriptions: -1, paidSubscriptions: -1, measuredAt: Date.parse(updated),
+    });
+    expect(first.store.getRowIds('threadsmetrics')).toEqual(['t']);
+    expect(first.store.hasTable('substackmetrics')).toBe(false);
+    expect(first.next).toBeLessThanOrEqual(Date.now() + 6 * 3600_000);
+    expect(metricsCalls(fetchMock)).toBe(1);
+
+    await passFor(THREADS);
+    expect(metricsCalls(fetchMock)).toBe(1);
+    await setMeta(db, 'threads_metrics_at', String(Date.now() - 7 * 3600_000));
+    await passFor(THREADS);
+    expect(metricsCalls(fetchMock)).toBe(2);
+  });
+
+  it('backs off a channel lookup that keeps failing to a few requests a day, and a retry looks at once', async () => {
+    await upload(createMergeableStore().setRow('posts', 't', { content: 'Threads', entryType: 'thought', threadsSync: true, createdAt: at() }));
+    const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) => (String(JSON.parse(String(init?.body)).query).includes('organizations')
+      ? Response.json({ data: { account: { organizations: [{ id: 'org' }] } } })
+      : new Response('<html>Bad gateway</html>', { status: 502 })));
+    const lookups = () => fetchMock.mock.calls.filter(([, init]) => String(JSON.parse(String(init?.body)).query).includes('channels')).length;
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const start = Date.now();
+      let next = start;
+      let store = (await loadStore(db)).store;
+      while (next < start + 24 * 3600_000) {
+        vi.setSystemTime(next);
+        ({ next, store } = await passFor(THREADS));
+      }
+      // Every 5 minutes would have been 288.
+      expect(lookups()).toBeLessThanOrEqual(10);
+      expect(next - Date.now()).toBe(6 * 3600_000);
+      expect(store.getRow('threadsposts', 't')).toMatchObject({ state: 'queued', error: expect.stringContaining('暂时无法从 Buffer 读取 Threads 频道') });
+
+      vi.stubGlobal('fetch', buffer());
+      const loaded = await loadStore(db);
+      loaded.store.setCell('threadsposts', 't', 'command', 'retry');
+      await saveStore(db, loaded.store, loaded.baseline);
+      // Retry only applies to a failed row; a queued one is sent when the lookup is due again.
+      await execute(db, `UPDATE diary3_threads SET state='failed' WHERE id='t'`);
+      ({ store } = await passFor(THREADS));
+      expect(store.getCell('threadsposts', 't', 'state')).toBe('sent');
+      expect(await getMeta(db, 'threads_lookup_failures')).toBe('0');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('finds the channel again for its numbers after a refusal forgot it', async () => {
+    await upload(createMergeableStore()
+      .setRow('posts', 'ok', { content: '好的', entryType: 'thought', threadsSync: true, createdAt: at() })
+      .setRow('posts', 'bad', { content: '被拒', entryType: 'thought', threadsSync: true, createdAt: at(1) }));
+    const updated = '2026-10-06T08:00:00.000Z';
+    const fetchMock = buffer({
+      createPost: (input) => ((input as { text?: string }).text === '被拒' ? Response.json({ data: { createPost: { __typename: 'InvalidInputError', message: 'no' } } }) : undefined),
+      metrics: [{ node: { id: 'buffer-threads-channel', metrics: [{ type: 'views', value: 7 }], metricsUpdatedAt: updated } }],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await passFor(THREADS);
+    expect(metricsCalls(fetchMock)).toBe(1);
+    await passFor(THREADS);
+    expect(await getMeta(db, 'threads_channel')).toBe('');
+
+    await setMeta(db, 'threads_metrics_at', String(Date.now() - 7 * 3600_000));
+    const { store } = await passFor(THREADS);
+    expect(metricsCalls(fetchMock)).toBe(2);
+    expect(await getMeta(db, 'threads_channel')).toBe('threads-channel');
+    expect(store.getCell('threadsmetrics', 'ok', 'views')).toBe(7);
+  });
+
+  it('wakes a platform\'s job only for the posts that chose it and its commands', async () => {
+    const records = (store: ReturnType<typeof createMergeableStore>) => splitContent(store.getMergeableContent());
+    const jobsFor = (store: ReturnType<typeof createMergeableStore>) => records(store).map((record) => {
+      const [, table, id] = record.key.split(':');
+      return concernedJobs(record, table, id);
+    });
+    expect(jobsFor(post())).toEqual([['x', 'obsidian']]);
+    expect(jobsFor(createMergeableStore().setRow('posts', 'p', { content: 'a', substackSync: true, threadsSync: false }))).toEqual([['x', 'obsidian', 'substack']]);
+    expect(jobsFor(createMergeableStore().setRow('replies', 'r', { content: 'a', postId: 'p', threadsSync: true }))).toEqual([['x', 'obsidian', 'threads']]);
+    expect(jobsFor(createMergeableStore().setRow('threadsposts', 'p', { command: 'retry' }))).toEqual([['threads']]);
+    expect(jobsFor(createMergeableStore().setRow('xposts', 'p', { command: 'retry' }))).toEqual([['x', 'obsidian']]);
+    expect(jobsFor(createMergeableStore().setRow('goals', 'g', { text: 'a' }))).toEqual([[]]);
+
+    // Only what was woken reads the diary.
+    await ensureSchema(db);
+    await Promise.all([runJob(env(), 'substack'), runJob(env(), 'threads')]);
+    await upload(createMergeableStore().setRow('posts', 't', { content: 'Threads', entryType: 'thought', threadsSync: true, createdAt: at() }));
+    let loads = 0;
+    const counting = { ...db, prepare: (sql: string) => {
+      if (sql.startsWith('SELECT key,data FROM diary3_records')) loads++;
+      return db.prepare(sql);
+    } } as D1Database;
+    vi.stubGlobal('fetch', buffer());
+    await dirtyJobs(db, ['threads']);
+    await runJob({ ...env(), DB: counting }, 'substack');
+    expect(loads).toBe(0);
+    await runJob({ ...env(), DB: counting }, 'threads');
+    expect(loads).toBe(1);
   });
 });

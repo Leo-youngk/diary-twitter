@@ -4,6 +4,7 @@ import { useMinute, usePost, useProfile, useReply, useXPost } from '@/data/hooks
 import { formatCompactTime } from '@/lib/utils';
 import Avatar from './Avatar';
 import PostTime from './PostTime';
+import { ChannelMarks, ChannelStatuses } from './ChannelDelivery';
 import XMark from './XMark';
 import XDeliveryStatus from './XDeliveryStatus';
 
@@ -31,10 +32,12 @@ function ReplyListItem({ id }: { id: string }) {
           <span className="min-w-0 truncate text-x-gray">@{profile.username}</span>
           <span className="shrink-0 text-x-gray">· {formatCompactTime(reply.createdAt)}</span>
           <XMark x={x} />
+          <ChannelMarks id={id} />
         </div>
         {reply.thread && <p className="text-[14px] text-x-gray">回复 <span className="text-x-blue">@{profile.username}</span></p>}
         <p className="mt-0.5 whitespace-pre-wrap break-words text-[calc(15px*var(--font-scale))] leading-[1.6]">{reply.content}</p>
         <XDeliveryStatus id={id} requested={reply.xSync} x={x} />
+        <ChannelStatuses id={id} />
         {!reply.thread && (
           <div className="mt-2.5 rounded-2xl border border-x-border px-3 py-2.5">
             {post ? (
