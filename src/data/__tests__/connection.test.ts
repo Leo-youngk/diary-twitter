@@ -4,8 +4,10 @@ import { mergeRecord, recordContent, splitContent, type SyncRecord } from '@/lib
 
 const auth = vi.hoisted(() => ({ signOut: vi.fn(), token: 'test-token' }));
 const data = vi.hoisted(() => ({ store: null as MergeableStore | null }));
+const images = vi.hoisted(() => ({ flush: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/data/store', () => ({ get store() { return data.store; } }));
 vi.mock('@/data/auth', () => ({ getToken: () => auth.token, deviceName: () => 'test device', onTokenChange: () => () => {}, signOut: auth.signOut }));
+vi.mock('@/data/blobs', () => ({ flushUploads: images.flush }));
 vi.mock('react', () => ({ useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot() }));
 let page: EventTarget & { visibilityState: string };
 let connection: typeof import('../connection');
@@ -41,6 +43,67 @@ beforeEach(async () => {
 afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();});
 
 describe('HTTP offline synchronization',()=>{
+  it('receives another device edit within two seconds while idle', async () => {
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    const source = createMergeableStore().setRow('posts', 'other', { content: 'updated on mobile' });
+    for (const record of splitContent(source.getMergeableContent())) remote.set(record.key, { ...record, revision: ++revision });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(local.getCell('posts', 'other', 'content')).toBe('updated on mobile');
+  });
+
+  it('does not reserialize the whole outbox during unchanged idle polls', async () => {
+    local.setRow('posts', 'p', { content: 'saved' });
+    const format = await import('@/lib/sync');
+    const split = vi.spyOn(format, 'splitContent');
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    split.mockClear();
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(split).not.toHaveBeenCalled();
+    expect(syncCalls().slice(1).every(([, options]) => JSON.parse(options.body).records.length === 0)).toBe(true);
+    split.mockRestore();
+  });
+
+  it('acknowledges newer remote clocks even when visible text did not change', async () => {
+    local.setRow('posts', 'p', { content: 'same text' });
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1);
+    const source = createMergeableStore().setRow('posts', 'p', { content: 'same text' });
+    for (const record of splitContent(source.getMergeableContent())) remote.set(record.key, { ...record, revision: ++revision });
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(connection.rowIsSynced('posts', 'p')).toBe(true);
+  });
+
+  it('times out a stalled response body and retries the unacknowledged edit', async () => {
+    local.setRow('posts', 'p', { content: 'still in the outbox' });
+    fetchMock.mockImplementationOnce(async (_url: unknown, options: RequestInit) => ({
+      ok: true, status: 200,
+      json: () => new Promise((_resolve, reject) => options.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))),
+    }));
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(connection.useConnection().state).toBe('offline');
+    expect(connection.rowIsSynced('posts', 'p')).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect((await remoteStore()).getCell('posts', 'p', 'content')).toBe('still in the outbox');
+  });
+
+  it('abandons a suspended request on returning instead of waiting for its timeout', async () => {
+    let signal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce((_url: unknown, options: RequestInit) => {
+      signal = options.signal as AbortSignal;
+      return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
+    });
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    page.visibilityState = 'hidden'; page.dispatchEvent(new Event('visibilitychange'));
+    const source = createMergeableStore().setRow('posts', 'other', { content: 'while phone slept' });
+    for (const record of splitContent(source.getMergeableContent())) remote.set(record.key, { ...record, revision: ++revision });
+    page.visibilityState = 'visible'; page.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(signal?.aborted).toBe(true);
+    expect(local.getCell('posts', 'other', 'content')).toBe('while phone slept');
+    expect(connection.useConnection().state).toBe('online');
+  });
+
   it('retains offline edits and retries an unavailable server without reporting success',async()=>{
     local.setRow('posts','p',{content:'offline draft'});
     fetchMock.mockResolvedValueOnce(Response.json({error:'unavailable'},{status:503}));
@@ -77,13 +140,13 @@ describe('HTTP offline synchronization',()=>{
   });
   it('does not reupload unchanged records during idle polling',async()=>{
     local.setRow('posts','p',{content:'saved'});
-    connection.startConnection(); await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(30_000);
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(2000);
     expect(syncCalls()).toHaveLength(2);
     expect(JSON.parse(syncCalls()[1][1].body).records).toEqual([]);
   });
   it('polls promptly while a new X post is still awaiting its server delivery row',async()=>{
     local.setRow('posts','p',{content:'new',entryType:'thought',xSync:true,createdAt:new Date().toISOString()});
-    connection.startConnection(); await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(3000);
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(2000);
     expect(syncCalls()).toHaveLength(2);
   });
   it('catches up remote edits when returning from the background',async()=>{

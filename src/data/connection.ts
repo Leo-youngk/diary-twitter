@@ -2,11 +2,13 @@ import { useSyncExternalStore } from 'react';
 import { createMergeableStore } from 'tinybase';
 import { recordContent, rowRecord, splitContent, type SyncRecord, type SyncResponse } from '@/lib/sync';
 import { deviceName, getToken, onTokenChange, signOut } from './auth';
+import { flushUploads } from './blobs';
 import { store } from './store';
 
 export type ConnectionState = 'connecting' | 'online' | 'offline';
 interface Status { state: ConnectionState; syncedAt: number | null; error: string }
 const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
+const SYNC_EVERY_MS = 2000;
 let status: Status = { state: 'connecting', syncedAt: null, error: '' };
 const listeners = new Set<() => void>();
 const firstSync: Array<() => void> = [];
@@ -20,6 +22,8 @@ let again = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let controller: AbortController | undefined;
 let epoch = 0;
+let outboxDirty = true;
+let outbox: SyncRecord[] = [];
 
 function setStatus(next: Partial<Status>): void {
   status = { ...status, ...next };
@@ -54,6 +58,13 @@ export function outgoingRecords(): SyncRecord[] {
   });
 }
 
+// Idle polls carry only the revision cursor. Avoid rebuilding and serializing
+// every row until either local editing or a received change invalidates it.
+function currentOutgoing(): SyncRecord[] {
+  if (outboxDirty) { outbox = outgoingRecords(); outboxDirty = false; }
+  return outbox;
+}
+
 function schedule(delay: number): void {
   clearTimeout(timer);
   if (!getToken() || !navigator.onLine || document.visibilityState === 'hidden') return;
@@ -72,50 +83,57 @@ async function sync(): Promise<void> {
   try {
     let more = true;
     while (more && ownEpoch === epoch) {
-      const pending = outgoingRecords().filter(record => acknowledged.get(record.key) !== record.data);
+      const pending = currentOutgoing().filter(record => acknowledged.get(record.key) !== record.data);
       const records: SyncRecord[] = [];
       let size = 0;
       for (const record of pending) {
         if (records.length && (size + record.data.length > 500_000 || records.length >= 50)) break;
         records.push(record); size += record.data.length;
       }
-      controller = new AbortController();
-      const timeout = setTimeout(() => controller?.abort(), 20_000);
-      let response: Response;
+      const requestController = new AbortController();
+      controller = requestController;
+      const timeout = setTimeout(() => requestController.abort(), 20_000);
+      let body: SyncResponse;
       try {
-        response = await fetch('/api/sync', {
+        const response = await fetch('/api/sync', {
           method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ records, cursor, name: deviceName(), build: __BUILD_ID__ }), signal: controller.signal,
+          body: JSON.stringify({ records, cursor, name: deviceName(), build: __BUILD_ID__ }), signal: requestController.signal,
           cache: 'no-store',
         });
+        if (ownEpoch !== epoch) return;
+        if (response.status === 401) { signOut(); setStatus({ state: 'offline' }); return; }
+        if (!response.ok) {
+          const detail = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(detail?.error || `同步请求失败 (${response.status})`);
+        }
+        // Keep the timeout active until the response body has arrived too.
+        body = await response.json() as SyncResponse;
       } finally { clearTimeout(timeout); }
       if (ownEpoch !== epoch) return;
-      if (response.status === 401) { signOut(); setStatus({ state: 'offline' }); return; }
-      if (!response.ok) {
-        const detail = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(detail?.error || `同步请求失败 (${response.status})`);
-      }
-      const body = await response.json() as SyncResponse;
       if (!Array.isArray(body.records) || !Number.isSafeInteger(body.cursor) || body.cursor < cursor) throw new Error('无效同步响应');
       // Acknowledge exactly what was sent. Edits made while awaiting the
       // response differ from this snapshot and will be sent on the next pass.
       records.forEach(record => acknowledged.set(record.key, record.data));
+      // Equal visible values can still carry newer merge clocks, which do
+      // not necessarily trigger the Store's table/value listeners.
+      if (body.records.length) outboxDirty = true;
       applying = true;
       try {
         store.transaction(() => { for (const record of body.records) store.applyMergeableChanges(recordContent(record)); });
       } finally { applying = false; }
       // A received record is acknowledged only when the local result matches
       // it. Otherwise a simultaneous offline edit must still go upstream.
-      const local = new Map(outgoingRecords().map(record => [record.key, record.data]));
+      const local = new Map(currentOutgoing().map(record => [record.key, record.data]));
       for (const record of body.records) if (local.get(record.key) === record.data) acknowledged.set(record.key, record.data);
       cursor = body.cursor;
       // Publish per-row acknowledgements even when another batch is pending.
       setStatus({ state: 'online', error: '' });
-      more = body.more || outgoingRecords().some(record => acknowledged.get(record.key) !== record.data);
+      more = body.more || currentOutgoing().some(record => acknowledged.get(record.key) !== record.data);
     }
     if (ownEpoch !== epoch) return;
     failures = 0;
     setStatus({ state: 'online', syncedAt: Date.now(), error: '' });
+    void flushUploads().catch(error => console.warn('[sync] image upload failed', error));
     firstSync.splice(0).forEach(resolve => resolve());
   } catch (error) {
     if (ownEpoch !== epoch) return;
@@ -128,14 +146,7 @@ async function sync(): Promise<void> {
     controller = undefined;
     if (ownEpoch !== epoch && getToken()) schedule(0);
   }
-  const recent = (createdAt: string | undefined) => Date.now() - Date.parse(createdAt ?? '') < 72 * 3600_000;
-  const awaiting = (flag: 'xSync' | 'substackSync' | 'threadsSync', table: 'xposts' | 'substackposts' | 'threadsposts') =>
-    Object.values(store.getTable(table)).some(row => ['queued', 'sending', 'publishing'].includes(String(row.state)))
-    || Object.entries(store.getTable('posts')).some(([id, row]) => row[flag] && row.entryType === 'thought' && recent(row.createdAt) && !store.hasRow(table, id))
-    // Only X gives a thread's parts rows of their own; elsewhere they go out with their post.
-    || Object.entries(store.getTable('replies')).some(([id, row]) => row[flag] && !(table !== 'xposts' && row.thread) && recent(row.createdAt) && !store.hasRow(table, id));
-  const pending = awaiting('xSync', 'xposts') || awaiting('substackSync', 'substackposts') || awaiting('threadsSync', 'threadsposts');
-  schedule(again ? 0 : pending ? 3000 : 30_000);
+  schedule(again ? 0 : SYNC_EVERY_MS);
 }
 
 const X_CHECK_EVERY_MS = 30_000;
@@ -146,21 +157,25 @@ export function checkX(): void {
   const token = getToken();
   if (!token || !navigator.onLine || Date.now() - xCheckedAt < X_CHECK_EVERY_MS) return;
   xCheckedAt = Date.now();
-  void fetch('/api/x/check', { method: 'POST', headers: { authorization: `Bearer ${token}` }, cache: 'no-store' })
+  void fetch('/api/x/check', { method: 'POST', headers: { authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(20_000) })
     .then(response => { if (response.ok) reconnect(); })
     .catch(() => undefined);
 }
 
-function reconnect(): void {
+function reconnect(replaceStalled = false): void {
   failures = 0;
-  if (inflight) { again = true; return; }
+  if (inflight) {
+    again = true;
+    if (replaceStalled) { epoch++; controller?.abort(); }
+    return;
+  }
   schedule(0);
 }
 
 export function startConnection(): void {
   if (started) return;
   started = true;
-  const edited = () => { if (!applying) schedule(150); };
+  const edited = () => { outboxDirty = true; if (!applying) schedule(150); };
   store.addTablesListener(edited);
   store.addValuesListener(edited);
   onTokenChange(() => {
@@ -169,13 +184,14 @@ export function startConnection(): void {
     setStatus({ state: getToken() ? 'connecting' : 'offline', syncedAt: null, error: '' });
     if (getToken()) reconnect();
   });
-  window.addEventListener('online', reconnect);
-  window.addEventListener('offline', () => { controller?.abort(); clearTimeout(timer); setStatus({ state: 'offline' }); });
+  window.addEventListener('online', () => reconnect(true));
+  window.addEventListener('offline', () => { epoch++; controller?.abort(); clearTimeout(timer); setStatus({ state: 'offline' }); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') clearTimeout(timer);
-    else { reconnect(); checkX(); }
+    else { reconnect(true); checkX(); }
   });
-  window.addEventListener('focus', reconnect);
+  window.addEventListener('pageshow', event => { if (event.persisted) reconnect(true); });
+  window.addEventListener('focus', () => { if (document.visibilityState === 'visible') reconnect(true); });
   void sync();
   checkX();
 }
@@ -199,5 +215,8 @@ export function useRowIsSynced(table: 'posts' | 'replies', id: string): boolean 
     return () => { stop(); store.delListener(rowListener); };
   }, () => rowIsSynced(table, id));
 }
-export function retrySync(): void { reconnect(); }
+export function retrySync(): void {
+  if (getToken() && navigator.onLine) setStatus({ state: 'connecting', error: '' });
+  reconnect(true);
+}
 export function useAwaitingFirstSync(): boolean { return useSyncExternalStore(subscribe, () => status.syncedAt === null && status.state !== 'offline'); }

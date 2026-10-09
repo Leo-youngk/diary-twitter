@@ -12,7 +12,7 @@ import { sendChannelCommand, sendXCommand, updateProfile } from '@/data/actions'
 import { downloadBackup, parseBackup, restoreBackup } from '@/data/backup';
 import { imageSrc, storeImage } from '@/data/blobs';
 import { getDeviceId } from '@/data/auth';
-import { useConnection } from '@/data/connection';
+import { retrySync, useConnection, useConnectionState } from '@/data/connection';
 import { useChannelPosts, useDevices, useProfile, useXPosts } from '@/data/hooks';
 import { saveLocal, store } from '@/data/store';
 import { AVATAR_OPTS, BANNER_OPTS, compressImage } from '@/lib/image';
@@ -182,6 +182,7 @@ function seenText(at: number): string {
 function DevicesSection() {
   const devices = useDevices();
   const self = getDeviceId();
+  const state = useConnectionState();
   if (devices.length === 0) return null;
   return (
     <Section title="设备" footer="新设备第一次打开时输入一次口令，之后自动同步。版本和本机不同的设备，重新打开一次 App 就会更新。">
@@ -194,7 +195,7 @@ function DevicesSection() {
               <p className="truncate text-[16px]">{device.name || '未知设备'}{mine && <span className="ml-2 text-[13px] text-x-blue">本机</span>}</p>
               <p className={cn('truncate text-[12px]', outdated ? 'text-x-danger' : 'text-x-gray')}>{device.build || '未知版本'}{outdated && ' · 与本机版本不同'}</p>
             </div>
-            <span className="shrink-0 text-[13px] text-x-gray">{mine ? '在线' : seenText(device.seenAt)}</span>
+            <span className="shrink-0 text-[13px] text-x-gray">{mine ? (state === 'online' ? '在线' : state === 'connecting' ? '正在连接' : '离线') : seenText(device.seenAt)}</span>
           </div>
         );
       })}
@@ -295,6 +296,9 @@ const SettingsActivity: ActivityComponentType<'Settings'> = () => {
 
           <Section title="数据">
             <Row label="同步"><span className={cn(connection.state === 'offline' && 'text-x-danger')}>{syncText}</span></Row>
+            <Row label="立即同步">
+              <button type="button" onClick={retrySync} disabled={connection.state === 'connecting'} className="text-x-blue disabled:text-x-gray">{connection.state === 'connecting' ? '正在同步…' : '同步最新记录'}</button>
+            </Row>
             <Row label="导出完整备份" onClick={() => { void downloadBackup().then(() => toast('备份已导出'), () => toast('导出失败', 'error')); }} />
             <Row label={busy ? '正在恢复…' : '从备份恢复'} onClick={() => backupRef.current?.click()} />
             <Row label="我的记录" onClick={() => push('Profile', {})} />
