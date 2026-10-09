@@ -80,10 +80,10 @@ export function signOut(): void {
 }
 
 /** 'rejected' only when the server positively refused the token. */
-export async function checkSession(): Promise<'ok' | 'rejected' | 'unreachable'> {
+export async function checkSession(signal: AbortSignal = AbortSignal.timeout(10_000)): Promise<'ok' | 'rejected' | 'unreachable'> {
   if (!token) return 'rejected';
   try {
-    const response = await fetch('/api/session', { headers: { authorization: `Bearer ${token}` }, cache: 'no-store' });
+    const response = await fetch('/api/session', { headers: { authorization: `Bearer ${token}` }, cache: 'no-store', signal });
     if (response.status === 401) return 'rejected';
     if (!response.ok) console.error('[auth] session check failed', response.status);
     return response.ok ? 'ok' : 'unreachable';

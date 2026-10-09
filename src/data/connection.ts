@@ -2,6 +2,7 @@ import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-cli
 import { useSyncExternalStore } from 'react';
 import { SYNC_PROTOCOL } from '@/lib/schema';
 import { checkSession, deviceName, getToken, onTokenChange, signOut } from './auth';
+import { flushUploads } from './blobs';
 import { store } from './store';
 
 /**
@@ -12,8 +13,7 @@ import { store } from './store';
  * synchronizer, which runs a full two-way reconciliation when it starts.
  * Drops reconnect with backoff; returning to the foreground or coming back
  * online reconnects at once. iOS can leave a socket that looks open but is
- * dead after the app was suspended, so a long enough absence also forces a
- * fresh connection.
+ * dead after even a short suspension, so returning always uses a fresh one.
  */
 
 export type ConnectionState = 'connecting' | 'online' | 'offline';
@@ -35,22 +35,22 @@ interface Connection {
   socket: WebSocket;
   synchronizer: Synchronizer | null;
   checkTimer?: ReturnType<typeof setTimeout>;
+  openTimer?: ReturnType<typeof setTimeout>;
   checking?: Promise<void>;
 }
 
 const REQUEST_TIMEOUT_SECONDS = 15;
+const CONNECT_TIMEOUT_MS = 10_000;
 const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
-const STALE_AFTER_HIDDEN_MS = 20_000;
-const CHECK_EVERY_MS = 30_000;
+const CHECK_EVERY_MS = 10_000;
 
 let status: Status = { state: 'connecting', syncedAt: null };
 const listeners = new Set<() => void>();
 let current: Connection | null = null;
 let failures = 0;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
-let hiddenAt: number | null = null;
 let started = false;
-let connecting = false;
+let preflight: { controller: AbortController; timer: ReturnType<typeof setTimeout> } | null = null;
 const firstSync: Array<() => void> = [];
 
 function setStatus(next: Partial<Status>): void {
@@ -65,7 +65,7 @@ function socketUrl(): string {
 }
 
 function scheduleRetry(): void {
-  if (retryTimer || !navigator.onLine) return;
+  if (retryTimer || !navigator.onLine || document.visibilityState !== 'visible' || !getToken()) return;
   const delay = BACKOFF_MS[Math.min(failures, BACKOFF_MS.length - 1)];
   failures += 1;
   retryTimer = setTimeout(() => {
@@ -74,9 +74,17 @@ function scheduleRetry(): void {
   }, delay);
 }
 
+function cancelPreflight(): void {
+  if (!preflight) return;
+  clearTimeout(preflight.timer);
+  preflight.controller.abort();
+  preflight = null;
+}
+
 function drop(target: Connection | null): void {
   if (!target) return;
   clearTimeout(target.checkTimer);
+  clearTimeout(target.openTimer);
   if (current === target) current = null;
   void target.synchronizer?.destroy();
   try { target.socket.close(); } catch { /* already closed */ }
@@ -103,8 +111,14 @@ function verifyConnection(connection: Connection): Promise<void> {
   if (connection.checking) return connection.checking;
   connection.checking = (async () => {
     try {
+      // load() only pulls. Re-advertise our hashes so a lost outgoing delta is
+      // recovered even when the local store has not changed again.
+      await connection.synchronizer!.save();
+      if (current !== connection) return;
       await connection.synchronizer!.load();
-      if (current === connection) setStatus({ state: 'online', syncedAt: Date.now() });
+      if (current !== connection) return;
+      setStatus({ state: 'online', syncedAt: Date.now() });
+      void flushUploads().catch((error) => console.warn('[sync] image upload failed', error));
     } catch (error) {
       connectionFailed(connection, error);
     } finally {
@@ -116,7 +130,7 @@ function verifyConnection(connection: Connection): Promise<void> {
 }
 
 async function connect(): Promise<void> {
-  if (current || !navigator.onLine || connecting) {
+  if (current || !navigator.onLine || preflight) {
     if (!navigator.onLine) setStatus({ state: 'offline' });
     return;
   }
@@ -125,8 +139,15 @@ async function connect(): Promise<void> {
   if (!token) return;
   setStatus({ state: 'connecting' });
   // A refused WebSocket cannot say why, so ask whether the token still counts.
-  connecting = true;
-  const session = await checkSession().finally(() => { connecting = false; });
+  const controller = new AbortController();
+  const attempt = { controller, timer: setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS) };
+  preflight = attempt;
+  const session = await checkSession(controller.signal).catch(() => 'unreachable' as const);
+  clearTimeout(attempt.timer);
+  // An earlier session request must not replace a newer connection or sign
+  // out a token that changed while that request was in flight.
+  if (preflight !== attempt) return;
+  preflight = null;
   if (session === 'rejected') { signOut(); return; }
   if (session === 'unreachable') {
     setStatus({ state: 'offline' });
@@ -137,6 +158,9 @@ async function connect(): Promise<void> {
   const socket = new WebSocket(socketUrl(), [SYNC_PROTOCOL, token]);
   const connection: Connection = { socket, synchronizer: null };
   current = connection;
+  // TinyBase waits for the socket's open event without its own timeout.
+  connection.openTimer = setTimeout(() => connectionFailed(connection, new Error('连接服务器超时')), CONNECT_TIMEOUT_MS);
+  socket.addEventListener('open', () => { clearTimeout(connection.openTimer); }, { once: true });
 
   socket.addEventListener('close', () => {
     if (current !== connection) return;
@@ -151,6 +175,7 @@ async function connect(): Promise<void> {
     const synchronizer = await createWsSynchronizer(store, socket, REQUEST_TIMEOUT_SECONDS, undefined, undefined,
       (error) => connectionFailed(connection, error));
     if (current !== connection) { void synchronizer.destroy(); return; }
+    clearTimeout(connection.openTimer);
     connection.synchronizer = synchronizer;
     // startSync already performs the initial load and starts automatic saving.
     await synchronizer.startSync();
@@ -158,37 +183,50 @@ async function connect(): Promise<void> {
     failures = 0;
     setStatus({ state: 'online', syncedAt: Date.now() });
     scheduleCheck(connection);
+    void flushUploads().catch((error) => console.warn('[sync] image upload failed', error));
     firstSync.splice(0).forEach((resolve) => resolve());
   } catch (error) {
     connectionFailed(connection, error);
   }
 }
 
-function reconnectNow(): void {
+function reconnectNow(): Promise<void> {
   failures = 0;
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  cancelPreflight();
   drop(current);
-  void connect();
+  return connect();
+}
+
+/** Reconcile both ways over a fresh connection, including a stuck socket. */
+export async function syncNow(): Promise<boolean> {
+  await reconnectNow();
+  return status.state === 'online';
 }
 
 /** Start syncing. Safe to call more than once; waits for a token if there is none yet. */
 export function startConnection(): void {
   if (started) return;
   started = true;
-  onTokenChange(() => { if (getToken()) reconnectNow(); else drop(current); });
-  window.addEventListener('online', reconnectNow);
-  window.addEventListener('offline', () => { drop(current); setStatus({ state: 'offline' }); });
+  onTokenChange(() => {
+    if (getToken()) void reconnectNow();
+    else { cancelPreflight(); drop(current); setStatus({ state: 'offline' }); }
+  });
+  window.addEventListener('online', () => { void reconnectNow(); });
+  window.addEventListener('offline', () => { cancelPreflight(); drop(current); setStatus({ state: 'offline' }); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
-      hiddenAt = Date.now();
       clearTimeout(current?.checkTimer);
       return;
     }
-    const wasAwayLong = hiddenAt !== null && Date.now() - hiddenAt > STALE_AFTER_HIDDEN_MS;
-    hiddenAt = null;
-    if (wasAwayLong || !current) reconnectNow();
-    else void verifyConnection(current);
+    void reconnectNow();
   });
-  window.addEventListener('focus', () => { if (current) void verifyConnection(current); else reconnectNow(); });
+  window.addEventListener('pageshow', (event) => { if (event.persisted) void reconnectNow(); });
+  window.addEventListener('focus', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (current) void verifyConnection(current);
+    else if (!preflight) void reconnectNow();
+  });
   void connect();
 }
 

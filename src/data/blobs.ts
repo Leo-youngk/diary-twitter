@@ -57,30 +57,33 @@ let flushing: Promise<void> | null = null;
 
 /** Upload everything still queued. Stops at the first failure and tries again later. */
 export function flushUploads(): Promise<void> {
+  if (!navigator.onLine) return Promise.resolve();
   flushing ??= (async () => {
-    try {
-      for (const hash of readQueue()) {
-        const blob = await readCached(hash);
-        if (!blob) {
-          console.warn('[blobs] queued image is no longer on this device', hash);
-          writeQueue(readQueue().filter((item) => item !== hash));
-          continue;
-        }
-        const token = getToken();
-        if (!token) break;
-        const response = await fetch(blobUrl(hash), {
-          method: 'PUT',
-          headers: { 'content-type': blob.type || 'image/jpeg', authorization: `Bearer ${token}` },
-          body: blob,
-        }).catch(() => null);
-        if (response?.status === 401) signOut();
-        if (!response?.ok) break;
+    while (true) {
+      const [hash] = readQueue();
+      if (!hash) break;
+      const blob = await readCached(hash);
+      if (!blob) {
+        console.warn('[blobs] queued image is no longer on this device', hash);
         writeQueue(readQueue().filter((item) => item !== hash));
+        continue;
       }
-    } finally {
-      flushing = null;
+      const token = getToken();
+      if (!token) break;
+      const response = await fetch(blobUrl(hash), {
+        method: 'PUT',
+        headers: { 'content-type': blob.type || 'image/jpeg', authorization: `Bearer ${token}` },
+        body: blob,
+        signal: AbortSignal.timeout(30_000),
+      }).catch(() => null);
+      if (response?.status === 401) signOut();
+      if (!response?.ok) {
+        console.warn('[blobs] upload deferred', response?.status ?? 'network unavailable');
+        break;
+      }
+      writeQueue(readQueue().filter((item) => item !== hash));
     }
-  })();
+  })().finally(() => { flushing = null; });
   return flushing;
 }
 
