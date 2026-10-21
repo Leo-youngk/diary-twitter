@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { createMergeableStore } from 'tinybase';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordContent, splitContent, encodeJson, decodeJson } from '../src/lib/sync';
-import { CHANNEL_LEDGERS, databasePaused, dirtyJobs, ensureSchema, execute, getMeta, ledgerSql, loadStore, pull, query, saveRecord, saveStore, setMeta } from './d1';
-import { concernedJobs, runJob } from './jobs';
+import { CHANNEL_LEDGERS, databasePaused, dirtyJobs, ensureSchema, execute, getMeta, ledgerSql, loadStore, pull, query, saveRecord, saveRecords, saveStore, setMeta } from './d1';
+import { concernedJobs, nextDeliveryAt, runJob } from './jobs';
 import { runX, insertLedgerRow, publishedDuplicate } from './delivery/x';
 import { runChannel, SUBSTACK, THREADS, type Channel } from './delivery/channel';
 import type { Env } from './env';
@@ -59,6 +59,48 @@ function post() { return createMergeableStore().setRow('posts', 'p', { content: 
 const env = () => ({ DB: db, BUFFER_API_KEY: 'test', BUFFER_CHANNEL_ID: 'test', SPACE_ID: 'test', SESSION_SECRET:'test-session' }) as Env;
 
 describe('D1 incremental CRDT persistence', () => {
+  it('uploads fifty records in one batch and wakes delivery atomically without replay writes', async () => {
+    sqlite.exec("INSERT INTO diary3_jobs(name,next_at) VALUES('x',8000000000000000)");
+    const source = createMergeableStore();
+    for (let i = 0; i < 50; i++) source.setRow('posts', `p${i}`, { content: `post ${i}` });
+    const batch = vi.spyOn(db, 'batch');
+    const records = splitContent(source.getMergeableContent());
+    expect((await saveRecords(db, records, ['x'])).size).toBe(50);
+    expect(batch).toHaveBeenCalledOnce();
+    expect(await nextDeliveryAt(db)).toBe(0);
+    expect((await pull(db, 0)).records.map(record => record.revision)).toEqual(Array.from({ length: 50 }, (_, i) => i + 1));
+    const before = changes();
+    expect((await saveRecords(db, records, ['x'])).size).toBe(0);
+    expect(changes()).toBe(before);
+    expect(batch).toHaveBeenCalledOnce();
+  });
+  it('rolls back the uploaded page if its delivery wake-up cannot be committed', async () => {
+    sqlite.exec('DROP TABLE diary3_jobs');
+    await expect(saveRecords(db, splitContent(post().getMergeableContent()), ['x'])).rejects.toThrow();
+    expect((await pull(db, 0)).records).toEqual([]);
+  });
+  it('merges a concurrent edit after a batched CAS conflict', async () => {
+    const original = post().setCell('posts', 'p', 'isLiked', false); await upload(original);
+    const left = createMergeableStore('left').setMergeableContent(original.getMergeableContent());
+    const right = createMergeableStore('right').setMergeableContent(original.getMergeableContent());
+    left.setCell('posts', 'p', 'content', 'edited'); right.setCell('posts', 'p', 'isLiked', true);
+    const batch = db.batch.bind(db);
+    vi.spyOn(db, 'batch').mockImplementationOnce(async statements => {
+      await upload(right);
+      return batch(statements);
+    });
+    await saveRecords(db, splitContent(left.getMergeableContent()));
+    expect((await loadStore(db)).store.getRow('posts', 'p')).toMatchObject({ content: 'edited', isLiked: true });
+  });
+  it('schedules the earliest delivery deadline or lease recovery, excluding Cron-only jobs', async () => {
+    expect(await nextDeliveryAt(db)).toBeNull();
+    await execute(db, "INSERT INTO diary3_jobs(name,next_at,lease_until) VALUES('x',0,5000),('obsidian',8000,0),('xstats',0,0)");
+    expect(await nextDeliveryAt(db)).toBe(5000);
+    await execute(db, "UPDATE diary3_jobs SET next_at=?,lease_until=0 WHERE name='x'", 8e15);
+    expect(await nextDeliveryAt(db)).toBe(8000);
+    await execute(db, "UPDATE diary3_jobs SET next_at=? WHERE name='obsidian'", 8e15);
+    expect(await nextDeliveryAt(db)).toBeNull();
+  });
   it('keeps a retired database frozen without writing on maintenance checks', async () => {
     expect(await databasePaused(db)).toBe(false);
     await setMeta(db, 'maintenance', '1');
@@ -816,3 +858,4 @@ describe('D1 Threads delivery and independent platforms', () => {
     expect(loads).toBe(1);
   });
 });
+

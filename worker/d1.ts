@@ -32,6 +32,45 @@ export async function saveRecord(db: D1Database, record: SyncRecord): Promise<bo
   throw new Error('同步繁忙，请稍后再试');
 }
 
+/** One read and one transactional batch per page, retaining per-row CAS.
+ * Waking delivery jobs in the same transaction closes the crash window between
+ * saving a post and enqueueing it. Replaying an acknowledged page writes nothing. */
+export async function saveRecords(db: D1Database, records: SyncRecord[], jobs: readonly string[] = []): Promise<Set<string>> {
+  const unique = new Map<string, SyncRecord>();
+  for (const record of records) {
+    const previous = unique.get(record.key);
+    unique.set(record.key, previous ? { key: record.key, data: mergeRecord(previous.data, record.data) } : record);
+  }
+  const changed = new Set<string>();
+  const all = [...unique.values()];
+  for (let offset = 0; offset < all.length; offset += 50) {
+    const pending = new Map(all.slice(offset, offset + 50).map(record => [record.key, record]));
+    for (let attempt = 0; pending.size && attempt < 12; attempt++) {
+      const keys = [...pending.keys()];
+      const rows = await query<SyncRecord>(db, `SELECT key,data FROM diary3_records WHERE key IN (${keys.map(() => '?').join(',')})`, ...keys);
+      const current = new Map(rows.map(row => [row.key, row.data]));
+      const writes: D1PreparedStatement[] = [];
+      const written: string[] = [];
+      for (const record of pending.values()) {
+        const before = current.get(record.key) ?? null;
+        const next = mergeRecord(before, record.data);
+        if (next === before) { pending.delete(record.key); continue; }
+        writes.push(db.prepare(`INSERT INTO diary3_records(key,data,revision) VALUES(?,?,(SELECT revision+1 FROM diary3_clock WHERE id=1))
+          ON CONFLICT(key) DO UPDATE SET data=excluded.data,revision=excluded.revision WHERE diary3_records.data=?`).bind(record.key, next, before));
+        written.push(record.key);
+      }
+      if (!writes.length) break;
+      if (jobs.length) writes.push(db.prepare(`UPDATE diary3_jobs SET next_at=0,generation=generation+1 WHERE name IN (${jobs.map(() => '?').join(',')})`).bind(...jobs));
+      const results = await db.batch(writes);
+      written.forEach((key, index) => {
+        if (results[index].meta.changes > 0) { changed.add(key); pending.delete(key); }
+      });
+    }
+    if (pending.size) throw new Error('同步繁忙，请稍后再试');
+  }
+  return changed;
+}
+
 export async function pull(db: D1Database, cursor: number): Promise<SyncResponse> {
   const records = await query<Required<SyncRecord>>(db, 'SELECT key,data,revision FROM diary3_records WHERE revision>? ORDER BY revision LIMIT 201', cursor);
   const more = records.length > 200;
@@ -82,3 +121,4 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     await setMeta(db, 'channels_rescanned', '1');
   }
 }
+
