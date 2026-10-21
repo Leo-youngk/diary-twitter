@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMergeableStore, type MergeableStore } from 'tinybase';
 import { mergeRecord, recordContent, splitContent, type SyncRecord } from '@/lib/sync';
 
-const auth = vi.hoisted(() => ({ signOut: vi.fn(), token: 'test-token' }));
+const auth = vi.hoisted(() => ({ signOut: vi.fn(), token: 'test-token', changed: undefined as (() => void) | undefined }));
 const data = vi.hoisted(() => ({ store: null as MergeableStore | null }));
 vi.mock('@/data/store', () => ({ get store() { return data.store; } }));
-vi.mock('@/data/auth', () => ({ getToken: () => auth.token, deviceName: () => 'test device', onTokenChange: () => () => {}, signOut: auth.signOut }));
+vi.mock('@/data/auth', () => ({ getToken: () => auth.token, deviceName: () => 'test device', onTokenChange: (listener: () => void) => { auth.changed = listener; return () => {}; }, signOut: auth.signOut }));
 vi.mock('react', () => ({ useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot() }));
 let page: EventTarget & { visibilityState: string };
 let connection: typeof import('../connection');
@@ -77,7 +77,7 @@ describe('HTTP offline synchronization',()=>{
   });
   it('does not reupload unchanged records during idle polling',async()=>{
     local.setRow('posts','p',{content:'saved'});
-    connection.startConnection(); await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(30_000);
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(5000);
     expect(syncCalls()).toHaveLength(2);
     expect(JSON.parse(syncCalls()[1][1].body).records).toEqual([]);
   });
@@ -94,6 +94,54 @@ describe('HTTP offline synchronization',()=>{
     await vi.advanceTimersByTimeAsync(1000);
     page.visibilityState='visible';page.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(0);
     expect(local.getCell('posts','new','content')).toBe('other device');
+  });
+  it('brings another device\'s edit back within five seconds while open', async () => {
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    const source = createMergeableStore().setRow('posts', 'other', { content: 'other device' });
+    for (const record of splitContent(source.getMergeableContent())) remote.set(record.key, { ...record, revision: ++revision });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(local.getCell('posts', 'other', 'content')).toBe('other device');
+  });
+  it('times out a stalled response body and retries the retained edit', async () => {
+    local.setRow('posts', 'p', { content: 'do not lose' });
+    fetchMock.mockImplementationOnce(async (_url: unknown, options: RequestInit) => ({
+      ok: true, status: 200,
+      json: () => new Promise((_resolve, reject) => options.signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))),
+    }));
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(20_000);
+    expect(connection.useConnection().state).toBe('offline');
+    expect(connection.rowIsSynced('posts', 'p')).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(connection.rowIsSynced('posts', 'p')).toBe(true);
+    expect((await remoteStore()).getCell('posts', 'p', 'content')).toBe('do not lose');
+  });
+  it('ignores a response body completed after the session changed', async () => {
+    let finish!: (body: unknown) => void;
+    const old = createMergeableStore().setRow('posts', 'old-session', { content: 'obsolete' });
+    fetchMock.mockImplementationOnce(async () => ({ ok: true, status: 200, json: () => new Promise(resolve => { finish = resolve; }) }));
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    auth.token = 'new-token'; auth.changed!();
+    finish({ records: splitContent(old.getMergeableContent()), cursor: 99, more: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(local.hasRow('posts', 'old-session')).toBe(false);
+    expect(syncCalls().at(-1)![1].headers.authorization).toBe('Bearer new-token');
+  });
+  it('flushes a new edit when backgrounded before its debounce elapses', async () => {
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    local.setRow('posts', 'p', { content: 'send then switch apps' });
+    page.visibilityState = 'hidden'; page.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await remoteStore()).getCell('posts', 'p', 'content')).toBe('send then switch apps');
+    expect(syncCalls().at(-1)![1].keepalive).toBe(true);
+    const calls = syncCalls().length;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(syncCalls()).toHaveLength(calls);
+  });
+  it('keeps large Unicode uploads outside the browser keepalive quota', async () => {
+    local.setRow('posts', 'p', { content: '中文'.repeat(12_000) });
+    connection.startConnection(); await vi.advanceTimersByTimeAsync(0);
+    expect(syncCalls()[0][1].keepalive).toBe(false);
+    expect(connection.rowIsSynced('posts', 'p')).toBe(true);
   });
   it('only signs out when the server explicitly rejects authentication',async()=>{
     fetchMock.mockResolvedValueOnce(Response.json({}, {status:401}));
@@ -166,3 +214,4 @@ describe('HTTP offline synchronization',()=>{
     expect(checks()).toHaveLength(2);
   });
 });
+

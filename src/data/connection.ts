@@ -7,6 +7,8 @@ import { store } from './store';
 export type ConnectionState = 'connecting' | 'online' | 'offline';
 interface Status { state: ConnectionState; syncedAt: number | null; error: string }
 const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
+const POLL_MS = 5000;
+const DELIVERY_POLL_MS = 2000;
 let status: Status = { state: 'connecting', syncedAt: null, error: '' };
 const listeners = new Set<() => void>();
 const firstSync: Array<() => void> = [];
@@ -30,11 +32,17 @@ function setStatus(next: Partial<Status>): void {
  * remain there after a network error, tab close or device restart. */
 /** Delivery tables: the server owns them, a device only submits its commands. */
 const COMMAND_TABLES = ['xposts', 'substackposts', 'threadsposts'];
+const CLIENT_TABLES = ['posts', 'replies', 'goals', 'xlabels', 'xexperiments'];
 
 export function outgoingRecords(): SyncRecord[] {
-  return splitContent(store.getMergeableContent()).flatMap(record => {
+  const [tables, values] = store.getMergeableContent();
+  // Metrics and delivery history can dwarf the diary. Exclude server-owned
+  // tables before canonicalizing rows, rather than rebuilding each to discard it.
+  const content: typeof tables = [Object.fromEntries(Object.entries(tables[0])
+    .filter(([table]) => CLIENT_TABLES.includes(table) || COMMAND_TABLES.includes(table))), tables[1], tables[2]];
+  return splitContent([content, values]).flatMap(record => {
     const [, table] = record.key.split(':');
-    if (record.key.startsWith('v:') || ['posts', 'replies', 'goals', 'xlabels', 'xexperiments'].includes(table)) return [record];
+    if (record.key.startsWith('v:') || CLIENT_TABLES.includes(table)) return [record];
     if (!COMMAND_TABLES.includes(table)) return [];
     const content = recordContent(record);
     const id = record.key.split(':')[2];
@@ -79,23 +87,28 @@ async function sync(): Promise<void> {
         if (records.length && (size + record.data.length > 500_000 || records.length >= 50)) break;
         records.push(record); size += record.data.length;
       }
-      controller = new AbortController();
-      const timeout = setTimeout(() => controller?.abort(), 20_000);
-      let response: Response;
+      const requestController = new AbortController();
+      controller = requestController;
+      const timeout = setTimeout(() => requestController.abort(), 20_000);
+      let body: SyncResponse;
       try {
-        response = await fetch('/api/sync', {
+        const payload = JSON.stringify({ records, cursor, name: deviceName(), build: __BUILD_ID__ });
+        const response = await fetch('/api/sync', {
           method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ records, cursor, name: deviceName(), build: __BUILD_ID__ }), signal: controller.signal,
+          body: payload, signal: requestController.signal,
+          // Small edits can finish uploading when iOS backgrounds the page.
+          keepalive: new TextEncoder().encode(payload).byteLength <= 60_000,
           cache: 'no-store',
         });
+        if (ownEpoch !== epoch) return;
+        if (response.status === 401) { signOut(); setStatus({ state: 'offline' }); return; }
+        if (!response.ok) {
+          const detail = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(detail?.error || `同步请求失败 (${response.status})`);
+        }
+        body = await response.json() as SyncResponse;
       } finally { clearTimeout(timeout); }
       if (ownEpoch !== epoch) return;
-      if (response.status === 401) { signOut(); setStatus({ state: 'offline' }); return; }
-      if (!response.ok) {
-        const detail = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(detail?.error || `同步请求失败 (${response.status})`);
-      }
-      const body = await response.json() as SyncResponse;
       if (!Array.isArray(body.records) || !Number.isSafeInteger(body.cursor) || body.cursor < cursor) throw new Error('无效同步响应');
       // Acknowledge exactly what was sent. Edits made while awaiting the
       // response differ from this snapshot and will be sent on the next pass.
@@ -106,12 +119,13 @@ async function sync(): Promise<void> {
       } finally { applying = false; }
       // A received record is acknowledged only when the local result matches
       // it. Otherwise a simultaneous offline edit must still go upstream.
-      const local = new Map(outgoingRecords().map(record => [record.key, record.data]));
+      const outgoing = outgoingRecords();
+      const local = new Map(outgoing.map(record => [record.key, record.data]));
       for (const record of body.records) if (local.get(record.key) === record.data) acknowledged.set(record.key, record.data);
       cursor = body.cursor;
       // Publish per-row acknowledgements even when another batch is pending.
       setStatus({ state: 'online', error: '' });
-      more = body.more || outgoingRecords().some(record => acknowledged.get(record.key) !== record.data);
+      more = body.more || outgoing.some(record => acknowledged.get(record.key) !== record.data);
     }
     if (ownEpoch !== epoch) return;
     failures = 0;
@@ -135,7 +149,7 @@ async function sync(): Promise<void> {
     // Only X gives a thread's parts rows of their own; elsewhere they go out with their post.
     || Object.entries(store.getTable('replies')).some(([id, row]) => row[flag] && !(table !== 'xposts' && row.thread) && recent(row.createdAt) && !store.hasRow(table, id));
   const pending = awaiting('xSync', 'xposts') || awaiting('substackSync', 'substackposts') || awaiting('threadsSync', 'threadsposts');
-  schedule(again ? 0 : pending ? 3000 : 30_000);
+  schedule(again ? 0 : pending ? DELIVERY_POLL_MS : POLL_MS);
 }
 
 const X_CHECK_EVERY_MS = 30_000;
@@ -172,7 +186,11 @@ export function startConnection(): void {
   window.addEventListener('online', reconnect);
   window.addEventListener('offline', () => { controller?.abort(); clearTimeout(timer); setStatus({ state: 'offline' }); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') clearTimeout(timer);
+    if (document.visibilityState === 'hidden') {
+      clearTimeout(timer);
+      // Do not discard the 150ms upload when the user sends then switches apps.
+      if (getToken() && outgoingRecords().some(record => acknowledged.get(record.key) !== record.data)) void sync();
+    }
     else { reconnect(); checkX(); }
   });
   window.addEventListener('focus', reconnect);
@@ -201,3 +219,4 @@ export function useRowIsSynced(table: 'posts' | 'replies', id: string): boolean 
 }
 export function retrySync(): void { reconnect(); }
 export function useAwaitingFirstSync(): boolean { return useSyncExternalStore(subscribe, () => status.syncedAt === null && status.state !== 'offline'); }
+

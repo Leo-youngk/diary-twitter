@@ -9,6 +9,15 @@ import { runBackup } from './delivery/backup';
 
 const NEVER = 8_000_000_000_000_000;
 interface Job { name: string; generation: number }
+const DELIVERY_JOBS = ['x', ...CHANNELS.map(c => c.job), 'obsidian'];
+
+/** A leased task is retried after its owner expires, never in a busy loop. */
+export async function nextDeliveryAt(db: D1Database): Promise<number | null> {
+  const rows = await query<{ at: number | null }>(db,
+    `SELECT MIN(MAX(next_at,lease_until)) AS at FROM diary3_jobs WHERE name IN (${DELIVERY_JOBS.map(() => '?').join(',')}) AND next_at<?`,
+    ...DELIVERY_JOBS, NEVER);
+  return rows[0]?.at ?? null;
+}
 
 /**
  * The jobs a device's changed row concerns. X and Obsidian look at every post;
@@ -50,7 +59,7 @@ export async function runJob(env: Env, name: string): Promise<void> {
 }
 
 export async function runJobs(env: Env, immediate = false): Promise<void> {
-  const channels = CHANNELS.map((c) => c.job);
-  const names = immediate ? ['x', ...channels] : ['x', ...channels, 'obsidian', 'xstats', 'backup'];
+  const names = immediate ? DELIVERY_JOBS : [...DELIVERY_JOBS, 'xstats', 'backup'];
   await Promise.allSettled(names.map(name => runJob(env, name)));
 }
+
