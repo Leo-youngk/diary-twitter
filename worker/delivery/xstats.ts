@@ -346,6 +346,9 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
       await setMeta(sql, 'x_walk_cursor', page.next);
       if (!page.next) await setMeta(sql, 'x_walked_at', String(now));
     } else {
+      // A bounded history pass resumes its cursor next minute. Exhausting our
+      // own time budget must not stall fresh metrics for the 15-minute backoff.
+      if (Date.now() >= deadline) break;
       // The walk starts again from the next newest page rather than keep a cursor that may have expired.
       await setMeta(sql, 'x_walk_cursor', '');
       fail(`${page.message}，较早的推文暂时没有更新`);
@@ -362,6 +365,7 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
     // instead of spending minutes refreshing a large account's older tweets.
     if (failed || Date.now() >= deadline) break;
     const result = await fx(`/2/status/${id}`, deadline - Date.now());
+    if (result.kind === 'error' && Date.now() >= deadline) break;
     const tweet = result.kind === 'ok' ? parseStatus(result.body.status) : null;
     if (result.kind === 'gone') {
       // Deleted on X (or made private): kept, but left out of the numbers.

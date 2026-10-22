@@ -108,6 +108,26 @@ describe('X stats', () => {
     await runXStats(sql, store, env, now + HOUR);
     expect(fetchXChannel).toHaveBeenCalledTimes(2);
   });
+  it('resumes history after its budget expires without delaying fresh metrics for fifteen minutes', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(now);
+    const normal = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      const parsed = new URL(String(url));
+      if (parsed.searchParams.get('cursor') === 'c1') {
+        return new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
+      }
+      const response = await normal(url, init);
+      if (parsed.pathname.endsWith('/statuses')) vi.setSystemTime(now + 6000);
+      return response;
+    });
+    const run = runXStats(sql, store, env, now);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(await run).toBe(now + 60_000);
+    expect(await getMeta(sql, 'x_walk_cursor')).toBe('c1');
+    expect(store.getCell('xtweets', '106', 'measuredAt')).toBe(now);
+    expect(store.getCell('xaccount', 'me', 'error') ?? '').toBe('');
+  });
   it('keeps missing or invalid parent follower counts unknown and preserves an observed zero', async () => {
     const createdAt = new Date(now - HOUR).toISOString();
     const results = [undefined, null, -1, Infinity].flatMap((followers, i) => [
