@@ -217,12 +217,12 @@ async function refreshPublishing(sql: D1Database, env: BufferEnv, row: XRow, par
     } else {
       const next = now + (error.retryAfterMs ?? delay);
       await setMeta(sql, 'buffer_retry_at', String(next));
-      await updateRow(sql, row.id, { next_at: next, error: error.message, updated_at: now });
+      await updateRow(sql, row.id, { state: 'publishing', next_at: next, error: error.message, updated_at: now });
     }
     return;
   }
   if (!state) {
-    await updateRow(sql, row.id, { error: '暂时无法查询 Buffer，稍后继续核对；不会重复发布', updated_at: now });
+    await updateRow(sql, row.id, { state: 'publishing', error: '暂时无法查询 Buffer，稍后继续核对；不会重复发布', updated_at: now });
     return;
   }
   if (state.status === 'sent') {
@@ -233,6 +233,9 @@ async function refreshPublishing(sql: D1Database, env: BufferEnv, row: XRow, par
     }
   } else if (state.status === 'error' || state.status === 'draft' || state.status === 'needs_approval') {
     await updateRow(sql, row.id, { state: 'failed', error: `X 没有发布成功：${state.error ?? state.status}`, updated_at: now });
+    console.warn('[x] publication rejected', { id: row.id, bufferId: row.buffer_id, message: state.error ?? state.status });
+  } else if (row.state === 'failed') {
+    await updateRow(sql, row.id, { state: 'publishing', error: '', updated_at: now });
   } else if (row.error) {
     await updateRow(sql, row.id, { error: '', updated_at: now });
   }
@@ -335,8 +338,9 @@ async function deliver(
     } else {
       await updateRow(sql, row.id, {
         state: 'failed', buffer_id: result.bufferPostId,
-        error: `Buffer 没有立即发布（${result.status}），请到 Buffer 查看`, updated_at: done,
+        error: result.error ? `X 没有发布成功：${result.error}` : `Buffer 没有立即发布（${result.status}），请到 Buffer 查看`, updated_at: done,
       });
+      console.warn('[x] publication rejected', { id: row.id, bufferId: result.bufferPostId, message: result.error ?? result.status });
     }
     return;
   }
@@ -364,6 +368,9 @@ function mirror(store: MergeableStore, rows: XRow[]): void {
     }
   });
 }
+
+// Repair old generic errors by reading the known Buffer post, never by sending it again.
+const needsFailureDetails = (row: XRow) => row.state === 'failed' && !!row.buffer_id && row.error.startsWith('Buffer 没有立即发布（');
 
 /** One reconcile-and-deliver pass. Returns when it next needs to run. */
 export async function runX(sql: D1Database, store: MergeableStore, env: BufferEnv, now: number, persist: () => Promise<void>): Promise<number> {
@@ -399,6 +406,12 @@ export async function runX(sql: D1Database, store: MergeableStore, env: BufferEn
 
   const cooldown = async () => Number(await getMeta(sql, 'buffer_retry_at') ?? 0);
   if (configured && (await cooldown()) <= now) {
+    ledger = new Map((await readLedger(sql)).map((row) => [row.id, row]));
+    for (const row of [...ledger.values()].filter(row => needsFailureDetails(row) && row.next_at <= now).slice(0, MAX_REFRESH_PER_RUN)) {
+      if ((await cooldown()) > Date.now()) break;
+      const parentTweetId = row.kind === 'reply' ? tweetIdOf(ledger.get(row.parent)?.link) : undefined;
+      await refreshPublishing(sql, env, row, parentTweetId, Date.now());
+    }
     ledger = new Map((await readLedger(sql)).map((row) => [row.id, row]));
     const due = [...ledger.values()].filter((row) => row.state === 'queued' && row.next_at <= now && !inThread(store, row)).slice(0, MAX_SEND_PER_RUN);
     for (const row of due) {
@@ -439,6 +452,8 @@ export async function runX(sql: D1Database, store: MergeableStore, env: BufferEn
     if (inThread(store, row)) continue;
     if (row.state === 'queued' || row.state === 'publishing') next = Math.min(next, Math.max(row.next_at, (await cooldown()), now + 1000));
     if (row.state === 'sending') next = Math.min(next, Math.max(now + 1000, row.updated_at + SENDING_STALE_MS));
+    if (needsFailureDetails(row)) next = Math.min(next, Math.max(now + 1000, row.next_at, await cooldown()));
   }
   return next;
 }
+

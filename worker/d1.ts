@@ -120,5 +120,11 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     await dirtyJobs(db, CHANNEL_LEDGERS.map(([, job]) => job));
     await setMeta(db, 'channels_rescanned', '1');
   }
+  if (await getMeta(db, 'x_provider_recovery') !== '1') {
+    // Read existing failed Buffer posts and resolve the current account once
+    // after upgrading. Never reset the publication ledger or resend a post.
+    await dirtyJobs(db, ['x', 'xstats']);
+    await setMeta(db, 'x_provider_recovery', '1');
+  }
 }
 

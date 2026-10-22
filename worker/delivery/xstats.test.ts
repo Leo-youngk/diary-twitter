@@ -2,7 +2,7 @@
 import { createRequire } from 'node:module';
 import { createMergeableStore } from 'tinybase';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchChannelHandle } from '../buffer';
+import { fetchXChannel } from '../buffer';
 import { getMeta, setMeta } from '../d1';
 import { runXStats } from './xstats';
 
@@ -10,7 +10,7 @@ vi.mock('../buffer', async (importOriginal) => ({
   ...await importOriginal<typeof import('../buffer')>(),
   bufferConfigured: () => true,
   fetchOrganizationId: vi.fn().mockResolvedValue('org'),
-  fetchChannelHandle: vi.fn().mockResolvedValue('me_on_x'),
+  fetchXChannel: vi.fn().mockResolvedValue({ handle: 'me_on_x', userId: '', disconnected: false, locked: false }),
 }));
 
 interface Database { prepare(query: string): { all(...bindings: SqlStorageValue[]): Record<string, SqlStorageValue>[] } }
@@ -47,6 +47,7 @@ const requested = () => vi.mocked(fetch).mock.calls.map(([url]) => String(url));
 const kinds = () => Object.fromEntries(Object.entries(store.getTable('xtweets')).map(([id, row]) => [id, row.kind]));
 
 beforeEach(() => {
+  vi.mocked(fetchXChannel).mockResolvedValue({ handle: 'me_on_x', userId: '', disconnected: false, locked: false });
   const db = new DatabaseSync(':memory:');
   db.prepare('CREATE TABLE diary3_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)').all();
   sql = {
@@ -63,7 +64,7 @@ beforeEach(() => {
   } as unknown as D1Database;
   store = createMergeableStore();
   routes = {
-    '/me_on_x': { status: 200, body: { code: 200, user: { followers: 17, following: 256, tweets: 50 } } },
+    '/2/profile/me_on_x': { status: 200, body: { code: 200, user: { followers: 17, following: 256, statuses: 50 } } },
     '/2/profile/me_on_x/statuses': page(LATEST, 'c1'),
     '/2/profile/me_on_x/statuses?c1': page([status('050', '2026-09-01T00:00:00Z')], 'c2'),
     '/2/profile/me_on_x/statuses?c2': page([], 'c3'),
@@ -78,6 +79,35 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); vi.useRealTimers(); });
 
 describe('X stats', () => {
+  it('resolves a renamed account by stable user id even when Buffer still has the old handle', async () => {
+    await setMeta(sql, 'x_handle', 'old_handle');
+    vi.mocked(fetchXChannel).mockResolvedValue({ handle: 'old_handle', userId: '123', disconnected: false, locked: false });
+    routes['/2/profile/id%3A123'] = { status: 200, body: { code: 200, user: { id: '123', screen_name: 'new_handle', followers: 24, following: 100, statuses: 83 } } };
+    routes['/2/profile/new_handle/statuses'] = page([], '');
+    await runXStats(sql, store, env, now);
+    expect(await getMeta(sql, 'x_handle')).toBe('new_handle');
+    expect(await getMeta(sql, 'x_user_id')).toBe('123');
+    expect(store.getRow('xaccount', 'me')).toMatchObject({ handle: 'new_handle', followers: 24, tweets: 83, measuredAt: now });
+    expect(requested()).toContain('https://api.fxtwitter.com/2/profile/id%3A123');
+    expect(requested()).not.toContain('https://api.fxtwitter.com/old_handle');
+  });
+  it('refreshes timeline metrics independently when the account profile is unavailable', async () => {
+    store.setRow('xaccount', 'me', { handle: 'me_on_x', followers: 17, measuredAt: now - 2 * HOUR });
+    routes['/2/profile/me_on_x'] = { status: 404, body: { code: 404 } };
+    await runXStats(sql, store, env, now);
+    expect(store.getCell('xtweets', '106', 'views')).toBe(71);
+    expect(store.getCell('xtweets', '106', 'measuredAt')).toBe(now);
+    expect(store.getCell('xaccount', 'me', 'followers')).toBe(17);
+    expect(store.getCell('xaccount', 'me', 'measuredAt')).toBe(now - 2 * HOUR);
+    expect(String(store.getCell('xaccount', 'me', 'error'))).toContain('账号资料');
+  });
+  it('periodically checks a cached channel instead of freezing its first handle forever', async () => {
+    await runXStats(sql, store, env, now);
+    await runXStats(sql, store, env, now + 60_000);
+    expect(fetchXChannel).toHaveBeenCalledTimes(1);
+    await runXStats(sql, store, env, now + HOUR);
+    expect(fetchXChannel).toHaveBeenCalledTimes(2);
+  });
   it('keeps missing or invalid parent follower counts unknown and preserves an observed zero', async () => {
     const createdAt = new Date(now - HOUR).toISOString();
     const results = [undefined, null, -1, Infinity].flatMap((followers, i) => [
@@ -134,7 +164,7 @@ describe('X stats', () => {
       init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
     })));
     const run = runXStats(sql, store, env, now);
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(10_000);
     expect(await run).toBe(now + 15 * 60_000);
     expect(store.getCell('xaccount', 'me', 'error')).toContain('请求超时');
   });
@@ -178,7 +208,7 @@ describe('X stats', () => {
     expect(store.getTable('xfollowers')).toEqual({ [String(now)]: { followers: 17, following: 256, at: now } });
     await runXStats(sql, store, env, now + HOUR);
     expect(Object.keys(store.getTable('xfollowers'))).toHaveLength(1);
-    routes['/me_on_x'] = { status: 200, body: { code: 200, user: { followers: 19, following: 256, tweets: 51 } } };
+    routes['/2/profile/me_on_x'] = { status: 200, body: { code: 200, user: { followers: 19, following: 256, statuses: 51 } } };
     await runXStats(sql, store, env, now + 2 * HOUR);
     expect(store.getRow('xfollowers', String(now))).toEqual({ followers: 17, following: 256, at: now });
     expect(store.getRow('xfollowers', String(now + 2 * HOUR))).toEqual({ followers: 19, following: 256, at: now + 2 * HOUR });
@@ -237,7 +267,7 @@ describe('X stats', () => {
     expect(await runXStats(sql, store, env, now + 60_000)).toBe(now + 120_000);
     expect(requested()).toEqual(['https://api.fxtwitter.com/2/profile/me_on_x/statuses?count=20&with_replies=1']);
     expect(JSON.stringify(store.getTables())).toBe(before);
-    expect(fetchChannelHandle).toHaveBeenCalledTimes(1);
+    expect(fetchXChannel).toHaveBeenCalledTimes(1);
   });
 
   it('adds a tweet posted on X within a minute without rewriting the others', async () => {
@@ -306,7 +336,7 @@ describe('X stats', () => {
 
   it('keeps the last numbers and says so when FxTwitter fails', async () => {
     await runXStats(sql, store, env, now);
-    routes['/me_on_x'] = { status: 503 };
+    routes['/2/profile/me_on_x'] = { status: 503 };
     routes['/2/profile/me_on_x/statuses'] = { status: 503 };
     const later = now + 2 * HOUR;
     expect(await runXStats(sql, store, env, later)).toBe(later + 15 * 60_000);
@@ -317,7 +347,8 @@ describe('X stats', () => {
   it('leaves Buffer alone while it is rate limited', async () => {
     await setMeta(sql, 'buffer_retry_at', String(now + 600_000));
     await runXStats(sql, store, env, now);
-    expect(fetchChannelHandle).not.toHaveBeenCalled();
+    expect(fetchXChannel).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+

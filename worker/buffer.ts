@@ -19,7 +19,7 @@ export interface ChannelRequest {
 export type BufferPostStatus = 'draft' | 'error' | 'needs_approval' | 'scheduled' | 'sending' | 'sent';
 
 export type CreateResult =
-  | { kind: 'ok'; bufferPostId: string; status: BufferPostStatus; link?: string }
+  | { kind: 'ok'; bufferPostId: string; status: BufferPostStatus; link?: string; error?: string }
   // Buffer answered that nothing was posted. `retryable` marks refusals that
   // clear up on their own (rate limit, daily posting limit).
   | { kind: 'rejected'; message: string; retryable: boolean; retryAfterMs?: number }
@@ -39,7 +39,7 @@ const TWEET_ID_PATTERN = /\/status\/(\d+)/;
 const CREATE_POST = `mutation($input: CreatePostInput!) {
   createPost(input: $input) {
     __typename
-    ... on PostActionSuccess { post { id status externalLink } }
+    ... on PostActionSuccess { post { id status externalLink error { message } } }
     ... on MutationError { message }
   }
 }`;
@@ -180,6 +180,7 @@ async function submitPost(env: BufferEnv, input: Record<string, unknown>, networ
         bufferPostId: post.id,
         status: post.status,
         link: typeof post.externalLink === 'string' ? post.externalLink : undefined,
+        error: isRecord(post.error) && typeof post.error.message === 'string' ? post.error.message : undefined,
       };
     }
     return { kind: 'unknown', message: `Buffer 返回的帖子信息不完整，可能已经发出；请先到 ${network} 确认` };
@@ -202,8 +203,30 @@ async function submitPost(env: BufferEnv, input: Record<string, unknown>, networ
 const ORGANIZATIONS = `query { account { organizations { id } } }`;
 
 const CHANNELS = `query($org: OrganizationId!) {
-  channels(input: { organizationId: $org }) { id name }
+  channels(input: { organizationId: $org }) { id name serviceId externalLink isDisconnected isLocked }
 }`;
+
+export interface XChannelInfo {
+  handle: string;
+  userId: string;
+  disconnected: boolean;
+  locked: boolean;
+}
+
+/** Stable social-network id survives a renamed X handle. No credentials leave the server. */
+export async function fetchXChannel(env: BufferEnv, organizationId: string): Promise<XChannelInfo | null> {
+  const { status, body, retryAfterMs } = await bufferRequest(env, CHANNELS, { org: organizationId });
+  if (status === 429 || graphQLError(body)?.code === 'RATE_LIMIT_EXCEEDED') throw new BufferApiError('Buffer 查询限流', retryAfterMs ?? 60_000);
+  const channels = isRecord(body) && isRecord(body.data) && Array.isArray(body.data.channels) ? body.data.channels : [];
+  const channel = channels.find(item => isRecord(item) && item.id === env.BUFFER_CHANNEL_ID);
+  if (!isRecord(channel)) return null;
+  const linked = typeof channel.externalLink === 'string'
+    ? /^https?:\/\/(?:www\.)?(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})(?:[/?#]|$)/i.exec(channel.externalLink)?.[1] : undefined;
+  const named = typeof channel.name === 'string' ? channel.name.replace(/^@/, '').trim() : '';
+  const handle = linked ?? (/^[A-Za-z0-9_]{1,15}$/.test(named) ? named : '');
+  const userId = typeof channel.serviceId === 'string' && /^\d+$/.test(channel.serviceId) ? channel.serviceId : '';
+  return { handle, userId, disconnected: channel.isDisconnected === true, locked: channel.isLocked === true };
+}
 
 export async function fetchOrganizationId(env: BufferEnv): Promise<string | null> {
   try {
@@ -221,10 +244,7 @@ export async function fetchOrganizationId(env: BufferEnv): Promise<string | null
 /** The X handle of the connected channel. */
 export async function fetchChannelHandle(env: BufferEnv, organizationId: string): Promise<string | null> {
   try {
-    const { body } = await bufferRequest(env, CHANNELS, { org: organizationId });
-    const channels = isRecord(body) && isRecord(body.data) && Array.isArray(body.data.channels) ? body.data.channels : [];
-    const channel = channels.find((item) => isRecord(item) && item.id === env.BUFFER_CHANNEL_ID);
-    return isRecord(channel) && typeof channel.name === 'string' && channel.name ? channel.name : null;
+    return (await fetchXChannel(env, organizationId))?.handle || null;
   } catch {
     return null;
   }
@@ -318,3 +338,4 @@ export async function fetchBufferPost(env: BufferEnv, bufferPostId: string, netw
     return null;
   }
 }
+
