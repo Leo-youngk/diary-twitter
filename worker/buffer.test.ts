@@ -1,10 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BufferApiError, createBufferPost, createChannelPost, fetchBufferPost, fetchChannelMetrics, findChannel } from './buffer';
+import { BufferApiError, createBufferPost, createChannelPost, fetchBufferPost, fetchChannelMetrics, fetchXChannel, findChannel } from './buffer';
 
 const env = { BUFFER_API_KEY: 'test-key', BUFFER_CHANNEL_ID: 'test-channel' };
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Buffer publishing failures', () => {
+  it('retains the actual publishing error returned inside a successful create response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ data: { createPost: {
+      __typename: 'PostActionSuccess', post: { id: 'b', status: 'error', error: { message: 'Please reconnect your X account' } },
+    } } })));
+    expect(await createBufferPost(env, '测试')).toMatchObject({ kind: 'ok', status: 'error', error: 'Please reconnect your X account' });
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).query).toContain('error { message }');
+  });
+  it('reads a renamed channel by its social link and retains its stable X id and connection state', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ data: { channels: [{
+      id: 'test-channel', name: 'old_handle', serviceId: '1847160562230435840',
+      externalLink: 'https://x.com/new_handle', isDisconnected: true, isLocked: false,
+    }] } })));
+    expect(await fetchXChannel(env, 'org')).toEqual({ handle: 'new_handle', userId: '1847160562230435840', disconnected: true, locked: false });
+  });
   it('reports a GraphQL permission refusal rather than an ambiguous publication', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
       data: null, errors: [{ message: 'Not authorized', extensions: { code: 'FORBIDDEN' } }],
@@ -124,3 +138,4 @@ describe('Buffer Substack and Threads channels', () => {
     expect(await fetchChannelMetrics(env, 'org', 'threads-channel')).toEqual({ kind: 'error' });
   });
 });
+

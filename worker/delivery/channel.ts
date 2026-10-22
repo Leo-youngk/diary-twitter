@@ -399,7 +399,7 @@ async function deliver(
     } else {
       await updateRow(sql, c, row.id, {
         state: 'failed', buffer_id: result.bufferPostId,
-        error: `Buffer 没有立即发布（${result.status}），请到 Buffer 查看`, updated_at: done,
+        error: result.error ? `${c.network} 没有发布成功：${result.error}` : `Buffer 没有立即发布（${result.status}），请到 Buffer 查看`, updated_at: done,
       });
     }
     return;
@@ -540,3 +540,4 @@ export async function runChannel(c: Channel, sql: D1Database, store: MergeableSt
   if (measurable(rows, now).length > 0) next = Math.min(next, Math.max((await metricsAt()) + METRICS_EVERY_MS, (await cooldown()), now + 1000));
   return next;
 }
+

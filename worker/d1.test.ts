@@ -172,6 +172,27 @@ describe('D1 incremental CRDT persistence', () => {
 });
 
 describe('D1 X delivery safety and task leases', () => {
+  it('recovers the actual cause of a generic failure by reading its known Buffer post without resending', async () => {
+    await upload(post());
+    await insertLedgerRow(db, { id: 'p', kind: 'post', state: 'failed', buffer_id: 'known', error: 'Buffer 没有立即发布（error），请到 Buffer 查看' });
+    vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
+      expect(JSON.parse(String(init?.body)).query).not.toContain('createPost');
+      return Response.json({ data: { post: { id: 'known', status: 'error', error: { message: 'Reconnect the X account' } } } });
+    }));
+    const loaded = await loadStore(db);
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(loaded.store.getRow('xposts', 'p')).toMatchObject({ state: 'failed', error: 'X 没有发布成功：Reconnect the X account' });
+  });
+  it('confirms an old generic failure that was actually published without creating a second post', async () => {
+    await upload(post());
+    await insertLedgerRow(db, { id: 'p', kind: 'post', state: 'failed', buffer_id: 'known', error: 'Buffer 没有立即发布（error），请到 Buffer 查看' });
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: { post: { id: 'known', status: 'sent', externalLink: 'https://x.com/new/status/123' } } })));
+    const loaded = await loadStore(db);
+    await runX(db, loaded.store, env(), Date.now(), () => saveStore(db, loaded.store, loaded.baseline));
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(loaded.store.getRow('xposts', 'p')).toMatchObject({ state: 'sent', link: 'https://x.com/new/status/123', error: '' });
+  });
   it('holds an old thread until its explicit send, persists its outcome, and ignores a replay', async () => {
     const createdAt = new Date(Date.now() - 10 * 24 * 3600_000).toISOString();
     const text = '长文'.repeat(2000), part = '第二条'.repeat(500);

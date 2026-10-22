@@ -1,5 +1,5 @@
 import type { MergeableStore } from 'tinybase';
-import { bufferConfigured, fetchChannelHandle, fetchOrganizationId, tweetIdOf, type BufferEnv } from '../buffer';
+import { BufferApiError, bufferConfigured, fetchXChannel, fetchOrganizationId, tweetIdOf, type BufferEnv } from '../buffer';
 import { getMeta, setMeta } from '../d1';
 import { dueStages, hasMetric, hotRefreshDue, METRICS, parseMetrics, type Metric } from '../../src/lib/xMetrics';
 import type { XTweetRow } from '../../src/lib/schema';
@@ -73,9 +73,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const count = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
 const lower = (value: unknown) => (typeof value === 'string' ? value.toLowerCase() : '');
 
-async function fx(path: string): Promise<FxResult> {
+async function fx(path: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<FxResult> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), Math.min(REQUEST_TIMEOUT_MS, Math.max(1, timeoutMs)));
   try {
     const response = await fetch(`${FX_API}${path}`, { headers: { 'user-agent': USER_AGENT }, signal: controller.signal });
     const body: unknown = await response.json().catch(() => null);
@@ -214,18 +214,27 @@ async function askHandle(sql: D1Database, env: BufferEnv, now: number): Promise<
     if (!org) return null;
     await setMeta(sql, 'buffer_org', org);
   }
-  const handle = await fetchChannelHandle(env, org);
-  if (handle) await setMeta(sql, 'x_handle', handle);
-  return handle;
+  try {
+    const channel = await fetchXChannel(env, org);
+    if (!channel) return null;
+    await setMeta(sql, 'x_channel_health', JSON.stringify(channel));
+    if (channel.userId) await setMeta(sql, 'x_user_id', channel.userId);
+    if (channel.handle) await setMeta(sql, 'x_handle', channel.handle);
+    return channel.handle || null;
+  } catch (error) {
+    if (error instanceof BufferApiError && error.retryAfterMs) await setMeta(sql, 'buffer_retry_at', String(now + error.retryAfterMs));
+    console.warn('[xstats] channel lookup failed', String(error));
+    return null;
+  }
 }
 
 type Page = { ok: true; next: string } | { ok: false; message: string };
 
 /** One page of the account's timeline with replies; saves the account's own tweets, or only new ones. */
-async function readPage(store: MergeableStore, handle: string, cursor: string, now: number, onlyNew = false): Promise<Page> {
+async function readPage(store: MergeableStore, handle: string, cursor: string, now: number, onlyNew = false, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Page> {
   const query = new URLSearchParams({ count: String(onlyNew ? NEW_PAGE_SIZE : PAGE_SIZE), with_replies: '1' });
   if (cursor) query.set('cursor', cursor);
-  const result = await fx(`/2/profile/${encodeURIComponent(handle)}/statuses?${query}`);
+  const result = await fx(`/2/profile/${encodeURIComponent(handle)}/statuses?${query}`, timeoutMs);
   // FxTwitter also answers an empty timeline with 404.
   if (result.kind === 'gone') return { ok: true, next: '' };
   if (result.kind === 'error') return { ok: false, message: result.message };
@@ -268,6 +277,7 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
   }
 
   let failed = false;
+  let profileFailed = false;
   let refreshed = false;
   const fail = (message: string) => {
     failed = true;
@@ -275,13 +285,14 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
   };
 
   let handle = (await getMeta(sql, 'x_handle'));
-  if (!handle && now - (await metaTime('x_handle_asked_at')) >= HOUR && (await metaTime('buffer_retry_at')) <= now) {
-    handle = await askHandle(sql, env, now);
+  if (now - (await metaTime('x_handle_asked_at')) >= HOUR && (await metaTime('buffer_retry_at')) <= now) {
+    handle = await askHandle(sql, env, now) || handle;
     if (!handle) fail('Buffer 没有返回 X 账号，暂时读不到推文');
   }
 
   if (!failed && handle && now - count(store.getCell('xaccount', 'me', 'measuredAt')) >= ACCOUNT_EVERY_MS) {
-    const result = await fx(`/${encodeURIComponent(handle)}`);
+    const userId = await getMeta(sql, 'x_user_id');
+    const result = await fx(`/2/profile/${encodeURIComponent(userId ? `id:${userId}` : handle)}`, deadline - Date.now());
     const user = result.kind === 'ok' && isRecord(result.body.user) ? result.body.user : null;
     if (user && typeof user.followers === 'number' && Number.isFinite(user.followers) && user.followers >= 0
       && typeof user.following === 'number' && Number.isFinite(user.following) && user.following >= 0) {
@@ -290,20 +301,28 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
       const previous = store.getRow('xaccount', 'me');
       const day = new Date(now).toISOString().slice(0, 10);
       const previousDay = new Date(count(previous.measuredAt)).toISOString().slice(0, 10);
-      store.setPartialRow('xaccount', 'me', { handle, followers, following, tweets: count(user.tweets), measuredAt: now });
+      if (typeof user.screen_name === 'string' && /^[A-Za-z0-9_]{1,15}$/.test(user.screen_name)) {
+        handle = user.screen_name;
+        await setMeta(sql, 'x_handle', handle);
+      }
+      if (typeof user.id === 'string' && /^\d+$/.test(user.id)) await setMeta(sql, 'x_user_id', user.id);
+      store.setPartialRow('xaccount', 'me', { handle, followers, following, tweets: count(user.statuses ?? user.tweets), measuredAt: now });
       // Keep every observed change, plus one unchanged boundary reading per UTC day.
       if (previous.followers !== followers || previous.following !== following || previousDay !== day) {
         store.setRow('xfollowers', String(now), { followers, following, at: now });
       }
       refreshed = true;
     } else {
-      fail(result.kind === 'gone' ? `X 上找不到 @${handle}` : `${failure(result)}，粉丝数暂时没有更新`);
+      profileFailed = true;
+      recordError(store, result.kind === 'gone' ? `暂时无法读取 @${handle} 的账号资料，继续独立更新推文数据` : `${failure(result)}，粉丝数暂时没有更新`, now);
+      // Account lookup is independent: a failed profile must not freeze every
+      // timeline and per-post metric refresh for days.
     }
   }
 
   if (!failed && handle) {
     const full = now - (await metaTime('x_latest_at')) >= LATEST_EVERY_MS;
-    const page = await readPage(store, handle, '', now, !full);
+    const page = await readPage(store, handle, '', now, !full, deadline - Date.now());
     if (page.ok) {
       refreshed = true;
       if (full) {
@@ -321,12 +340,15 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
   for (let pages = 0; !failed && handle && pages < MAX_PAGES_PER_RUN && Date.now() < deadline; pages++) {
     const cursor = (await getMeta(sql, 'x_walk_cursor'));
     if (!cursor) break;
-    const page = await readPage(store, handle, cursor, now);
+    const page = await readPage(store, handle, cursor, now, false, deadline - Date.now());
     if (page.ok) {
       refreshed = true;
       await setMeta(sql, 'x_walk_cursor', page.next);
       if (!page.next) await setMeta(sql, 'x_walked_at', String(now));
     } else {
+      // A bounded history pass resumes its cursor next minute. Exhausting our
+      // own time budget must not stall fresh metrics for the 15-minute backoff.
+      if (Date.now() >= deadline) break;
       // The walk starts again from the next newest page rather than keep a cursor that may have expired.
       await setMeta(sql, 'x_walk_cursor', '');
       fail(`${page.message}，较早的推文暂时没有更新`);
@@ -342,7 +364,8 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
     // This shares an alarm with X publication. Give newly arrived posts a turn
     // instead of spending minutes refreshing a large account's older tweets.
     if (failed || Date.now() >= deadline) break;
-    const result = await fx(`/2/status/${id}`);
+    const result = await fx(`/2/status/${id}`, deadline - Date.now());
+    if (result.kind === 'error' && Date.now() >= deadline) break;
     const tweet = result.kind === 'ok' ? parseStatus(result.body.status) : null;
     if (result.kind === 'gone') {
       // Deleted on X (or made private): kept, but left out of the numbers.
@@ -356,7 +379,7 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
       fail(`${failure(result)}，推文数据暂时没有更新`);
     }
   }
-  if (!failed && refreshed && store.getCell('xaccount', 'me', 'error')) {
+  if (!failed && !profileFailed && refreshed && store.getCell('xaccount', 'me', 'error')) {
     store.setPartialRow('xaccount', 'me', { error: '', errorAt: 0 });
   }
 
@@ -369,3 +392,4 @@ export async function runXStats(sql: D1Database, store: MergeableStore, env: Buf
   );
   return Math.max(next, now + 60_000);
 }
+
